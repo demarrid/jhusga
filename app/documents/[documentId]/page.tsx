@@ -106,7 +106,7 @@ export default async function DocumentPage({
 
                 <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto flex flex-col gap-6">
                     <section>
-                        <h2>In short</h2>
+                        <h2>Summary</h2>
                         <DocumentRestatement restatement={document.restatement} />
                     </section>
 
