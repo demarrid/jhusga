@@ -18,15 +18,21 @@ The pipeline that enforces this runs once a day:
 1. **Walk the Drive folder** (`lib/drive.ts`). Recurses the master folder and
    exports each Google Doc as markdown. Nested `Nth SGA Master Folder` folders
    are recognised as archives and tagged with their session number.
-2. **Sync** (`lib/sync.ts`). Compares each export's hash against the stored
+2. **Follow links** (`lib/sync.ts`, `lib/links.ts`). Agendas mostly list Drive
+   and SharePoint URLs. Those targets are ingested if they can be read.
+   Linked-in files that name a session (`S.B.26-27`) are tagged from that
+   caption, not from Drive createdTime or the oldest agenda that pointed at
+   them. SharePoint files need Graph credentials when the share is not public
+   (see `.env.example`).
+3. **Sync** (`lib/sync.ts`). Compares each export's hash against the stored
    copy. Unchanged documents are skipped; changed ones get a new
    `DocumentRevision` and their citations are re-anchored.
-3. **Generate** (`lib/generate.ts`). Asks a model to answer a fixed question
+4. **Generate** (`lib/generate.ts`). Asks a model to answer a fixed question
    from the documents and to quote its evidence. Every quote is checked to
    appear verbatim in the source before the answer is stored; quotes that do not
    are discarded. Only current-session documents are eligible, so repealed
    language is never described as current law.
-4. **Render**. Pages read cached sections and never call a model on request.
+5. **Render**. Pages read cached sections and never call a model on request.
 
 ### Why the citations survive amendments
 

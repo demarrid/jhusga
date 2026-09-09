@@ -43,7 +43,7 @@ export default async function Contact() {
                         <span key={source.id}>
                             {index > 0 &&
                                 (index === directory.sources.length - 1 ? " and " : ", ")}
-                            <Link href={`/documents/${source.id}`}>{source.title}</Link>
+                            <Link className="text-primary-700" href={`/documents/${source.id}`}>{source.title}</Link>
                         </span>
                     ))}
                     .
@@ -81,7 +81,7 @@ export default async function Contact() {
                                     {subgroup.members.map((member) => (
                                         <li key={member.name} className="my-1">
                                             {member.id ? (
-                                                <Link href={`/documents?person=${member.id}`}>
+                                                <Link href={`/documents?person=${member.id}`} className="text-secondary-700">
                                                     {member.name}
                                                 </Link>
                                             ) : (
@@ -92,7 +92,7 @@ export default async function Contact() {
                                                     {index === 0 ? " — " : ", "}
                                                     {position}
                                                     {member.positionSources?.[index] && (
-                                                        <SourceChip
+                                                        <SourceChip mini={true} 
                                                             citation={chipFrom(
                                                                 member.positionSources[index]!,
                                                             )}
@@ -107,17 +107,17 @@ export default async function Contact() {
                                                         {member.email}
                                                     </a>
                                                     {member.emailSource && (
-                                                        <SourceChip
+                                                        <SourceChip mini={true}
                                                             citation={chipFrom(member.emailSource)}
                                                         />
                                                     )}
                                                 </>
-                                            )}
+                                            )}  
                                             {member.committees && member.committees.length > 0 && (
                                                 <div className="text-foreground-400 text-sm">
                                                     {`Committees: ${member.committees.join(", ")}`}
                                                     {member.committeeSource && (
-                                                        <SourceChip
+                                                        <SourceChip mini={true}
                                                             citation={chipFrom(
                                                                 member.committeeSource,
                                                             )}
@@ -142,7 +142,7 @@ function InboxRow({ inbox }: { inbox: GroupInbox }) {
         <li>
             <strong>{inbox.label}</strong>
             {" — "}
-            <a href={`mailto:${inbox.email}`}>{inbox.email}</a>
+            <a className="text-primary-700" href={`mailto:${inbox.email}`}>{inbox.email}</a>
             <SourceChip
                 citation={{
                     documentTitle: inbox.documentTitle,

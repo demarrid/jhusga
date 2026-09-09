@@ -12,7 +12,9 @@ export default function Header() {
         <Link href="/">
           <Image src="/logo.png" alt="SGA logo" width={100} height={100} draggable={false} className="w-15 h-15 select-none " />
         </Link>
-        <h1 className="font-serif font-medium text-3xl ">The {getSessionString()} Student Government Association</h1>
+        <a href="/">
+          <h1 className="font-serif font-medium text-3xl ">The {getSessionString()} Student Government Association</h1>
+        </a>
       </div>
 
       <nav className="flex flex-row justify-between space-x-4 my-auto text-lg">

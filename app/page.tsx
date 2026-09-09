@@ -26,6 +26,10 @@ export default function Home() {
       <div className="py-20 max-w-4xl mx-auto">
         <p className="z-10 text-xl">The Student Government Association (SGA) at Johns Hopkins University is the representative body of undergraduate students. It is a student-run organization that is responsible for representing the interests of the student body to the university administration.</p>
       </div>
+
+      <div>
+
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@
  * Checks that the links SGA authors actually type resolve into references,
  * including the escaped form Google Docs exports.
  */
-import { extractDriveLinks, resolveReferences } from "../lib/links";
+import { extractDocumentLinks, extractDriveLinks, resolveReferences } from "../lib/links";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -85,6 +85,36 @@ check(
 check(
     "but Drive's own open?id= form still resolves",
     extractDriveLinks(`https://drive.google.com/open?id=${BILL}`)[0]?.fileId === BILL,
+);
+
+const SHAREPOINT =
+    "https://livejohnshopkins-my.sharepoint.com/:w:/g/personal/axu22_jh_edu/IQBIz_DFKoCuRadSv0FTT5duAQNOCqzXUwsLgrEPlLtYn-E?e=BXlWoM";
+
+console.log("\nsharepoint");
+
+const treasurer = extractDocumentLinks(
+    `v. Treasurer: Amy Xu\n* <${SHAREPOINT.replace(/_/g, "%5F")}>`,
+);
+check(
+    "a SharePoint sharing URL is a document link",
+    treasurer.some((link) => link.source === "sharepoint"),
+    treasurer,
+);
+check(
+    "the SharePoint token is stable across ?e= and percent-encoding",
+    treasurer[0]?.fileId ===
+        "sharepoint:IQBIz_DFKoCuRadSv0FTT5duAQNOCqzXUwsLgrEPlLtYn-E",
+    treasurer[0]?.fileId,
+);
+check(
+    "a SharePoint folder is not a document",
+    extractDocumentLinks(
+        "https://livejohnshopkins-my.sharepoint.com/:f:/g/personal/axu22_jh_edu/IQBIz_DFKoCuRadSv0FTT5duAQNOCqzXUwsLgrEPlLtYn-E",
+    ).length === 0,
+);
+check(
+    "Drive extraction still ignores SharePoint",
+    extractDriveLinks(SHAREPOINT).length === 0,
 );
 
 console.log("\nresolution");

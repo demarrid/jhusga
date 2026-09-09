@@ -1,7 +1,9 @@
 'use server'
 
 import { SESSION_NUMBER } from "@/config/sga";
+import { dateFromDocument } from "@/lib/identity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
+import { extractDocumentLinks } from "@/lib/links";
 import { isMeetingRole, type MeetingRole } from "@/lib/meetings";
 import { prisma } from "@/lib/prisma";
 import { renderDocument, type Block } from "@/lib/render";
@@ -27,6 +29,8 @@ export type DocumentListing = {
     sessionNumber: number | null;
     driveCreatedTime: Date | null;
     driveModifiedTime: Date | null;
+    /** The date the document itself states, when the caption names one. */
+    datedAt: Date | null;
     /** People this document names, for the listing. */
     contributors: { id: string; name: string; role: string }[];
 };
@@ -147,6 +151,7 @@ export async function getDocuments(filters: {
         title: document.displayTitle || document.title,
         driveTitle: document.title,
         kind: isDocumentKind(document.kind) ? document.kind : "unknown",
+        datedAt: dateFromDocument({ title: document.title }),
         contributors: document.contributors.map((entry) => ({
             id: entry.hopkinsAffiliate.id,
             name: entry.hopkinsAffiliate.name,
@@ -246,6 +251,13 @@ export type RelatedDocument = {
     anchorText?: string;
 };
 
+/** A link the author typed whose target has not been ingested. */
+export type UnresolvedLink = {
+    url: string;
+    text: string;
+    source: "drive" | "sharepoint";
+};
+
 /**
  * The other half of a meeting: an agenda's minutes, or the minutes' agenda.
  * A list rather than one document because the archive occasionally holds two
@@ -291,6 +303,8 @@ export type DocumentDetail = {
     lineageKey: string;
     driveCreatedTime: Date | null;
     driveModifiedTime: Date | null;
+    /** The date the document itself states, when the caption names one. */
+    datedAt: Date | null;
     lastSyncedAt: Date | null;
     revisionCount: number;
     /** Set when this document is one half of an agenda/minutes pair. */
@@ -300,6 +314,12 @@ export type DocumentDetail = {
     references: RelatedDocument[];
     /** Documents that link here -- usually the meetings that took this up. */
     referencedBy: RelatedDocument[];
+    /**
+     * Links the author typed whose targets we do not hold: a private Drive
+     * bill, a SharePoint report that needs a JHU login. Shown so the URL is
+     * not only buried in the body.
+     */
+    unresolvedLinks: UnresolvedLink[];
     /** The neutral restatement shown beside the document. */
     restatement: DocumentRestatement | null;
     /**
@@ -423,6 +443,20 @@ export async function getDocument(
             })
             : [];
 
+    const outgoing = extractDocumentLinks(document.content);
+    const heldTargets =
+        outgoing.length === 0
+            ? new Set<string>()
+            : new Set(
+                (
+                    await prisma.document.findMany({
+                        where: { driveFileId: { in: outgoing.map((link) => link.fileId) } },
+                        select: { driveFileId: true },
+                    })
+                ).map((row) => row.driveFileId),
+            );
+    const unresolvedLinks = outgoing.filter((link) => !heldTargets.has(link.fileId));
+
     return {
         meetingRole,
         counterpart:
@@ -433,6 +467,11 @@ export async function getDocument(
             toRelated(edge.toDocument, edge.anchorText),
         ),
         referencedBy: document.referencesIn.map((edge) => toRelated(edge.fromDocument)),
+        unresolvedLinks: unresolvedLinks.map((link) => ({
+            url: link.url,
+            text: link.text,
+            source: link.source,
+        })),
         restatement: document.summary
             ? {
                 content: document.summary.content,
@@ -460,6 +499,10 @@ export async function getDocument(
         lineageKey: document.lineageKey,
         driveCreatedTime: document.driveCreatedTime,
         driveModifiedTime: document.driveModifiedTime,
+        datedAt: dateFromDocument({
+            title: document.title,
+            content: document.content,
+        }),
         lastSyncedAt: document.lastSyncedAt,
         revisionCount: document._count.revisions,
         blocks: renderDocument(document.content, document.documentAnnotations),

@@ -3,14 +3,19 @@
  *
  * An agenda is mostly a list of links: to the bill being read, to the
  * guidelines being adopted, to last meeting's minutes. Those links point at
- * Google Docs URLs, and the file ID inside each one is the same key `sync`
- * reconciles documents on -- so a link whose target has been ingested can be
- * rewritten as a link into this site, and read backwards as "which meetings
- * discussed this bill".
+ * Google Docs or SharePoint sharing URLs, and the file ID inside each one is
+ * the same key `sync` reconciles documents on -- so a link whose target has
+ * been ingested can be rewritten as a link into this site, and read
+ * backwards as "which meetings discussed this bill".
  *
  * Nothing here guesses. A reference exists only when the author actually typed
  * the link and the target is a document we hold.
  */
+
+import {
+    sharePointFileId,
+    sharePointKind,
+} from "@/lib/sharepoint";
 
 /**
  * Drive file IDs are long enough that a shorter match is something else -- a
@@ -25,7 +30,7 @@ const PATH_ID = new RegExp(`/d/(${FILE_ID})`);
 const QUERY_ID = new RegExp(`[?&]id=(${FILE_ID})`);
 
 /** A Google URL, stopping before markdown's own punctuation. */
-const DRIVE_URL = /https?:\/\/(?:docs|drive)\.google\.com\/[^\s)>\]"'`]+/g;
+const DRIVE_URL = /https?:\/\/(?:docs|drive)\.google\.com\/[^\s<>)\]"'`]+/g;
 
 /**
  * Drive lives on two hosts and nothing else here is Drive.
@@ -36,16 +41,25 @@ const DRIVE_URL = /https?:\/\/(?:docs|drive)\.google\.com\/[^\s)>\]"'`]+/g;
  */
 const DRIVE_HOST = /^https?:\/\/(?:docs|drive)\.google\.com\//i;
 
+/** A SharePoint / OneDrive sharing URL, including the `livejohnshopkins-my` host. */
+const SHAREPOINT_URL = /https?:\/\/[^\s<>)\]"'`]*sharepoint\.com\/[^\s<>)\]"'`]+/gi;
+
 /** `[label](url)`, so a reference can be labelled the way the author wrote it. */
 const MARKDOWN_LINK = /\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 
 export type DriveLink = {
-    /** The Drive file ID the link points at. */
+    /** The Drive or SharePoint file ID the link points at. */
     fileId: string;
     /** The author's link text, or "" for a bare URL. */
     text: string;
     /** Where it first appears, so references list in reading order. */
     offset: number;
+    /** The URL as typed, for following a target we do not yet hold. */
+    url: string;
+};
+
+export type DocumentLink = DriveLink & {
+    source: "drive" | "sharepoint";
 };
 
 /**
@@ -57,12 +71,69 @@ function unescapeUrl(url: string): string {
     return url.replace(/\\([^A-Za-z0-9])/g, "$1");
 }
 
-function fileIdFrom(url: string): string | null {
+function driveFileIdFrom(url: string): string | null {
     const cleaned = unescapeUrl(url);
     if (!DRIVE_HOST.test(cleaned)) return null;
 
     // Folder links are deliberately not matched: a folder is never a document.
     return PATH_ID.exec(cleaned)?.[1] ?? QUERY_ID.exec(cleaned)?.[1] ?? null;
+}
+
+function sharePointIdFrom(url: string): string | null {
+    const cleaned = unescapeUrl(url);
+    if (sharePointKind(cleaned) === "folder") return null;
+    return sharePointFileId(cleaned);
+}
+
+function recordLink(
+    byFileId: Map<string, DocumentLink>,
+    link: DocumentLink,
+): void {
+    const existing = byFileId.get(link.fileId);
+    if (!existing) {
+        byFileId.set(link.fileId, { ...link, text: link.text.trim() });
+        return;
+    }
+    if (!existing.text && link.text.trim()) existing.text = link.text.trim();
+}
+
+function linksFrom(
+    markdown: string,
+    source: "drive" | "sharepoint",
+    urlPattern: RegExp,
+    idFrom: (url: string) => string | null,
+): DocumentLink[] {
+    const byFileId = new Map<string, DocumentLink>();
+
+    for (const match of markdown.matchAll(MARKDOWN_LINK)) {
+        const url = match[2]!;
+        const fileId = idFrom(url);
+        if (fileId) {
+            recordLink(byFileId, {
+                fileId,
+                text: match[1]!,
+                offset: match.index ?? 0,
+                url: unescapeUrl(url),
+                source,
+            });
+        }
+    }
+
+    for (const match of markdown.matchAll(urlPattern)) {
+        const url = match[0];
+        const fileId = idFrom(url);
+        if (fileId) {
+            recordLink(byFileId, {
+                fileId,
+                text: "",
+                offset: match.index ?? 0,
+                url: unescapeUrl(url),
+                source,
+            });
+        }
+    }
+
+    return [...byFileId.values()].sort((a, b) => a.offset - b.offset);
 }
 
 /**
@@ -73,29 +144,24 @@ function fileIdFrom(url: string): string | null {
  * from two items is still one reference.
  */
 export function extractDriveLinks(markdown: string): DriveLink[] {
-    const byFileId = new Map<string, DriveLink>();
+    return linksFrom(markdown, "drive", DRIVE_URL, driveFileIdFrom);
+}
 
-    const record = (fileId: string, text: string, offset: number) => {
-        const existing = byFileId.get(fileId);
-        if (!existing) {
-            byFileId.set(fileId, { fileId, text: text.trim(), offset });
-            return;
-        }
-        if (!existing.text && text.trim()) existing.text = text.trim();
-    };
-
-    for (const match of markdown.matchAll(MARKDOWN_LINK)) {
-        const fileId = fileIdFrom(match[2]);
-        if (fileId) record(fileId, match[1], match.index ?? 0);
-    }
-
-    // Bare URLs the author pasted without making them a link.
-    for (const match of markdown.matchAll(DRIVE_URL)) {
-        const fileId = fileIdFrom(match[0]);
-        if (fileId) record(fileId, "", match.index ?? 0);
-    }
-
-    return [...byFileId.values()].sort((a, b) => a.offset - b.offset);
+/**
+ * Drive and SharePoint links, in reading order, collapsed per target.
+ *
+ * SharePoint sharing URLs are a second host the Senate already types: the
+ * Treasurer's report lives in OneDrive, not the master folder. Folders are
+ * dropped, the same way Drive folder links are.
+ */
+export function extractDocumentLinks(markdown: string): DocumentLink[] {
+    return [
+        ...extractDriveLinks(markdown).map((link) => ({
+            ...link,
+            source: "drive" as const,
+        })),
+        ...linksFrom(markdown, "sharepoint", SHAREPOINT_URL, sharePointIdFrom),
+    ].sort((a, b) => a.offset - b.offset);
 }
 
 export type ReferenceEdge = {
@@ -124,7 +190,7 @@ export function resolveReferences(
 
     for (const document of documents) {
         let ordinal = 0;
-        for (const link of extractDriveLinks(document.content)) {
+        for (const link of extractDocumentLinks(document.content)) {
             const toDocumentId = byFileId.get(link.fileId);
             if (!toDocumentId || toDocumentId === document.id) continue;
 

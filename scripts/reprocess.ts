@@ -24,6 +24,7 @@ async function main() {
         recordMeetings,
         recordTitles,
         recordKinds,
+        recordSessions,
         rebuildReferences,
         recordDriveAccounts,
     } = await import("../lib/sync");
@@ -91,7 +92,9 @@ async function main() {
     const directory = await recordDirectory(SESSION_NUMBER);
 
     // Drive accounts are matched against the people the passes above just
-    // established, so this has to come after them.
+    // established, so this has to come after them. Session has to be settled
+    // before meetings, whose keys include it.
+    const reassigned = await recordSessions();
     const meetings = await recordMeetings();
     const renamed = await recordTitles();
     const reclassified = await recordKinds();
@@ -116,6 +119,7 @@ async function main() {
         `${meetings.keyed} meeting documents (${meetings.paired} agenda/minutes pairs); ` +
         `${renamed} documents shown under a standardised name; ` +
         `${reclassified} documents reclassified; ` +
+        `${reassigned} linked documents reassigned to the session they name; ` +
         `${references} cross-document references; ${driveAccounts} Drive accounts matched`,
     );
 

@@ -100,7 +100,7 @@ export function classifyDocument(input: {
     if (/bylaw/.test(haystack)) {
         return amends ? "bill.bylaws_amendment" : "guiding.bylaws";
     }
-    if (/senate rules|standing rules/.test(haystack)) return "bill.senate_rules";
+    if (/senate rules|standing rules|\brules bill\b/.test(haystack)) return "bill.senate_rules";
     if (/funding|budget|appropriation/.test(haystack)) return "bill.funding";
     // A bill or act that does not say which kind of bill it is. "The
     // Accountability Act" and "CLeRPA" are legislation; leaving them unknown

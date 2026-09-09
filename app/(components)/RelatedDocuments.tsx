@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import type { MeetingCounterpart, RelatedDocument } from "@/api/documents";
+import type { MeetingCounterpart, RelatedDocument, UnresolvedLink } from "@/api/documents";
 import { sessionOrdinal } from "@/config/session";
 import { documentKindLabel } from "@/lib/kinds";
 import { meetingRoleLabel } from "@/lib/meetings";
@@ -23,12 +23,15 @@ export default function RelatedDocuments({
     counterpart,
     references,
     referencedBy,
+    unresolvedLinks,
 }: {
     counterpart: MeetingCounterpart | null;
     references: RelatedDocument[];
     referencedBy: RelatedDocument[];
+    unresolvedLinks?: UnresolvedLink[];
 }) {
-    if (!counterpart && references.length === 0 && referencedBy.length === 0) {
+    const unresolved = unresolvedLinks ?? [];
+    if (!counterpart && references.length === 0 && referencedBy.length === 0 && unresolved.length === 0) {
         return null;
     }
 
@@ -44,7 +47,7 @@ export default function RelatedDocuments({
                     <ul>
                         {counterpart.documents.map((document) => (
                             <li key={document.id}>
-                                <Link href={`/documents/${document.id}`}>
+                                <Link className="text-primary-500" href={`/documents/${document.id}`}>
                                     {document.title.trim()}
                                 </Link>
                                 <span className="text-foreground-400 text-sm">
@@ -60,6 +63,7 @@ export default function RelatedDocuments({
                 heading="Mentioned in this document"
                 caption="Links the author put in the text."
                 documents={references}
+                unresolved={unresolved}
             />
 
             <RelatedList
@@ -75,12 +79,14 @@ function RelatedList({
     heading,
     caption,
     documents,
+    unresolved = [],
 }: {
     heading: string;
     caption: string;
     documents: RelatedDocument[];
+    unresolved?: UnresolvedLink[];
 }) {
-    if (documents.length === 0) return null;
+    if (documents.length === 0 && unresolved.length === 0) return null;
 
     return (
         <section>
@@ -89,6 +95,7 @@ function RelatedList({
                 {documents.map((document) => (
                     <li key={document.id}>
                         <Link
+                            className="text-primary-700"
                             href={`/documents/${document.id}`}
                             // The author's own link text is often more useful
                             // than the Drive filename, so it is the label and
@@ -104,8 +111,26 @@ function RelatedList({
                         </span>
                     </li>
                 ))}
+                {unresolved.map((link) => (
+                    <li key={link.url}>
+                        <a href={link.url} target="_blank" rel="noreferrer">
+                            {unresolvedLabel(link)}
+                        </a>
+                        <span className="text-foreground-400 text-sm">
+                            {link.source === "sharepoint"
+                                ? " — SharePoint (sign-in required to read)"
+                                : " — Google Doc (not in the archive)"}
+                        </span>
+                    </li>
+                ))}
             </ul>
             <p className="text-foreground-400 text-sm">{caption}</p>
         </section>
     );
+}
+
+function unresolvedLabel(link: UnresolvedLink): string {
+    const text = link.text.trim();
+    if (text && !/^https?:\/\//i.test(text)) return text;
+    return link.source === "sharepoint" ? "SharePoint document" : "Google Doc";
 }

@@ -6,6 +6,7 @@
 import { archiveSessionFor } from "../lib/drive";
 import { collapseUnchanged, diffLines } from "../lib/diff";
 import { lineageKeyFor } from "../lib/lineage";
+import { academicYearStart, sessionFromAcademicYearStart } from "../config/session";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -34,6 +35,10 @@ check(
 check(
     "ignores a folder that merely mentions the SGA",
     archiveSessionFor("SGA Senate Minutes") === null,
+);
+check(
+    "the 114th academic year starts in 2026",
+    academicYearStart(114) === 2026 && sessionFromAcademicYearStart(2026) === 114,
 );
 
 console.log("\nlineageKeyFor");

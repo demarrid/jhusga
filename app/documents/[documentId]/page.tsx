@@ -34,8 +34,10 @@ export default async function DocumentPage({
                     document.meetingRole === "minutes" && "minutes",
                     document.sessionNumber !== null &&
                     `${sessionOrdinal(document.sessionNumber)} session`,
-                    document.driveCreatedTime &&
-                    `created ${formatDate(document.driveCreatedTime)}`,
+                    document.datedAt
+                        ? `dated ${formatDate(document.datedAt)}`
+                        : document.driveCreatedTime &&
+                        `created ${formatDate(document.driveCreatedTime)}`,
                     document.driveModifiedTime &&
                     `updated ${formatDate(document.driveModifiedTime)}`,
                 ]
@@ -69,15 +71,15 @@ export default async function DocumentPage({
             )}
 
             {!document.isCurrentSession && (
-                <p className="bg-primary-100 rounded-md p-3 my-4">
+                <p className="bg-primary-100 text-red-500 rounded-md p-3 my-4">
                     This document is from a previous session and is kept for the
                     record. It may have been amended or replaced since.
                 </p>
             )}
 
             <p className="my-4 flex flex-row flex-wrap gap-4">
-                <a href={document.source} target="_blank" rel="noreferrer">
-                    Open the original in Google Docs
+                <a className="text-primary-500" href={document.source} target="_blank" rel="noreferrer">
+                    {originalLabel(document.source)}
                 </a>
                 {/*
                   * Only the guiding documents. Every session adopts its own
@@ -86,7 +88,7 @@ export default async function DocumentPage({
                   * counterpart in another session to diff against.
                   */}
                 {document.lineageKey && isComparableKind(document.kind) && (
-                    <Link href={`/documents/${document.id}/compare`}>
+                    <Link href={`/documents/${document.id}/compare`} className="text-green-400">
                         Compare across sessions
                     </Link>
                 )}
@@ -114,6 +116,7 @@ export default async function DocumentPage({
                         counterpart={document.counterpart}
                         references={document.references}
                         referencedBy={document.referencedBy}
+                        unresolvedLinks={document.unresolvedLinks}
                     />
 
                     {document.contributors.length > 0 && (
@@ -122,7 +125,7 @@ export default async function DocumentPage({
                             <ul>
                                 {document.contributors.map((contributor) => (
                                     <li key={`${contributor.id}-${contributor.role}`}>
-                                        <Link href={`/documents?person=${contributor.id}`}>
+                                        <Link className="text-secondary-600" href={`/documents?person=${contributor.id}`}>
                                             {contributor.name}
                                         </Link>
                                         <span className="text-foreground-400 text-sm">
@@ -154,4 +157,10 @@ export default async function DocumentPage({
             </div>
         </div>
     );
+}
+
+function originalLabel(source: string): string {
+    if (/sharepoint\.com/i.test(source)) return "Open the original in SharePoint";
+    if (/(?:docs|drive)\.google\.com/i.test(source)) return "Open the original in Google Docs";
+    return "Open the original";
 }

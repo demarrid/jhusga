@@ -5,7 +5,7 @@ import { matchAccount } from "@/lib/accounts";
 import { findQuote } from "@/lib/anchor";
 import { bodyForDocument } from "@/lib/bodies";
 import { extractContributors } from "@/lib/contributors";
-import { extractDriveLinks, resolveReferences } from "@/lib/links";
+import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor } from "@/lib/meetings";
 import {
     pruneStaleAliases,
@@ -15,6 +15,7 @@ import {
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
 import { isDirectorySheetName, recordDirectory } from "@/lib/directory";
+import { linkedSession } from "@/lib/identity";
 import {
     GOOGLE_DOC_MIME,
     GOOGLE_SHEET_MIME,
@@ -27,6 +28,11 @@ import {
     getFile,
     walkFolder,
 } from "@/lib/drive";
+import {
+    exportSharePointAsText,
+    getSharePointFile,
+    isSharePointFileId,
+} from "@/lib/sharepoint";
 import { classifyDocument } from "@/lib/kinds";
 import { lineageKeyFor } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
@@ -277,6 +283,43 @@ export async function recordKinds(): Promise<number> {
 }
 
 /**
+ * Re-derive the session of documents reached by a link, from what they say
+ * about themselves.
+ *
+ * A linked file inherits a session from the earliest agenda that pointed at
+ * it, which is right for a bill that is still being cited years later -- and
+ * wrong for a Google Doc that was copied from last session and rewritten.
+ * The caption wins: "S.B.26-27" is the 114th, even if a 112th agenda still
+ * links the same file id. Files the walk found keep their folder's session.
+ */
+export async function recordSessions(): Promise<number> {
+    const documents = await prisma.document.findMany({
+        where: { discoveredVia: "link" },
+        select: { id: true, title: true, content: true, sessionNumber: true },
+    });
+
+    let changed = 0;
+
+    for (const document of documents) {
+        if (document.sessionNumber === null) continue;
+
+        const inferred = linkedSession(
+            { title: document.title, content: document.content },
+            document.sessionNumber,
+        );
+        if (inferred === document.sessionNumber) continue;
+
+        await prisma.document.update({
+            where: { id: document.id },
+            data: { sessionNumber: inferred },
+        });
+        changed += 1;
+    }
+
+    return changed;
+}
+
+/**
  * Rebuild the cross-document link graph.
  *
  * Wholesale, because resolution is not stable per document: an agenda linking
@@ -476,6 +519,31 @@ export async function recordContributors(
 
 type SyncOptions = { trigger?: "cron" | "manual"; force?: boolean };
 
+async function exportIngestible(file: WalkedFile): Promise<string | null> {
+    if (isSharePointFileId(file.id)) {
+        const sharingUrl = file.webViewLink;
+        if (!sharingUrl) return null;
+        return exportSharePointAsText(
+            {
+                id: file.id,
+                name: file.name,
+                mimeType: file.mimeType,
+                createdTime: file.createdTime,
+                modifiedTime: file.modifiedTime,
+                webViewLink: sharingUrl,
+                ownerName: file.owner?.displayName ?? null,
+                lastEditorName: file.lastModifyingUser?.displayName ?? null,
+                kind: /spreadsheetml|excel/i.test(file.mimeType) ? "excel" : "word",
+            },
+            sharingUrl,
+        );
+    }
+
+    if (file.mimeType === GOOGLE_SHEET_MIME) return exportSpreadsheetAsCsv(file.id);
+    if (file.mimeType === GOOGLE_SLIDES_MIME) return exportPresentationAsText(file.id);
+    return exportDocumentAsMarkdown(file.id);
+}
+
 /**
  * Store one Drive file, exporting it only if its text has actually changed.
  *
@@ -488,7 +556,7 @@ async function ingestFile(
     discoveredVia: "walk" | "link",
     options: SyncOptions,
     summary: SyncSummary,
-): Promise<void> {
+): Promise<boolean> {
     const existing = await prisma.document.findUnique({
         where: { driveFileId: file.id },
         select: { id: true, contentHash: true, driveModifiedTime: true },
@@ -513,15 +581,13 @@ async function ingestFile(
             data: { driveCreatedTime, lastSyncedAt: new Date() },
         });
         summary.documentsUnchanged += 1;
-        return;
+        return true;
     }
 
-    const content =
-        file.mimeType === GOOGLE_SHEET_MIME
-            ? await exportSpreadsheetAsCsv(file.id)
-            : file.mimeType === GOOGLE_SLIDES_MIME
-                ? await exportPresentationAsText(file.id)
-                : await exportDocumentAsMarkdown(file.id);
+    const content = await exportIngestible(file);
+    // A SharePoint file we cannot flatten is not stored as an empty row.
+    if (content === null) return false;
+
     const contentHash = hashContent(content);
 
     // Drive bumps modifiedTime for changes that do not alter text, such as a
@@ -532,8 +598,13 @@ async function ingestFile(
             data: { driveCreatedTime, driveModifiedTime, lastSyncedAt: new Date() },
         });
         summary.documentsUnchanged += 1;
-        return;
+        return true;
     }
+
+    const sessionNumber =
+        discoveredVia === "link"
+            ? linkedSession({ title: file.name, content }, file.sessionNumber)
+            : file.sessionNumber;
 
     const fields = {
         source: driveViewLink(file),
@@ -545,7 +616,7 @@ async function ingestFile(
         kind: classifyDocument({ name: file.name, folderPath: file.folderPath }),
         folderPath: file.folderPath,
         discoveredVia,
-        sessionNumber: file.sessionNumber,
+        sessionNumber,
         lineageKey: lineageKeyFor(file.name, file.id),
         driveCreatedTime,
         driveModifiedTime,
@@ -576,11 +647,11 @@ async function ingestFile(
 
     summary.contributorsLinked += await recordContributors(document.id, content);
 
-    if (file.sessionNumber !== SESSION_NUMBER) summary.documentsArchived += 1;
+    if (sessionNumber !== SESSION_NUMBER) summary.documentsArchived += 1;
 
     if (!existing) {
         summary.documentsCreated += 1;
-        return;
+        return true;
     }
 
     summary.documentsUpdated += 1;
@@ -594,36 +665,45 @@ async function ingestFile(
         where: { documentId: document.id, status: "fresh" },
         data: { status: "stale" },
     });
+    return true;
 }
 
 /**
- * Every Drive file the archive links to but does not hold, and the earliest
- * session that links it.
+ * Every file the archive links to but does not hold, the earliest session
+ * that links it, and the URL to fetch it with.
  *
- * The session is inherited rather than worked out from the file's own dates: a
- * bill belongs to the Senate that read it, and the document that linked it is
- * the evidence of which Senate that was. Earliest, because a rules bill still
- * being cited two sessions later was written for the first of them.
+ * The inherited session is the fallback. A bill that names its own year
+ * ("S.B.26-27") is reassigned at ingest; see `linkedSession`. Earliest is
+ * still the right default for a file that says nothing about itself and is
+ * still being cited two sessions later.
  */
-async function unheldTargets(): Promise<Map<string, number | null>> {
+async function unheldTargets(): Promise<
+    Map<string, { sessionNumber: number | null; url: string }>
+> {
     const documents = await prisma.document.findMany({
         select: { driveFileId: true, content: true, sessionNumber: true },
     });
 
     const held = new Set(documents.map((document) => document.driveFileId));
-    const targets = new Map<string, number | null>();
+    const targets = new Map<string, { sessionNumber: number | null; url: string }>();
 
     for (const document of documents) {
-        for (const link of extractDriveLinks(document.content)) {
+        for (const link of extractDocumentLinks(document.content)) {
             if (held.has(link.fileId)) continue;
 
             const known = targets.get(link.fileId);
             const session = document.sessionNumber;
             if (
                 !targets.has(link.fileId) ||
-                (session !== null && (known === null || known === undefined || session < known))
+                (session !== null &&
+                    (known?.sessionNumber === null ||
+                        known?.sessionNumber === undefined ||
+                        session < known.sessionNumber))
             ) {
-                targets.set(link.fileId, session);
+                targets.set(link.fileId, {
+                    sessionNumber: session,
+                    url: known?.url || link.url,
+                });
             }
         }
     }
@@ -691,26 +771,69 @@ export async function followLinks(
 
         let ingestedThisRound = 0;
 
-        for (const [fileId, sessionNumber] of targets) {
+        for (const [fileId, target] of targets) {
             if (passedOver.has(fileId)) continue;
 
-            const file = await getFile(fileId);
-            if (!file) {
+            const sessionNumber = target.sessionNumber ?? SESSION_NUMBER;
+
+            if (isSharePointFileId(fileId)) {
+                const file = await getSharePointFile(target.url);
+                if (!file) {
+                    passedOver.add(fileId);
+                    continue;
+                }
+
+                const stored = await ingestFile(
+                    {
+                        id: file.id,
+                        name: file.name,
+                        mimeType: file.mimeType,
+                        createdTime: file.createdTime,
+                        modifiedTime: file.modifiedTime,
+                        webViewLink: file.webViewLink || target.url,
+                        owner: file.ownerName
+                            ? { displayName: file.ownerName, emailAddress: null }
+                            : null,
+                        lastModifyingUser: file.lastEditorName
+                            ? { displayName: file.lastEditorName, emailAddress: null }
+                            : null,
+                        folderPath: "",
+                        sessionNumber,
+                    },
+                    "link",
+                    options,
+                    summary,
+                );
+                if (!stored) {
+                    passedOver.add(fileId);
+                    continue;
+                }
+                ingestedThisRound += 1;
+                linkedIn += 1;
+                continue;
+            }
+
+            const driveFile = await getFile(fileId);
+            if (!driveFile) {
                 passedOver.add(fileId);
                 continue;
             }
 
-            if (!worthFollowing(file)) {
+            if (!worthFollowing(driveFile)) {
                 passedOver.add(fileId);
                 continue;
             }
 
-            await ingestFile(
-                { ...file, folderPath: "", sessionNumber: sessionNumber ?? SESSION_NUMBER },
+            const stored = await ingestFile(
+                { ...driveFile, folderPath: "", sessionNumber },
                 "link",
                 options,
                 summary,
             );
+            if (!stored) {
+                passedOver.add(fileId);
+                continue;
+            }
             ingestedThisRound += 1;
             linkedIn += 1;
         }
@@ -784,6 +907,7 @@ export async function syncMasterFolder(
         // Whole-corpus passes. Each of these needs every document to exist
         // before it can be right, so they run once at the end rather than per
         // document inside the walk.
+        await recordSessions();
         summary.meetingsPaired = (await recordMeetings()).paired;
         // Titles depend on the meeting keys the pass above just wrote.
         await recordTitles();

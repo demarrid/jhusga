@@ -268,6 +268,33 @@ check(
     extractContributors("Present: Chair Angela Xiong, Angela Xiong").length === 1,
 );
 
+const compound = extractContributors(
+    "Sponsored by: **Finance Chair Peter Tarpley** and **VPOTS and Chair of IA Shreemann Patel**",
+);
+check(
+    "a committee chair's title is not part of their name",
+    compound.some((p) => p.name === "Peter Tarpley" && p.office === "Finance Chair"),
+    compound,
+);
+check(
+    "nobody is named Finance Chair Peter Tarpley",
+    !compound.some((p) => /finance chair/i.test(p.name)),
+    compound,
+);
+check(
+    "a compound office before a name is still one person",
+    compound.some(
+        (p) => p.name === "Shreemann Patel" && /chair of ia/i.test(p.office ?? ""),
+    ),
+    compound,
+);
+check(
+    "a three-word name is not split after its first word",
+    extractContributors("Introduced by: Mary Ann Smith").some(
+        (p) => p.name === "Mary Ann Smith" && p.office === null,
+    ),
+);
+
 check(
     "the same person in two roles is kept once per role",
     extractContributors("Present: Kai Martin\nExcused: Kai Martin").length === 2,

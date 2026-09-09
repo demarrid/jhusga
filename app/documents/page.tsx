@@ -174,8 +174,9 @@ function DocumentCard({ document }: { document: DocumentListing }) {
             </p>
 
             <DocumentDates
-                created={document.driveCreatedTime}
+                created={document.datedAt ?? document.driveCreatedTime}
                 modified={document.driveModifiedTime}
+                dated={Boolean(document.datedAt)}
             />
 
             {document.description && <p>{document.description}</p>}
@@ -186,7 +187,7 @@ function DocumentCard({ document }: { document: DocumentListing }) {
                         <Link
                             key={id}
                             href={`/documents?person=${id}`}
-                            className="bg-primary-100 rounded-md px-2 py-1"
+                            className="bg-primary-200 text-primary-800 rounded-md px-2 py-1"
                             title={entry.roles.map(contributorRoleLabel).join(", ")}
                         >
                             {entry.name}
@@ -206,9 +207,11 @@ function DocumentCard({ document }: { document: DocumentListing }) {
 function DocumentDates({
     created,
     modified,
+    dated,
 }: {
     created: Date | null;
     modified: Date | null;
+    dated?: boolean;
 }) {
     if (!created && !modified) return null;
 
@@ -221,7 +224,7 @@ function DocumentDates({
         <p className="text-foreground-400 text-sm">
             {created && (
                 <time dateTime={created.toISOString()} title={formatDateTime(created) ?? undefined}>
-                    {`Created ${formatDateShort(created)}`}
+                    {`${dated ? "Dated" : "Created"} ${formatDateShort(created)}`}
                 </time>
             )}
             {created && modified && !sameDay && " · "}
