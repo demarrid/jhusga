@@ -1,0 +1,520 @@
+// Prisma 7 no longer accepts `url` here. The connection string for migrate /
+// introspect lives in prisma.config.ts; the runtime connection is supplied by
+// the driver adapter in lib/prisma.ts.
+datasource db {
+    provider = "postgresql"
+}
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+// ---------------------------------------------------------------------------
+// Ingested documents
+//
+// Everything here is a projection of the SGA master Drive folder. Nothing in
+// this section is authored by hand -- lib/sync.ts owns these rows, so a wipe
+// and re-sync is always safe.
+// ---------------------------------------------------------------------------
+
+model Document {
+    id String @id @default(uuid())
+
+    // Drive identity. driveFileId is the key we reconcile against, not `id`,
+    // because a doc can be renamed or moved between folders and still be the
+    // same document.
+    driveFileId String @unique
+    source      String // webViewLink, for "open in Google Docs"
+    mimeType    String @default("application/vnd.google-apps.document")
+
+    // The Drive filename, verbatim. Kept because it is what the author
+    // actually called the file, which is worth being able to show and search
+    // even once the site presents a tidier name.
+    title String
+
+    // The name the site shows: the filename cleaned up, and for meetings
+    // rewritten into one house style so a list of them reads consistently.
+    // Derived in lib/titles.ts; falls back to `title` when empty.
+    displayTitle String @default("")
+
+    description String @default("")
+
+    // Latest export, as markdown. Citation offsets index into this string, so
+    // it must be the exact text the UI renders.
+    content     String @default("")
+    contentHash String @default("")
+
+    // See DOCUMENT_KINDS in lib/kinds.ts. Kept a plain string rather than a
+    // Postgres enum because the taxonomy grows as the SGA adds document types,
+    // and a new kind should not require a schema migration.
+    kind       String @default("unknown")
+    folderPath String @default("")
+
+    // How the document reached the archive: "walk" for a file found in the
+    // master folder, "link" for one reached by following a link out of a
+    // document already held -- the bill an agenda puts up for a reading, the
+    // tracker a committee report points at. A linked document has no folder
+    // path, because it does not live in the master folder at all, so this is
+    // also what tells an empty folderPath apart from the folder root.
+    discoveredVia String @default("walk")
+
+    // Which SGA session this document belongs to. Files at the root of the
+    // master folder are the current session; anything under a nested
+    // "Nth SGA Master Folder" carries that session's number.
+    //
+    // Only the current session is eligible to source a generated summary --
+    // superseded legislation is archive, and citing it as current law is
+    // exactly the failure this whole pipeline exists to avoid.
+    sessionNumber Int?
+
+    // Groups the same document across sessions (every session's constitution,
+    // say) so versions can be diffed. Derived in lib/lineage.ts.
+    lineageKey String @default("")
+
+    // The meeting this document belongs to, e.g. "113:senate:13". An agenda
+    // and the minutes written from it share one key and differ by
+    // meetingRole, which is what lets each link to the other. Empty for
+    // anything that is not a meeting document. Derived in lib/meetings.ts.
+    meetingKey  String @default("")
+    // "agenda" | "minutes" | "" -- see MEETING_ROLES in lib/meetings.ts.
+    meetingRole String @default("")
+
+    // Drive's own timestamps. modifiedTime doubles as the check that lets an
+    // unchanged file skip re-export; createdTime is shown to readers, for whom
+    // "written in September, amended in March" is the interesting part.
+    driveCreatedTime  DateTime?
+    driveModifiedTime DateTime?
+    lastSyncedAt      DateTime?
+
+    // Who Drive says owns and last touched the file. This is provenance, not
+    // authorship: SGA files are frequently owned by whichever personal account
+    // happened to create them, so it is recorded but never presented as "the
+    // author". Named people come from DocumentContributor instead.
+    driveOwnerName       String?
+    driveOwnerEmail      String?
+    driveLastEditorName  String?
+    driveLastEditorEmail String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    documentAnnotations DocumentAnnotation[]
+    revisions           DocumentRevision[]
+    contributors        DocumentContributor[]
+    summary             DocumentSummary?
+
+    // Documents this one links to, and the ones that link to it. Both sides
+    // are the same rows read in opposite directions; see lib/links.ts.
+    referencesOut DocumentReference[] @relation("ReferenceFrom")
+    referencesIn  DocumentReference[] @relation("ReferenceTo")
+
+    @@index([kind])
+    @@index([driveModifiedTime])
+    @@index([sessionNumber])
+    @@index([lineageKey, sessionNumber])
+    @@index([driveOwnerEmail])
+    @@index([meetingKey])
+}
+
+// A link from one stored document to another, read out of the link the author
+// actually typed into Google Docs.
+//
+// SGA agendas are mostly a list of links -- to the bill being read, to the
+// guidelines being adopted -- so these edges are the real navigation graph of
+// the archive. Rebuilt wholesale on every sync by lib/links.ts, because a
+// dangling link becomes resolvable the moment its target is first ingested.
+model DocumentReference {
+    id String @id @default(uuid())
+
+    fromDocumentId String
+    fromDocument   Document @relation("ReferenceFrom", fields: [fromDocumentId], references: [id], onDelete: Cascade)
+
+    toDocumentId String
+    toDocument   Document @relation("ReferenceTo", fields: [toDocumentId], references: [id], onDelete: Cascade)
+
+    // Where the link first appears in the source, so the sidebar can list
+    // references in reading order rather than alphabetically.
+    ordinal Int @default(0)
+
+    // The link text the author wrote, which is usually a better label than the
+    // target's Drive filename ("S.B.26-27.01 Rules Bill" vs "Copy of bill").
+    anchorText String @default("")
+
+    createdAt DateTime @default(now())
+
+    // One edge per pair; a document linked three times is still one reference.
+    @@unique([fromDocumentId, toDocumentId])
+    @@index([toDocumentId])
+}
+
+// A person named by a document, and what they did on it.
+//
+// Derived by lib/contributors.ts from the labelled lines the SGA actually
+// writes ("Sponsored by:", "Students Present:"). `evidence` keeps the source
+// line so any name on the site can be traced back to the text that produced
+// it, and `source` records whether a human or the parser asserted it.
+model DocumentContributor {
+    id String @id @default(uuid())
+
+    documentId String
+    document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+    hopkinsAffiliateId String
+    hopkinsAffiliate   HopkinsAffiliate @relation(fields: [hopkinsAffiliateId], references: [id], onDelete: Cascade)
+
+    // See CONTRIBUTOR_ROLES in lib/contributors.ts.
+    role String @default("present")
+
+    // "parsed" | "drive" | "manual". A manual row is never overwritten by a
+    // later sync, so corrections survive re-ingest.
+    source String @default("parsed")
+
+    // The line the parser read, verbatim.
+    evidence String @default("")
+
+    // A note that came with the name, e.g. "leaving early".
+    note String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // One assertion per person per role per document.
+    @@unique([documentId, hopkinsAffiliateId, role])
+    @@index([hopkinsAffiliateId])
+    @@index([role])
+    @@index([documentId])
+}
+
+// Append-only history. Amendments are the whole point of this site, so we keep
+// every distinct version we have ever seen rather than overwriting in place.
+model DocumentRevision {
+    id         String   @id @default(uuid())
+    documentId String
+    document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+    title       String
+    content     String
+    contentHash String
+
+    driveModifiedTime DateTime?
+    fetchedAt         DateTime  @default(now())
+
+    // One row per distinct content hash per document.
+    @@unique([documentId, contentHash])
+    @@index([documentId, fetchedAt])
+}
+
+// A highlighted span of a document: the evidence a generated claim points at.
+model DocumentAnnotation {
+    id         String   @id @default(uuid())
+    documentId String
+    document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+    // The verbatim quote, lifted character-for-character from Document.content.
+    // This is the source of truth for the annotation.
+    content String
+
+    // Offsets are only a render cache. Re-exporting a document shifts them, so
+    // lib/anchor.ts recomputes them from `content` after every sync.
+    startOffset Int?
+    endOffset   Int?
+
+    // Set when `content` can no longer be found in the document, i.e. the
+    // quoted passage was amended away. Sections citing it are marked stale.
+    orphanedAt DateTime?
+
+    label String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    citations        Citation[]
+    summaryCitations DocumentSummaryCitation[]
+
+    @@index([documentId])
+    @@index([orphanedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Generated content
+//
+// Cached model output. Every section is addressed by a stable `key` that a page
+// asks for, so pages never call a model at request time.
+// ---------------------------------------------------------------------------
+
+model GeneratedSection {
+    id String @id @default(uuid())
+
+    // Stable slot, e.g. "about.executive.president". See SECTION_KEYS in
+    // lib/sections.ts.
+    key String @unique
+
+    content String @default("")
+
+    // "fresh" | "stale" | "failed" | "empty" -- see SectionStatus in lib/sections.ts.
+    // Stale content is still served, flagged, rather than hidden.
+    status String @default("empty")
+
+    model       String    @default("")
+    promptHash  String    @default("")
+    error       String?
+    generatedAt DateTime?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    citations Citation[]
+
+    @@index([status])
+}
+
+// Join between a generated section and the document span backing it. This is
+// what SourceChip renders.
+model Citation {
+    id String @id @default(uuid())
+
+    sectionId String
+    section   GeneratedSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+    annotationId String
+    annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+    // Display order of the chips within the section.
+    ordinal Int @default(0)
+
+    createdAt DateTime @default(now())
+
+    @@unique([sectionId, annotationId])
+    @@index([sectionId, ordinal])
+}
+
+// A plain-language reading of one document, generated from that document alone.
+//
+// Separate from GeneratedSection because the two answer different questions. A
+// section answers a fixed question of the whole archive and may cite anything;
+// a summary restates a single document and may only cite that document, which
+// is what lets every claim link to a highlighted passage on the same page.
+//
+// The point is neutrality: SGA documents are written by whoever held the
+// office, in wildly varying registers, and a reader should not have to infer
+// what a meeting decided from the minute-taker's prose style.
+model DocumentSummary {
+    id String @id @default(uuid())
+
+    documentId String   @unique
+    document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+    content String @default("")
+
+    // "fresh" | "stale" | "failed" | "empty", as GeneratedSection. A summary
+    // whose document has since been re-exported is served with a flag rather
+    // than hidden.
+    status String @default("empty")
+
+    model String @default("")
+    // Fingerprint of the prompt and the document's contentHash, so an
+    // unchanged document is never re-summarised (or re-billed).
+    promptHash  String    @default("")
+    error       String?
+    generatedAt DateTime?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    citations DocumentSummaryCitation[]
+
+    @@index([status])
+}
+
+// Join between a summary claim and the passage of its own document backing it.
+model DocumentSummaryCitation {
+    id String @id @default(uuid())
+
+    summaryId String
+    summary   DocumentSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+
+    annotationId String
+    annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+    ordinal Int @default(0)
+
+    createdAt DateTime @default(now())
+
+    @@unique([summaryId, annotationId])
+    @@index([summaryId, ordinal])
+}
+
+// One row per sync attempt, so a silently failing cron is visible.
+model SyncRun {
+    id String @id @default(uuid())
+
+    // "running" | "success" | "error"
+    status         String  @default("running")
+    masterFolderId String  @default("")
+    trigger        String  @default("manual") // "cron" | "manual"
+    error          String?
+
+    filesSeen           Int @default(0)
+    documentsCreated    Int @default(0)
+    documentsUpdated    Int @default(0)
+    documentsUnchanged  Int @default(0)
+    // Of the created/updated documents, how many belong to a prior session.
+    documentsArchived   Int @default(0)
+    annotationsOrphaned Int @default(0)
+    sectionsInvalidated Int @default(0)
+    contributorsLinked  Int @default(0)
+    // Resolved links between two stored documents, rebuilt every run.
+    referencesLinked    Int @default(0)
+    // Agenda/minutes pairs the meeting matcher could join up.
+    meetingsPaired      Int @default(0)
+
+    startedAt  DateTime  @default(now())
+    finishedAt DateTime?
+
+    @@index([startedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Accounts and community
+// ---------------------------------------------------------------------------
+
+model User {
+    id        String   @id @default(uuid())
+    name      String
+    email     String   @unique
+    password  String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    posts     Post[]
+
+    affiliate HopkinsAffiliate?
+}
+
+// user will have posts only if they are in an administrative position; otherwise anonymous
+
+// A person at the university: someone with a JHU Google account. Distinct from
+// User, which is a login -- an affiliate exists whether or not they have ever
+// signed in, because governing documents name officeholders regardless.
+model HopkinsAffiliate {
+    id          String @id @default(uuid())
+    name        String
+    description String @default("")
+
+    // Case- and punctuation-insensitive form of `name`, so the same person
+    // written two ways across documents resolves to one row. See nameKey in
+    // lib/contributors.ts.
+    nameKey String @unique @default("")
+
+    // The JHU Google account: the only identity here that can be verified.
+    email String? @unique
+
+    // "full_time" | "part_time" | "transfer" | "non_degree" | "unknown".
+    // See ENROLLMENT_STATUSES in lib/hopkins.ts for the canonical list.
+    enrollmentStatus String @default("unknown")
+
+    // Set once they have actually signed in.
+    userId String? @unique
+    user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    createdAt            DateTime              @default(now())
+    updatedAt            DateTime              @updatedAt
+    hopkinsRelationships HopkinsRelationship[]
+    contributions        DocumentContributor[]
+    aliases              HopkinsAlias[]
+
+    @@index([enrollmentStatus])
+    @@index([name])
+}
+
+// A short form that documents actually write -- a first name or a nickname --
+// mapped onto the full-name affiliate it belongs to. "Sumi" and "Jazz" land
+// here once they have been resolved, so later syncs do not re-ask.
+model HopkinsAlias {
+    id                 String           @id @default(uuid())
+    alias              String
+    aliasKey           String           @unique
+    hopkinsAffiliateId String
+    hopkinsAffiliate   HopkinsAffiliate @relation(fields: [hopkinsAffiliateId], references: [id], onDelete: Cascade)
+
+    // "unique_given" | "unique_surname" | "model" | "manual"
+    source String @default("model")
+
+    createdAt DateTime @default(now())
+
+    @@index([hopkinsAffiliateId])
+}
+
+// Anything a person can *be*: a position (Student Body President), a committee
+// role (Chair of the Committee on Academic Affairs), a division (WSE), a level
+// (undergraduate), or a cohort (Class of 2028).
+//
+// Rows rather than columns on the affiliate, because the set grows with every
+// new committee and class year, and because a position deserves a description
+// of its own.
+model HopkinsCategory {
+    id String @id @default(uuid())
+
+    // "position" | "committee_role" | "division" | "level" | "cohort" | "other".
+    // See HOPKINS_CATEGORY_TYPES in lib/hopkins.ts.
+    type        String @default("other")
+    name        String
+    description String @default("")
+
+    createdAt            DateTime              @default(now())
+    updatedAt            DateTime              @updatedAt
+    hopkinsRelationships HopkinsRelationship[]
+
+    @@unique([type, name])
+    @@index([type])
+}
+
+// "Is this person a WSE undergraduate in the class of 2028 who chairs Academic
+// Affairs?" is four of these rows.
+model HopkinsRelationship {
+    id                 String           @id @default(uuid())
+    hopkinsAffiliateId String
+    hopkinsAffiliate   HopkinsAffiliate @relation(fields: [hopkinsAffiliateId], references: [id], onDelete: Cascade)
+    hopkinsCategoryId  String
+    hopkinsCategory    HopkinsCategory  @relation(fields: [hopkinsCategoryId], references: [id], onDelete: Cascade)
+
+    // Positions turn over; a division or class year effectively does not.
+    // endedAt null means currently held, which is what the site asks for when
+    // it needs "who is president now" -- and keeping the ended rows is what
+    // lets it answer "who was president in the 112th".
+    startedAt DateTime?
+    endedAt   DateTime?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Someone can hold the same position in two non-consecutive terms, but not
+    // twice from the same start date.
+    @@unique([hopkinsAffiliateId, hopkinsCategoryId, startedAt])
+    @@index([hopkinsAffiliateId])
+    @@index([hopkinsCategoryId])
+    @@index([endedAt])
+}
+
+model Post {
+    id        String    @id @default(uuid())
+    title     String
+    content   String
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    userId    String
+    user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    comments  Comment[]
+
+    @@index([userId])
+}
+
+model Comment {
+    id        String   @id @default(uuid())
+    content   String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    postId    String
+    post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    @@index([postId])
+}

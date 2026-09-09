@@ -10,17 +10,16 @@ export default function Header() {
     <header className=" w-full px-6 py-5 bg-primary-400 uppercase font-medium flex flex-row justify-between sticky top-0 z-50 shadow-md">
       <div className="flex flex-row items-center space-x-4">
         <Link href="/">
-          <Image src="/logo.png" alt="SGA logo" width={100} height={100} draggable={false} className="w-[60px] h-[60px] select-none " />
+          <Image src="/logo.png" alt="SGA logo" width={100} height={100} draggable={false} className="w-15 h-15 select-none " />
         </Link>
-        <h1 className="font-serif text-3xl">The {getSessionString()} Student Government Association</h1>
+        <h1 className="font-serif font-medium text-3xl ">The {getSessionString()} Student Government Association</h1>
       </div>
 
       <nav className="flex flex-row justify-between space-x-4 my-auto text-lg">
-        <Link href="/people">FAQ</Link>
         <Link href="/documents">Documents</Link>
         <Link href="/contact">Contact</Link>
         <Link href="/about">About</Link>
-        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="px-4">
+        {/* <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="px-4">
           <svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <g id="style=stroke">
               <g id="menu-hamburger">
@@ -30,7 +29,7 @@ export default function Header() {
               </g>
             </g>
           </svg>
-        </button>
+        </button> */}
       </nav>
     </header>
   );

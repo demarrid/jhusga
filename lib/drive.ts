@@ -1,0 +1,366 @@
+import {
+    ARCHIVE_FOLDER_PATTERN,
+    EXCLUDED_FOLDER_PATTERNS,
+    MAX_FILES_PER_SYNC,
+    MAX_FOLDER_DEPTH,
+    SESSION_NUMBER,
+} from "@/config/sga";
+import { sanitizeExport } from "@/lib/markdown";
+
+/**
+ * Read-only Google Drive access.
+ *
+ * A bare API key is sufficient because the master folder is shared "anyone with
+ * the link"; the Drive API serves public resources without OAuth. If the folder
+ * is ever restricted, every call here starts returning 404 and this module has
+ * to move to a service account (share the folder with the service account's
+ * email, then swap the `key` query param for an Authorization header).
+ */
+
+const DRIVE_FILES_ENDPOINT = "https://www.googleapis.com/drive/v3/files";
+
+export const FOLDER_MIME = "application/vnd.google-apps.folder";
+export const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
+export const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
+export const GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation";
+
+/** A Drive account. Public files expose these even to a bare API key. */
+export type DriveUser = {
+    displayName: string | null;
+    emailAddress: string | null;
+};
+
+export type DriveFile = {
+    id: string;
+    name: string;
+    mimeType: string;
+    createdTime: string | null;
+    modifiedTime: string | null;
+    webViewLink: string | null;
+    owner: DriveUser | null;
+    lastModifyingUser: DriveUser | null;
+};
+
+/** A file found by the walk, tagged with the folder trail that led to it. */
+export type WalkedFile = DriveFile & {
+    folderPath: string;
+    /**
+     * The SGA session this file belongs to, from the nearest enclosing
+     * "Nth SGA Master Folder". Files not under any such folder belong to the
+     * current session.
+     */
+    sessionNumber: number;
+};
+
+function apiKey(): string {
+    const key = process.env.GOOGLE_API_KEY;
+    if (!key) {
+        throw new Error(
+            "GOOGLE_API_KEY is not set; create a Drive-restricted API key in the Google Cloud console",
+        );
+    }
+    return key;
+}
+
+/**
+ * Drive is rate limited per key, and a full sync is a few hundred calls, so
+ * retry the failures that are worth retrying and fail fast on the rest.
+ */
+async function driveFetch(url: string, attempt = 0): Promise<Response> {
+    const response = await fetch(url, { cache: "no-store" });
+
+    if (response.ok) return response;
+
+    const retriable = response.status === 429 || response.status >= 500;
+    if (retriable && attempt < 4) {
+        const backoffMs = 500 * 2 ** attempt;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        return driveFetch(url, attempt + 1);
+    }
+
+    // Drive puts a useful reason in the body; surface it rather than a bare code.
+    const body = await response.text().catch(() => "");
+    throw new Error(
+        `Drive API ${response.status} ${response.statusText}: ${body.slice(0, 500)}`,
+    );
+}
+
+/** The metadata worth having about a file, in the shape Drive returns it. */
+const FILE_FIELDS =
+    "id, name, mimeType, createdTime, modifiedTime, webViewLink," +
+    " owners(displayName, emailAddress)," +
+    " lastModifyingUser(displayName, emailAddress)";
+
+type RawUser = { displayName?: string; emailAddress?: string };
+
+type RawFile = {
+    id?: string;
+    name?: string;
+    mimeType?: string;
+    createdTime?: string;
+    modifiedTime?: string;
+    webViewLink?: string;
+    owners?: RawUser[];
+    lastModifyingUser?: RawUser;
+};
+
+function toUser(raw: RawUser | undefined): DriveUser | null {
+    if (!raw?.displayName && !raw?.emailAddress) return null;
+    return {
+        displayName: raw.displayName ?? null,
+        emailAddress: raw.emailAddress ?? null,
+    };
+}
+
+function toDriveFile(raw: RawFile): DriveFile | null {
+    if (!raw.id || !raw.name || !raw.mimeType) return null;
+    return {
+        id: raw.id,
+        name: raw.name,
+        mimeType: raw.mimeType,
+        createdTime: raw.createdTime ?? null,
+        modifiedTime: raw.modifiedTime ?? null,
+        webViewLink: raw.webViewLink ?? null,
+        // Drive returns a list, but SGA files have a single owner.
+        owner: toUser(raw.owners?.[0]),
+        lastModifyingUser: toUser(raw.lastModifyingUser),
+    };
+}
+
+/** One page-following pass over the immediate children of a folder. */
+export async function listFolderChildren(
+    folderId: string,
+): Promise<DriveFile[]> {
+    const children: DriveFile[] = [];
+    let pageToken: string | undefined;
+
+    do {
+        const params = new URLSearchParams({
+            q: `'${folderId}' in parents and trashed = false`,
+            fields: `nextPageToken, files(${FILE_FIELDS})`,
+            pageSize: "1000",
+            // Harmless for an ordinary folder, required if it ever becomes a
+            // shared drive.
+            supportsAllDrives: "true",
+            includeItemsFromAllDrives: "true",
+            key: apiKey(),
+        });
+        if (pageToken) params.set("pageToken", pageToken);
+
+        const response = await driveFetch(
+            `${DRIVE_FILES_ENDPOINT}?${params.toString()}`,
+        );
+
+        const payload = (await response.json()) as {
+            files?: RawFile[];
+            nextPageToken?: string;
+        };
+
+        for (const raw of payload.files ?? []) {
+            const file = toDriveFile(raw);
+            if (file) children.push(file);
+        }
+
+        pageToken = payload.nextPageToken;
+    } while (pageToken);
+
+    return children;
+}
+
+/**
+ * One file by ID, or null when Drive will not serve it to us.
+ *
+ * Unlike everything reached by the folder walk, a file reached by following a
+ * link is not inside the master folder and so is not covered by its "anyone
+ * with the link" sharing. A good number of the bills the Senate reads live in
+ * their author's own Drive and are shared with nobody. That is an ordinary
+ * outcome rather than an error: the link stays unresolved, the reader still
+ * has the URL the author typed, and the file appears the day it is shared.
+ */
+export async function getFile(fileId: string): Promise<DriveFile | null> {
+    const params = new URLSearchParams({
+        fields: FILE_FIELDS,
+        supportsAllDrives: "true",
+        key: apiKey(),
+    });
+
+    const response = await fetch(
+        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?${params.toString()}`,
+        { cache: "no-store" },
+    );
+
+    // 404 is what Drive returns for both "no such file" and "not shared with
+    // you"; 403 is the quota and permission family. Neither is worth failing a
+    // sync over, and neither is worth retrying.
+    if (response.status === 404 || response.status === 403) return null;
+    if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(
+            `Drive API ${response.status} ${response.statusText}: ${body.slice(0, 500)}`,
+        );
+    }
+
+    return toDriveFile((await response.json()) as RawFile);
+}
+
+function isExcluded(folderName: string): boolean {
+    return EXCLUDED_FOLDER_PATTERNS.some((pattern) => pattern.test(folderName));
+}
+
+/**
+ * The session a folder introduces, or null if it is not an archive boundary.
+ *
+ * Each master folder nests the previous one, so descending through
+ * "114th ... / 113th ... / 112th ..." reassigns the session at every level.
+ */
+export function archiveSessionFor(folderName: string): number | null {
+    const match = ARCHIVE_FOLDER_PATTERN.exec(folderName);
+    if (!match) return null;
+
+    const session = Number.parseInt(match[1], 10);
+    return Number.isFinite(session) ? session : null;
+}
+
+/**
+ * Breadth-first walk of the master folder, yielding non-folder files.
+ *
+ * Drive folders form a graph rather than a tree (a file can have several
+ * parents), so visited IDs are tracked to avoid revisiting a subtree.
+ */
+export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
+    const found: WalkedFile[] = [];
+    const visited = new Set<string>([rootFolderId]);
+
+    type QueuedFolder = {
+        id: string;
+        path: string;
+        depth: number;
+        sessionNumber: number;
+    };
+
+    // The walk starts inside the current master folder, so its own name is
+    // never seen; everything at the root is therefore the current session.
+    let queue: QueuedFolder[] = [
+        { id: rootFolderId, path: "", depth: 0, sessionNumber: SESSION_NUMBER },
+    ];
+
+    while (queue.length > 0) {
+        const next: QueuedFolder[] = [];
+
+        for (const folder of queue) {
+            const children = await listFolderChildren(folder.id);
+
+            for (const child of children) {
+                if (child.mimeType === FOLDER_MIME) {
+                    if (
+                        isExcluded(child.name) ||
+                        visited.has(child.id) ||
+                        folder.depth + 1 > MAX_FOLDER_DEPTH
+                    ) {
+                        continue;
+                    }
+                    visited.add(child.id);
+                    next.push({
+                        id: child.id,
+                        path: folder.path ? `${folder.path}/${child.name}` : child.name,
+                        depth: folder.depth + 1,
+                        sessionNumber:
+                            archiveSessionFor(child.name) ?? folder.sessionNumber,
+                    });
+                    continue;
+                }
+
+                if (found.length >= MAX_FILES_PER_SYNC) {
+                    throw new Error(
+                        `Walk exceeded MAX_FILES_PER_SYNC (${MAX_FILES_PER_SYNC}); check MASTER_FOLDER_ID is the intended folder`,
+                    );
+                }
+                found.push({
+                    ...child,
+                    folderPath: folder.path,
+                    sessionNumber: folder.sessionNumber,
+                });
+            }
+        }
+
+        queue = next;
+    }
+
+    return found;
+}
+
+/**
+ * Export a Google Doc as markdown.
+ *
+ * Markdown rather than plain text because it preserves the heading and list
+ * structure that makes an article or section citable, and rather than HTML
+ * because Drive only offers HTML as a zipped bundle.
+ */
+export async function exportDocumentAsMarkdown(
+    fileId: string,
+): Promise<string> {
+    const params = new URLSearchParams({
+        mimeType: "text/markdown",
+        supportsAllDrives: "true",
+        key: apiKey(),
+    });
+
+    const response = await driveFetch(
+        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
+    );
+
+    // Images are stripped here rather than downstream so that the stored text,
+    // the hash, the model input, and the citation offsets all agree on one
+    // version of the document.
+    return sanitizeExport(await response.text());
+}
+
+/**
+ * Export a Google Slides deck as plain text.
+ *
+ * Drive has no markdown export for slides, and the HTML option is a zip.
+ * Plain text keeps the words the Senate was shown -- the slate of CSE
+ * appointees, the cohort-time briefing -- without pretending the deck had
+ * document structure.
+ */
+export async function exportPresentationAsText(fileId: string): Promise<string> {
+    const params = new URLSearchParams({
+        mimeType: "text/plain",
+        supportsAllDrives: "true",
+        key: apiKey(),
+    });
+
+    const response = await driveFetch(
+        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
+    );
+
+    return sanitizeExport(await response.text());
+}
+
+/**
+ * Export a Google Sheet as CSV (the first tab).
+ *
+ * Roster and email-list workbooks are the reason this exists for the folder
+ * walk; linked sheets are a separate case -- an agenda pointing at an
+ * initiative tracksheet is the Senate being asked to look at that sheet.
+ */
+export async function exportSpreadsheetAsCsv(fileId: string): Promise<string> {
+    const params = new URLSearchParams({
+        mimeType: "text/csv",
+        supportsAllDrives: "true",
+        key: apiKey(),
+    });
+
+    const response = await driveFetch(
+        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
+    );
+
+    return (await response.text()).replace(/^\uFEFF/, "").trim();
+}
+
+/** Stable link back to the original, for "open in Google Docs". */
+export function driveViewLink(file: DriveFile): string {
+    return (
+        file.webViewLink ?? `https://docs.google.com/document/d/${file.id}/edit`
+    );
+}

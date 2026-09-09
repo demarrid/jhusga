@@ -1,0 +1,111 @@
+import Link from "next/link";
+
+import type { MeetingCounterpart, RelatedDocument } from "@/api/documents";
+import { sessionOrdinal } from "@/config/session";
+import { documentKindLabel } from "@/lib/kinds";
+import { meetingRoleLabel } from "@/lib/meetings";
+
+/**
+ * How a document connects to the rest of the archive.
+ *
+ * Three different relationships, kept visually distinct because they mean
+ * different things:
+ *
+ * - The meeting counterpart is the agenda a set of minutes came from, or the
+ *   minutes that record what the agenda produced. Strongest link on the page.
+ * - References are documents this one links to: on an agenda, that is the
+ *   bills being read that night.
+ * - Backlinks are the reverse, and they are what makes a bill legible -- the
+ *   bill itself never mentions the meetings that took it up, but the meetings
+ *   all link to the bill.
+ */
+export default function RelatedDocuments({
+    counterpart,
+    references,
+    referencedBy,
+}: {
+    counterpart: MeetingCounterpart | null;
+    references: RelatedDocument[];
+    referencedBy: RelatedDocument[];
+}) {
+    if (!counterpart && references.length === 0 && referencedBy.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="flex flex-col gap-4">
+            {counterpart && (
+                <section>
+                    <h3>
+                        {counterpart.role === "minutes"
+                            ? "Minutes of this meeting"
+                            : "Agenda for this meeting"}
+                    </h3>
+                    <ul>
+                        {counterpart.documents.map((document) => (
+                            <li key={document.id}>
+                                <Link href={`/documents/${document.id}`}>
+                                    {document.title.trim()}
+                                </Link>
+                                <span className="text-foreground-400 text-sm">
+                                    {` — ${meetingRoleLabel(counterpart.role)}`}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            )}
+
+            <RelatedList
+                heading="Mentioned in this document"
+                caption="Links the author put in the text."
+                documents={references}
+            />
+
+            <RelatedList
+                heading="Mentioned by"
+                caption="Documents that link here."
+                documents={referencedBy}
+            />
+        </div>
+    );
+}
+
+function RelatedList({
+    heading,
+    caption,
+    documents,
+}: {
+    heading: string;
+    caption: string;
+    documents: RelatedDocument[];
+}) {
+    if (documents.length === 0) return null;
+
+    return (
+        <section>
+            <h3>{heading}</h3>
+            <ul>
+                {documents.map((document) => (
+                    <li key={document.id}>
+                        <Link
+                            href={`/documents/${document.id}`}
+                            // The author's own link text is often more useful
+                            // than the Drive filename, so it is the label and
+                            // the filename moves to the tooltip.
+                            title={document.anchorText ? document.title.trim() : undefined}
+                        >
+                            {(document.anchorText || document.title).trim()}
+                        </Link>
+                        <span className="text-foreground-400 text-sm">
+                            {` — ${documentKindLabel(document.kind)}`}
+                            {document.sessionNumber !== null &&
+                                `, ${sessionOrdinal(document.sessionNumber)} session`}
+                        </span>
+                    </li>
+                ))}
+            </ul>
+            <p className="text-foreground-400 text-sm">{caption}</p>
+        </section>
+    );
+}

@@ -32,6 +32,12 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# local sqlite database (rebuild with `npm run db:migrate && npm run sync`)
+*.db
+*.db-journal
+*.db-wal
 
 # vercel
 .vercel

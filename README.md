@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# jhusga.org
 
-## Getting Started
+This repository contains the code for the unofficial website of the Student Government Association at the Johns Hopkins University. The open-source nature of this project is a commitment to transparency regarding informational flow as well as security and privacy. 
 
-First, run the development server:
+The official website, hosted on CampusGroups, is available here: [https://jhu.campusgroups.com/sga](jhu.campusgroups.com/sga). While it (usually) serves the main necessary functions an SGA website should have, CampusGroups is less corrigible than something self-hosted; hence, this repository.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The content below, as well as the vast majority of this repository's backend, was generated using Opus 5.
+
+## Architecture
+
+SGA governing documents live in Google Docs, inside a master folder that changes
+every year. Because legislation mutates by amendment, any claim this site makes
+about how the SGA works has to be traceable to a specific passage of a specific
+document, and has to stop being trusted the moment that passage changes.
+
+The pipeline that enforces this runs once a day:
+
+1. **Walk the Drive folder** (`lib/drive.ts`). Recurses the master folder and
+   exports each Google Doc as markdown. Nested `Nth SGA Master Folder` folders
+   are recognised as archives and tagged with their session number.
+2. **Sync** (`lib/sync.ts`). Compares each export's hash against the stored
+   copy. Unchanged documents are skipped; changed ones get a new
+   `DocumentRevision` and their citations are re-anchored.
+3. **Generate** (`lib/generate.ts`). Asks a model to answer a fixed question
+   from the documents and to quote its evidence. Every quote is checked to
+   appear verbatim in the source before the answer is stored; quotes that do not
+   are discarded. Only current-session documents are eligible, so repealed
+   language is never described as current law.
+4. **Render**. Pages read cached sections and never call a model on request.
+
+### Why the citations survive amendments
+
+A citation is a byte range into a document's stored text, not a copy of it. When
+a document changes, `lib/anchor.ts` searches the new text for the quote and
+moves the range. If the quote is gone -- the clause was amended away -- the
+annotation is marked orphaned and every section citing it is marked `stale`, so
+the site can say "this is being rechecked" instead of quietly asserting
+something no longer true.
+
+Normalisation lets a quote survive reformatting (whitespace, smart quotes,
+markdown emphasis) while still refusing to guess: a short quote appearing more
+than once anchors to nothing rather than to the wrong place.
+
+### Layout
+
+| Path | What lives there |
+| --- | --- |
+| `config/sga.ts` | **The yearly change surface.** Master folder ID, session number, folder exclusions, walk limits. |
+| `schema.prisma` | Documents, revisions, annotations, generated sections, citations, sync runs, affiliates. |
+| `lib/` | The pipeline: `drive`, `sync`, `generate`, `ai`, `anchor`, `kinds`, `lineage`, `diff`, `sections`. |
+| `api/` | Server actions the pages read: `documents`, `sections`, `archive`, `community`, `auth`. |
+| `app/(components)/` | `SourceChip`, `DocumentViewer`, `DocumentDiff`, `GeneratedProse`. |
+| `app/api/cron/sync/` | The daily job, guarded by `CRON_SECRET`. Scheduled in `vercel.json`. |
+| `scripts/` | `sync` (manual run, supports `--dry-run`), `seed.demo`, and the `*.check.ts` suites. |
+
+### Historical documents
+
+Past sessions' folders are ingested and kept, but excluded from generation.
+`lib/lineage.ts` derives a key that collapses the same document across sessions
+("SGA Constitution" and "113th SGA Constitution 2025-2026" share one), which is
+what makes `/documents/<id>/compare` able to diff them.
+
+### Commands
+
+```sh
+npm run dev          # develop
+npm run sync         # sync Drive now; --dry-run to walk without writing
+npm run seed:demo    # plausible fixtures, no API keys needed; -- --clear to remove
+npm run check        # anchoring, archive/diff, and database integration checks
+npm run db:migrate   # apply schema changes
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Copy `.env.example` to `.env` before any of these. The database is Postgres: the
+app connects through Supabase's transaction pooler, and migrations go through
+`DIRECT_URL` on the session pooler.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Contributions
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Guideliens to Adhere To
 
-## Learn More
+Automatic removal of Director of Communications if website maintenance fails on 4 instances.
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

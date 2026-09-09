@@ -1,5 +1,11 @@
 {
     "git": {
-      "deploymentEnabled": false
-    }
+        "deploymentEnabled": false
+    },
+    "crons": [
+        {
+            "path": "/api/cron/sync",
+            "schedule": "0 8 * * *"
+        }
+    ]
 }

@@ -13,7 +13,7 @@ export default function Home() {
           className="object-cover -z-10"
         />
 
-        <div className="absolute inset-0 -z-[5] bg-black/40 " />
+        <div className="absolute inset-0 z-[-5] bg-black/40 " />
 
         <div className="relative z-10 flex flex-col items-center justify-center mt-16">
           <Image width={250} height={250} src="/logo.png" alt="SGA logo" priority />
@@ -29,3 +29,5 @@ export default function Home() {
     </div>
   );
 }
+
+
