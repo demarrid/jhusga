@@ -53,13 +53,10 @@ export default function SignIn({ next }: { next?: string }) {
 
     return (
         <section className="bg-primary-100 rounded-md p-4 my-6">
-            <h2>Sign in to post</h2>
-
             <p className="text-foreground-400">
                 A Hopkins address ({ALLOWED_EMAIL_DOMAINS.join(", ")}) is sent a
-                one-time code. The address proves somebody here is signing in
-                and is then dropped: it is stored only as a one-way hash, and
-                nothing you post afterwards is attached to it.
+                one-time code; it is stored only as a one-way hash, and
+                nothing posted afterward is attached to it.
             </p>
 
             {!sent ? (
@@ -84,7 +81,7 @@ export default function SignIn({ next }: { next?: string }) {
                         disabled={pending || email.trim().length < 5}
                         className="bg-primary-400 text-white px-3 py-1 rounded-md disabled:opacity-50"
                     >
-                        {pending ? "Sending…" : "Send me a code"}
+                        {pending ? "Sending…" : "Send code"}
                     </button>
                 </form>
             ) : (

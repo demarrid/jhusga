@@ -31,7 +31,7 @@ export default function Home() {
       <div>
 
         <h2>QUICK LINKS</h2>
-        <div className="flex flex-row justify-between">
+        <div className="flex flex-row justify-between px-20">
           <Link href="/documents">Documents</Link>
           <Link href="/contact#funding">Club Funding</Link>
           <Link href="/discussion">Discussion</Link>
