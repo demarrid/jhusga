@@ -202,6 +202,7 @@ async function main() {
     const { prisma } = await import("../lib/prisma");
     const { findQuote } = await import("../lib/anchor");
     const { lineageKeyFor } = await import("../lib/lineage");
+    const { indexDocumentPassages } = await import("../lib/search");
     const { SESSION_NUMBER } = await import("../config/session");
 
     // Annotations and citations cascade from the documents and sections.
@@ -270,7 +271,13 @@ async function main() {
             },
         });
         created.set(fixture.driveFileId, document.id);
-        console.log(`document  ${fixture.title} (${document.lineageKey})`);
+
+        // Without these the fixtures are invisible to the question box, which
+        // is exactly the surface a demo database exists to let someone try.
+        const passages = await indexDocumentPassages(document.id, fixture.content);
+        console.log(
+            `document  ${fixture.title} (${document.lineageKey}) — ${passages} passages`,
+        );
     }
 
     const documentIds = {

@@ -216,7 +216,6 @@ export async function summarizeDocument(
         const generated = await generateJson<ModelResponse>({
             system: SYSTEM_PROMPT,
             user: buildUserPrompt(document),
-            maxTokens: 2000,
         });
         response = generated.value;
         model = generated.model;

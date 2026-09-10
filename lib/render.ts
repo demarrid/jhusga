@@ -1,4 +1,5 @@
 import type { AnnotationSpan } from "@/lib/anchor";
+import { csvCellRanges } from "@/lib/csv";
 
 /**
  * Rendering a document's markdown without breaking its citations.
@@ -95,13 +96,68 @@ const ESCAPABLE = /[^0-9A-Za-z\s]/;
 export function renderDocument(
     content: string,
     spans: AnnotationSpan[],
+    options: RenderOptions = {},
 ): Block[] {
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
     const inline: Inline = (ranges) =>
         inlineRuns(content, ranges, resolved, anchored);
 
-    return parseBlocks(toLines(content), inline);
+    const lines = toLines(content);
+
+    return options.sheetDelimiter
+        ? parseSheet(lines, options.sheetDelimiter, inline)
+        : parseBlocks(lines, inline);
+}
+
+export type RenderOptions = {
+    /**
+     * Set for a spreadsheet, to the delimiter its rows use. See
+     * `sheetDelimiter` in lib/csv.ts, which decides this from the mime type.
+     */
+    sheetDelimiter?: "," | "\t" | null;
+};
+
+/**
+ * A spreadsheet as a table, rather than as the raw export.
+ *
+ * The whole document is one table: a sheet has no headings or paragraphs to
+ * find, and running the markdown parser over it produces nonsense -- a row
+ * beginning with a hyphen becomes a bullet, and a cell containing an asterisk
+ * italicises the rest of the line.
+ *
+ * Rows are padded to the widest one. Drive pads its export already, but the
+ * xlsx path drops trailing empty cells, and a table whose rows disagree about
+ * their width renders as a staircase.
+ */
+function parseSheet(
+    lines: Line[],
+    delimiter: "," | "\t",
+    inline: Inline,
+): Block[] {
+    const rows = lines
+        .filter((line) => !isBlank(line.text))
+        .map((line) => csvCellRanges(line.text, line.start, delimiter));
+
+    if (rows.length === 0) return [];
+
+    const width = rows.reduce((widest, row) => Math.max(widest, row.length), 0);
+
+    const toRow = (cells: Range[][]): TableRow => ({
+        cells: Array.from({ length: width }, (_, index) =>
+            inline(cells[index] ?? []),
+        ),
+    });
+
+    // The first row is a header only if it is not the only row; a
+    // single-row sheet is data, and heading it would leave the table empty.
+    return [
+        {
+            kind: "table",
+            header: rows.length > 1 ? toRow(rows[0]!) : null,
+            rows: (rows.length > 1 ? rows.slice(1) : rows).map(toRow),
+        },
+    ];
 }
 
 type ResolvedSpan = { id: string; startOffset: number; endOffset: number };

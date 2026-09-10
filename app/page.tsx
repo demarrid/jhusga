@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -24,11 +25,17 @@ export default function Home() {
 
       </div>
       <div className="py-20 max-w-4xl mx-auto">
-        <p className="z-10 text-xl">The Student Government Association (SGA) at Johns Hopkins University is the representative body of undergraduate students. It is a student-run organization that is responsible for representing the interests of the student body to the university administration.</p>
+        <p className="z-10 text-xl">The Student Government Association (SGA) at Johns Hopkins University is the representative body of undergraduate students. It is a student-run organization that is responsible for representing the interests of the student body to the University's administration.</p>
       </div>
 
       <div>
 
+        <h2>QUICK LINKS</h2>
+        <div className="flex flex-row justify-between">
+          <Link href="/documents">Documents</Link>
+          <Link href="/contact#funding">Club Funding</Link>
+          <Link href="/discussion">Discussion</Link>
+        </div>
       </div>
     </div>
   );

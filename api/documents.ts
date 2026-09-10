@@ -1,7 +1,9 @@
 'use server'
 
 import { SESSION_NUMBER } from "@/config/sga";
+import { sheetDelimiter } from "@/lib/csv";
 import { dateFromDocument } from "@/lib/identity";
+import { heldNotice } from "@/lib/integrity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
 import { isMeetingRole, type MeetingRole } from "@/lib/meetings";
@@ -339,6 +341,14 @@ export type DocumentDetail = {
     /** Drive account provenance. Not authorship -- see the schema comment. */
     driveOwnerName: string | null;
     driveLastEditorName: string | null;
+    /**
+     * Set when the source file has changed by more than the site will publish
+     * unread, and the text below is the last version that was checked. The
+     * string is the reader-facing explanation; see lib/integrity.ts.
+     */
+    heldNotice: string | null;
+    /** Whether anyone holding the link can edit the source file. */
+    anyoneCanEdit: boolean | null;
 };
 
 /** Shape shared by both directions of the reference graph. */
@@ -505,7 +515,12 @@ export async function getDocument(
         }),
         lastSyncedAt: document.lastSyncedAt,
         revisionCount: document._count.revisions,
-        blocks: renderDocument(document.content, document.documentAnnotations),
+        // A spreadsheet is rendered as a table rather than as the raw export.
+        // The stored text is untouched -- citations still index into the CSV
+        // exactly as it came out of Drive -- and only the parse differs.
+        blocks: renderDocument(document.content, document.documentAnnotations, {
+            sheetDelimiter: sheetDelimiter(document.mimeType),
+        }),
         contributors: document.contributors.map((entry) => ({
             id: entry.hopkinsAffiliate.id,
             name: entry.hopkinsAffiliate.name,
@@ -515,6 +530,9 @@ export async function getDocument(
         })),
         driveOwnerName: document.driveOwnerName,
         driveLastEditorName: document.driveLastEditorName,
+        heldNotice:
+            document.reviewState === "held" ? heldNotice(document.heldReason) : null,
+        anyoneCanEdit: document.anyoneCanEdit,
     };
 }
 

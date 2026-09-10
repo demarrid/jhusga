@@ -95,6 +95,28 @@ model Document {
     driveLastEditorName  String?
     driveLastEditorEmail String?
 
+    // Whether Drive lets an anonymous reader edit this file, i.e. whether it
+    // is shared "anyone with the link can edit". Read from the capabilities
+    // Drive reports to our own unauthenticated request, so it is the same
+    // answer a stranger would get. Null when Drive did not say.
+    anyoneCanEdit Boolean?
+
+    // "published" -- `content` is the latest text Drive served.
+    // "held"      -- a newer revision exists and is deliberately not published.
+    //
+    // A destructive change to a document anyone can edit is indistinguishable
+    // from an amendment until somebody looks, so the site keeps serving the
+    // last accepted text and says so. See lib/integrity.ts.
+    reviewState    String    @default("published")
+    heldRevisionId String?
+    heldRevision   DocumentRevision? @relation("HeldRevision", fields: [heldRevisionId], references: [id], onDelete: SetNull)
+    heldReason     String    @default("")
+    heldAt         DateTime?
+
+    // The content hash a reviewer rejected, so the next sync recognises the
+    // same vandalism instead of queueing it again.
+    rejectedContentHash String @default("")
+
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
@@ -102,6 +124,7 @@ model Document {
     revisions           DocumentRevision[]
     contributors        DocumentContributor[]
     summary             DocumentSummary?
+    passages            DocumentPassage[]
 
     // Documents this one links to, and the ones that link to it. Both sides
     // are the same rows read in opposite directions; see lib/links.ts.
@@ -114,6 +137,7 @@ model Document {
     @@index([lineageKey, sessionNumber])
     @@index([driveOwnerEmail])
     @@index([meetingKey])
+    @@index([reviewState])
 }
 
 // A link from one stored document to another, read out of the link the author
@@ -199,6 +223,14 @@ model DocumentRevision {
     driveModifiedTime DateTime?
     fetchedAt         DateTime  @default(now())
 
+    // Set when this revision is the one a reviewer accepted, and by whom.
+    // A revision that was published automatically has neither.
+    reviewedAt DateTime?
+    reviewedBy String    @default("")
+
+    // The document currently holding this revision back, if any.
+    heldBy Document[] @relation("HeldRevision")
+
     // One row per distinct content hash per document.
     @@unique([documentId, contentHash])
     @@index([documentId, fetchedAt])
@@ -230,9 +262,110 @@ model DocumentAnnotation {
 
     citations        Citation[]
     summaryCitations DocumentSummaryCitation[]
+    answerCitations  SearchAnswerCitation[]
 
     @@index([documentId])
     @@index([orphanedAt])
+}
+
+// One retrievable chunk of a document, for the search index.
+//
+// A reader's question is about a clause, not about a file, and matching whole
+// documents answers "which of these 300 files mentions caucuses" when the
+// question was "how many caucus senators are there". So the text is split at
+// its own headings and paragraph breaks into passages small enough to be an
+// answer on their own and large enough to still contain one.
+//
+// Derived data, rebuilt from Document.content whenever the text changes. The
+// full-text index lives on an expression over `heading` and `content`; see the
+// migration that adds this table. Offsets are a render cache in the same sense
+// as DocumentAnnotation's, and nothing is ever cited from here -- a quote is
+// always verified against the whole document.
+model DocumentPassage {
+    id         String   @id @default(uuid())
+    documentId String
+    document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+    // Reading order within the document.
+    ordinal Int
+
+    // The heading trail this passage sits under ("Article IV > Section 2"),
+    // indexed alongside the body so a question can match the heading that
+    // names the topic even when the clause below never repeats the word.
+    heading String @default("")
+
+    content     String
+    startOffset Int
+    endOffset   Int
+
+    createdAt DateTime @default(now())
+
+    @@unique([documentId, ordinal])
+    @@index([documentId])
+}
+
+// A natural-language question, and the cited answer read out of the archive.
+//
+// Answers are cached against a normalised form of the question so that a page
+// view is not a model call, keeping the same rule as GeneratedSection: repeat
+// askers are served from the database. Cached against the content hashes of
+// the documents behind it, so an amendment invalidates the answer rather than
+// leaving it quietly wrong -- and citations orphan the same way everything
+// else does when the passage they quote is amended away.
+model SearchAnswer {
+    id String @id @default(uuid())
+
+    // As typed, for display.
+    question String
+
+    // The normalised question plus scope; see lib/search.ts. Unique, because
+    // this is the cache key.
+    questionKey String @unique
+
+    // "current" for this session's documents only, "all" to include the
+    // archive. A historical question needs the archive; a question about the
+    // rules in force must not be answered out of it.
+    scope String @default("current")
+
+    content String @default("")
+
+    // "fresh" | "stale" | "empty" | "failed", as elsewhere.
+    status String @default("empty")
+
+    model      String  @default("")
+    promptHash String  @default("")
+    error      String?
+
+    generatedAt DateTime?
+
+    // How often this has been asked, which is what tells an editor which
+    // questions deserve a written answer on a page instead.
+    askedCount  Int      @default(0)
+    lastAskedAt DateTime @default(now())
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    citations SearchAnswerCitation[]
+
+    @@index([status])
+    @@index([lastAskedAt])
+}
+
+model SearchAnswerCitation {
+    id String @id @default(uuid())
+
+    answerId String
+    answer   SearchAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+    annotationId String
+    annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+    // The 1-based [n] marker in the answer text, less one.
+    ordinal Int @default(0)
+
+    @@unique([answerId, annotationId])
+    @@index([annotationId])
 }
 
 // ---------------------------------------------------------------------------
@@ -385,12 +518,9 @@ model User {
     password  String
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
-    posts     Post[]
 
     affiliate HopkinsAffiliate?
 }
-
-// user will have posts only if they are in an administrative position; otherwise anonymous
 
 // A person at the university: someone with a JHU Google account. Distinct from
 // User, which is a login -- an affiliate exists whether or not they have ever
@@ -421,6 +551,11 @@ model HopkinsAffiliate {
     hopkinsRelationships HopkinsRelationship[]
     contributions        DocumentContributor[]
     aliases              HopkinsAlias[]
+
+    // Only officers are ever attached to what they wrote; see ForumPost.
+    forumSessions ForumSession[]
+    forumPosts    ForumPost[]
+    forumReplies  ForumReply[]
 
     @@index([enrollmentStatus])
     @@index([name])
@@ -495,26 +630,186 @@ model HopkinsRelationship {
     @@index([endedAt])
 }
 
-model Post {
-    id        String    @id @default(uuid())
-    title     String
-    content   String
-    createdAt DateTime  @default(now())
-    updatedAt DateTime  @updatedAt
-    userId    String
-    user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-    comments  Comment[]
+// ---------------------------------------------------------------------------
+// Forum
+//
+// The design constraint that shapes every model below: an anonymous post must
+// stay anonymous against whoever holds this database, not merely against other
+// readers. So the tables are arranged so that the join simply does not exist.
+//
+//   - A member's session records that somebody at Hopkins proved an address.
+//     It does not record which address.
+//   - An anonymous post has no author column at all -- not a session, not a
+//     hash, not an address. There is nothing on the row to work back from.
+//   - Rate limiting counts requests in a table that has no pointer to a post,
+//     under a key that stops being computable once the day's salt rotates.
+//
+// Officers are the deliberate exception. A senator posting as a senator is
+// posting on the record, and that row does name them.
+// ---------------------------------------------------------------------------
 
-    @@index([userId])
+model ForumCategory {
+    id          String @id @default(uuid())
+    slug        String @unique
+    name        String
+    description String @default("")
+    ordinal     Int    @default(0)
+
+    posts ForumPost[]
 }
 
-model Comment {
-    id        String   @id @default(uuid())
-    content   String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    postId    String
-    post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+// A code emailed to a JHED address, waiting to be typed back in.
+//
+// The address is stored as an HMAC and never in the clear: this table exists
+// to check one code, not to build a mailing list. Rows are deleted once used
+// or expired, so in steady state it holds only codes in flight.
+model LoginCode {
+    id String @id @default(uuid())
 
-    @@index([postId])
+    emailHash String
+    codeHash  String
+
+    createdAt DateTime  @default(now())
+    expiresAt DateTime
+    attempts  Int       @default(0)
+    consumedAt DateTime?
+
+    @@index([emailHash])
+    @@index([expiresAt])
+}
+
+// Proof that somebody at Hopkins is behind a browser.
+//
+// For a member that is the entire content of the row: the address that proved
+// it is not stored, so this session cannot be traced back to a person even
+// with the database open. The affiliate is set only for officers, who have
+// asked to be named.
+model ForumSession {
+    id        String   @id @default(uuid())
+    tokenHash String   @unique
+    createdAt DateTime @default(now())
+    expiresAt DateTime
+
+    // "member" | "officer" | "moderator"
+    role String @default("member")
+
+    hopkinsAffiliateId String?
+    hopkinsAffiliate   HopkinsAffiliate? @relation(fields: [hopkinsAffiliateId], references: [id], onDelete: SetNull)
+
+    @@index([expiresAt])
+}
+
+model ForumPost {
+    id String @id @default(uuid())
+
+    categoryId String
+    category   ForumCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+    title String
+    body  String
+
+    createdAt DateTime @default(now())
+
+    // Set only when an officer chose to post on the record. Null is not "we
+    // lost the author": it is the whole design.
+    authorAffiliateId String?
+    authorAffiliate   HopkinsAffiliate? @relation(fields: [authorAffiliateId], references: [id], onDelete: SetNull)
+
+    // The office as it read on the day, so a post does not silently change
+    // who it was from when its author leaves the seat.
+    authorLabel String @default("")
+
+    // There is no author-side delete, and so no token authorising one. A post
+    // comes down only through a moderator, which puts it in ModerationAction
+    // where everybody can see it. See the note in lib/login.ts.
+
+    // "ok" | "flagged" | "skipped" -- what the screening in lib/moderate.ts
+    // made of it. A flag holds the post back until a moderator looks, and the
+    // hold is written to ModerationAction the moment it happens.
+    screenState  String @default("skipped")
+    screenReason String @default("")
+
+    hiddenAt     DateTime?
+    hiddenReason String    @default("")
+    // "" when visible, otherwise "screen" or "moderator". Which one matters:
+    // a moderator's decision has a person behind it and stays listed for
+    // anyone to argue with, while a screening hold is provisional and is kept
+    // out of the listing until somebody has actually looked at it.
+    hiddenBy     String    @default("")
+    lockedAt     DateTime?
+
+    replies ForumReply[]
+
+    @@index([categoryId, createdAt])
+    @@index([createdAt])
+    @@index([hiddenAt])
+    @@index([hiddenBy])
+    @@index([screenState])
+}
+
+model ForumReply {
+    id String @id @default(uuid())
+
+    postId String
+    post   ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    body      String
+    createdAt DateTime @default(now())
+
+    authorAffiliateId String?
+    authorAffiliate   HopkinsAffiliate? @relation(fields: [authorAffiliateId], references: [id], onDelete: SetNull)
+    authorLabel       String            @default("")
+
+    screenState  String @default("skipped")
+    screenReason String @default("")
+
+    hiddenAt     DateTime?
+    hiddenReason String    @default("")
+    hiddenBy     String    @default("")
+
+    @@index([postId, createdAt])
+    @@index([hiddenBy])
+    @@index([screenState])
+}
+
+// Every moderation action ever taken, in public and without exception.
+//
+// Append-only by convention and by the absence of any code that deletes from
+// it. This is the whole basis on which a single moderator is acceptable: the
+// power is unchecked, so its use has to be visible.
+model ModerationAction {
+    id String @id @default(uuid())
+
+    // "post" | "reply"
+    targetType String
+    targetId   String
+
+    // "hide" | "restore" | "lock" | "unlock"
+    action String
+    reason String @default("")
+
+    // The moderator, named. Moderation is the one thing here that is never
+    // anonymous.
+    actorLabel String @default("")
+
+    createdAt DateTime @default(now())
+
+    @@index([createdAt])
+    @@index([targetType, targetId])
+}
+
+// A counter for one client, one action, and one window.
+//
+// `key` is an HMAC over the action, the caller's address and the window start,
+// under a salt that changes every day. No address is stored, nothing here
+// points at a post, and once the day turns the key for a given address can no
+// longer be recomputed -- so this table cannot be used to ask which posts came
+// from where, only how many requests a window has already seen.
+model RateBucket {
+    key             String   @id
+    count           Int      @default(0)
+    windowStartedAt DateTime @default(now())
+    expiresAt       DateTime
+
+    @@index([expiresAt])
 }

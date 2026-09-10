@@ -77,6 +77,30 @@ export default async function DocumentPage({
                 </p>
             )}
 
+            {/*
+              * A change large enough to want a human is not published until it
+              * gets one, and a reader is told which text they are looking at
+              * rather than being quietly served the older one. See
+              * lib/integrity.ts.
+              */}
+            {document.heldNotice && (
+                <p className="bg-primary-100 text-red-500 rounded-md p-3 my-4">
+                    {document.heldNotice}
+                </p>
+            )}
+
+            {/*
+              * Worth saying even when nothing has happened: it tells a reader
+              * how much weight the text below can carry, and it is the reason
+              * this document is watched more closely than the others.
+              */}
+            {document.anyoneCanEdit && (
+                <p className="text-foreground-400 text-sm my-2">
+                    The source file is shared so that anyone with the link can edit
+                    it, so any change to it is held for review before it appears here.
+                </p>
+            )}
+
             <p className="my-4 flex flex-row flex-wrap gap-4">
                 <a className="text-primary-500" href={document.source} target="_blank" rel="noreferrer">
                     {originalLabel(document.source)}

@@ -51,6 +51,13 @@ async function main() {
     const summary = await syncMasterFolder({ trigger: "manual", force });
     console.log("sync:", summary);
 
+    if (summary.documentsHeld > 0) {
+        console.log(
+            `\n${summary.documentsHeld} document(s) changed too much to publish unread.` +
+            "\nThe site is still serving the last checked text. Run `npm run review`.",
+        );
+    }
+
     if (summary.documentsCreated + summary.documentsUpdated > 0 || force) {
         const { generateStaleSections } = await import("../lib/generate");
         for (const result of await generateStaleSections({ force })) {

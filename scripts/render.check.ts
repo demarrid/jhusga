@@ -74,6 +74,11 @@ function words(blocks: Block[]): string[] {
     return pieces(blocks).join(" ").match(/[A-Za-z0-9]+/g) ?? [];
 }
 
+/** One table cell's text, run boundaries removed. */
+function cellText(cell: InlineRun[]): string {
+    return cell.map((run) => run.text).join("");
+}
+
 /** The text a given annotation ended up highlighting. */
 function highlighted(blocks: Block[], id: string): string {
     return allRuns(blocks)
@@ -320,6 +325,79 @@ check(
             .filter(Boolean),
     ).size === 1,
     allRuns(spans).map((run) => run.annotationId).filter(Boolean),
+);
+
+// Spreadsheets. Stored as the raw export, shown as a table, with the offsets
+// still pointing at the CSV underneath.
+
+console.log("\nspreadsheets");
+
+const sheet = [
+    "Name,Position,Note",
+    'Ada Lovelace,Treasurer,"Chairs Finance, and Appropriations"',
+    'Grace Hopper,Senator,"She said ""ship it"" and left"',
+    "Alan Turing,Senator",
+].join("\n");
+
+const sheetBlocks = renderDocument(sheet, [], { sheetDelimiter: "," });
+const sheetTable = sheetBlocks[0];
+
+check(
+    "a sheet renders as one table",
+    sheetBlocks.length === 1 && sheetTable.kind === "table",
+);
+
+check(
+    "the first row becomes the header",
+    sheetTable.kind === "table" &&
+    sheetTable.header !== null &&
+    sheetTable.header.cells.map(cellText).join("|") === "Name|Position|Note",
+    sheetTable.kind === "table" ? sheetTable.header?.cells.map(cellText) : null,
+);
+
+check(
+    "a quoted cell keeps its comma and loses its quotes",
+    sheetTable.kind === "table" &&
+    cellText(sheetTable.rows[0].cells[2]) === "Chairs Finance, and Appropriations",
+    sheetTable.kind === "table" ? cellText(sheetTable.rows[0].cells[2]) : null,
+);
+
+check(
+    "a doubled quote inside a cell renders as one",
+    sheetTable.kind === "table" &&
+    cellText(sheetTable.rows[1].cells[2]) === 'She said "ship it" and left',
+    sheetTable.kind === "table" ? cellText(sheetTable.rows[1].cells[2]) : null,
+);
+
+check(
+    "a short row is padded to the width of the table",
+    sheetTable.kind === "table" &&
+    sheetTable.rows[2].cells.length === 3 &&
+    cellText(sheetTable.rows[2].cells[2]) === "",
+    sheetTable.kind === "table" ? sheetTable.rows[2].cells.map(cellText) : null,
+);
+
+// The point of doing this at render time: a quote anchored against the stored
+// CSV still highlights the cell it lands in.
+const inSheet = findQuote(sheet, "Grace Hopper")!;
+const sheetCited = renderDocument(
+    sheet,
+    [{ id: "s", startOffset: inSheet.startOffset, endOffset: inSheet.endOffset }],
+    { sheetDelimiter: "," },
+);
+check(
+    "a citation into the raw CSV highlights the cell it falls in",
+    highlighted(sheetCited, "s") === "Grace Hopper",
+    JSON.stringify(highlighted(sheetCited, "s")),
+);
+
+const tabbed = renderDocument("Name\tSeat\nAda\tTreasurer", [], {
+    sheetDelimiter: "\t",
+});
+check(
+    "tab-separated rows from the xlsx path split too",
+    tabbed[0].kind === "table" && cellText(tabbed[0].rows[0].cells[1]) === "Treasurer",
+    tabbed[0].kind === "table" ? tabbed[0].rows[0].cells.map(cellText) : null,
 );
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);

@@ -26,11 +26,11 @@ export default function SourceChip({ citation, mini }: { citation: ChipCitation,
         <Link
             href={citation.href}
             title={tooltip}
-            className="relative inline-block align-super mx-0.5 group"
+            className="relative inline-block align-super mx-0.5 group my-auto"
         >
 
             {mini ? (
-                <span className="inline-flex items-center rounded-md bg-primary-400 p-0.5 text-white">
+                <span className="inline-flex items-center rounded-md bg-primary-400 p-0 text-white">
                     <svg
                         aria-hidden="true"
                         className="size-4"

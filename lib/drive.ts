@@ -39,6 +39,18 @@ export type DriveFile = {
     webViewLink: string | null;
     owner: DriveUser | null;
     lastModifyingUser: DriveUser | null;
+    /**
+     * Whether a stranger can edit this file.
+     *
+     * Drive reports capabilities from the point of view of whoever asked, and
+     * this project asks with a bare API key and no user. So `canEdit` here is
+     * literally the answer Drive would give someone who found the link -- if
+     * it is true, the file is shared "anyone with the link can edit".
+     *
+     * Null when Drive did not report capabilities at all, which is not the
+     * same as false and must not be treated as reassurance.
+     */
+    anyoneCanEdit: boolean | null;
 };
 
 /** A file found by the walk, tagged with the folder trail that led to it. */
@@ -85,9 +97,16 @@ async function driveFetch(url: string, attempt = 0): Promise<Response> {
     );
 }
 
-/** The metadata worth having about a file, in the shape Drive returns it. */
+/**
+ * The metadata worth having about a file, in the shape Drive returns it.
+ *
+ * `capabilities` is asked for unauthenticated on purpose; see anyoneCanEdit on
+ * DriveFile. Drive omits the field rather than failing when it will not answer,
+ * so asking costs nothing.
+ */
 const FILE_FIELDS =
     "id, name, mimeType, createdTime, modifiedTime, webViewLink," +
+    " capabilities(canEdit, canModifyContent)," +
     " owners(displayName, emailAddress)," +
     " lastModifyingUser(displayName, emailAddress)";
 
@@ -100,6 +119,7 @@ type RawFile = {
     createdTime?: string;
     modifiedTime?: string;
     webViewLink?: string;
+    capabilities?: { canEdit?: boolean; canModifyContent?: boolean };
     owners?: RawUser[];
     lastModifyingUser?: RawUser;
 };
@@ -124,7 +144,25 @@ function toDriveFile(raw: RawFile): DriveFile | null {
         // Drive returns a list, but SGA files have a single owner.
         owner: toUser(raw.owners?.[0]),
         lastModifyingUser: toUser(raw.lastModifyingUser),
+        anyoneCanEdit: anonymousCanEdit(raw.capabilities),
     };
+}
+
+/**
+ * Both flags have to be true to call a file world-editable.
+ *
+ * `canEdit` is set on a file somebody can comment on but not change, so on its
+ * own it would flag half the archive as open. `canModifyContent` is the one
+ * that means the text can be rewritten.
+ */
+function anonymousCanEdit(
+    capabilities: RawFile["capabilities"],
+): boolean | null {
+    if (!capabilities) return null;
+    if (capabilities.canEdit === undefined && capabilities.canModifyContent === undefined) {
+        return null;
+    }
+    return capabilities.canEdit === true && capabilities.canModifyContent === true;
 }
 
 /** One page-following pass over the immediate children of a folder. */

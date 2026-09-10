@@ -5,6 +5,7 @@ import { matchAccount } from "@/lib/accounts";
 import { findQuote } from "@/lib/anchor";
 import { bodyForDocument } from "@/lib/bodies";
 import { extractContributors } from "@/lib/contributors";
+import { assessChange } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor } from "@/lib/meetings";
 import {
@@ -37,6 +38,7 @@ import { classifyDocument } from "@/lib/kinds";
 import { lineageKeyFor } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
 import { prisma } from "@/lib/prisma";
+import { indexDocumentPassages, rebuildPassages } from "@/lib/search";
 
 /**
  * Reconciling the database against the SGA master Drive folder.
@@ -57,6 +59,11 @@ export type SyncSummary = {
     documentsCreated: number;
     documentsUpdated: number;
     documentsUnchanged: number;
+    /**
+     * Documents whose new text was stored but not published, because the
+     * change was large enough to want a human. See lib/integrity.ts.
+     */
+    documentsHeld: number;
     /** How many of the written documents belong to a prior session. */
     documentsArchived: number;
     /** Documents reached by following a link rather than by the folder walk. */
@@ -149,6 +156,21 @@ export async function reanchorDocument(
     await prisma.documentSummary.updateMany({
         where: {
             id: { in: affectedSummaries.map((citation) => citation.summaryId) },
+            status: "fresh",
+        },
+        data: { status: "stale" },
+    });
+
+    // A cached answer to a reader's question is wrong in exactly the same way.
+    const affectedAnswers = await prisma.searchAnswerCitation.findMany({
+        where: { annotationId: { in: orphanedIds } },
+        select: { answerId: true },
+        distinct: ["answerId"],
+    });
+
+    await prisma.searchAnswer.updateMany({
+        where: {
+            id: { in: affectedAnswers.map((citation) => citation.answerId) },
             status: "fresh",
         },
         data: { status: "stale" },
@@ -559,7 +581,15 @@ async function ingestFile(
 ): Promise<boolean> {
     const existing = await prisma.document.findUnique({
         where: { driveFileId: file.id },
-        select: { id: true, contentHash: true, driveModifiedTime: true },
+        select: {
+            id: true,
+            contentHash: true,
+            driveModifiedTime: true,
+            content: true,
+            kind: true,
+            reviewState: true,
+            rejectedContentHash: true,
+        },
     });
 
     const driveModifiedTime = file.modifiedTime ? new Date(file.modifiedTime) : null;
@@ -595,7 +625,38 @@ async function ingestFile(
     if (existing && existing.contentHash === contentHash) {
         await prisma.document.update({
             where: { id: existing.id },
-            data: { driveCreatedTime, driveModifiedTime, lastSyncedAt: new Date() },
+            data: {
+                driveCreatedTime,
+                driveModifiedTime,
+                lastSyncedAt: new Date(),
+                anyoneCanEdit: file.anyoneCanEdit,
+                // The published text is what Drive is serving again, so
+                // whatever was held has been reverted at the source.
+                ...(existing.reviewState === "held"
+                    ? {
+                        reviewState: "published",
+                        heldRevisionId: null,
+                        heldReason: "",
+                        heldAt: null,
+                    }
+                    : {}),
+            },
+        });
+        summary.documentsUnchanged += 1;
+        return true;
+    }
+
+    // A change a reviewer already turned down, arriving again because nobody
+    // reverted it at the source. Recognised rather than re-queued.
+    if (existing && existing.rejectedContentHash === contentHash) {
+        await prisma.document.update({
+            where: { id: existing.id },
+            data: {
+                driveCreatedTime,
+                driveModifiedTime,
+                lastSyncedAt: new Date(),
+                anyoneCanEdit: file.anyoneCanEdit,
+            },
         });
         summary.documentsUnchanged += 1;
         return true;
@@ -606,14 +667,16 @@ async function ingestFile(
             ? linkedSession({ title: file.name, content }, file.sessionNumber)
             : file.sessionNumber;
 
-    const fields = {
+    const kind = classifyDocument({ name: file.name, folderPath: file.folderPath });
+
+    // Metadata is always current: where the file lives, who last touched it,
+    // and whether the world can edit it are facts about Drive, and are true
+    // whether or not the new text is one the site is willing to publish.
+    const metadata = {
         source: driveViewLink(file),
         mimeType: file.mimeType,
         title: file.name,
-        description: deriveDescription(content),
-        content,
-        contentHash,
-        kind: classifyDocument({ name: file.name, folderPath: file.folderPath }),
+        kind,
         folderPath: file.folderPath,
         discoveredVia,
         sessionNumber,
@@ -621,19 +684,41 @@ async function ingestFile(
         driveCreatedTime,
         driveModifiedTime,
         lastSyncedAt: new Date(),
+        anyoneCanEdit: file.anyoneCanEdit,
         driveOwnerName: file.owner?.displayName ?? null,
         driveOwnerEmail: file.owner?.emailAddress ?? null,
         driveLastEditorName: file.lastModifyingUser?.displayName ?? null,
         driveLastEditorEmail: file.lastModifyingUser?.emailAddress ?? null,
     };
 
-    const document = await prisma.document.upsert({
-        where: { driveFileId: file.id },
-        create: { driveFileId: file.id, ...fields },
-        update: fields,
+    const published = {
+        description: deriveDescription(content),
+        content,
+        contentHash,
+        reviewState: "published",
+        heldRevisionId: null,
+        heldReason: "",
+        heldAt: null,
+    };
+
+    const verdict = assessChange({
+        kind,
+        anyoneCanEdit: file.anyoneCanEdit,
+        before: existing?.content ?? "",
+        after: content,
     });
 
-    await prisma.documentRevision.upsert({
+    const document = await prisma.document.upsert({
+        where: { driveFileId: file.id },
+        // A document being created has nothing to protect, so its first text
+        // is published whatever the verdict says.
+        create: { driveFileId: file.id, ...metadata, ...published },
+        update: verdict.publish ? { ...metadata, ...published } : metadata,
+    });
+
+    // Stored either way. The revision history is append-only precisely so that
+    // a change nobody has accepted is still recoverable and still diffable.
+    const revision = await prisma.documentRevision.upsert({
         where: { documentId_contentHash: { documentId: document.id, contentHash } },
         create: {
             documentId: document.id,
@@ -645,7 +730,31 @@ async function ingestFile(
         update: { fetchedAt: new Date() },
     });
 
+    if (!verdict.publish) {
+        await prisma.document.update({
+            where: { id: document.id },
+            data: {
+                reviewState: "held",
+                heldRevisionId: revision.id,
+                heldReason: verdict.reason,
+                heldAt: new Date(),
+            },
+        });
+
+        // Everything downstream -- citations, passages, summaries, contributor
+        // rows -- describes the published text, and the published text has not
+        // changed. Touching any of it here is what would let a held revision
+        // affect the site anyway.
+        summary.documentsHeld += 1;
+        return true;
+    }
+
     summary.contributorsLinked += await recordContributors(document.id, content);
+
+    // The search index is derived from the text that just landed, so it is
+    // rebuilt here rather than in a corpus pass: a document whose clause moved
+    // must not be findable at its old offsets for the rest of the sync.
+    await indexDocumentPassages(document.id, content);
 
     if (sessionNumber !== SESSION_NUMBER) summary.documentsArchived += 1;
 
@@ -797,6 +906,12 @@ export async function followLinks(
                         lastModifyingUser: file.lastEditorName
                             ? { displayName: file.lastEditorName, emailAddress: null }
                             : null,
+                        // Graph reports permissions on a different call to the
+                        // one that fetches the file, and this path only ever
+                        // has an anonymous sharing link to go on. Null is
+                        // "unknown", which the hold thresholds treat as
+                        // ordinary -- only a confirmed `true` tightens them.
+                        anyoneCanEdit: null,
                         folderPath: "",
                         sessionNumber,
                     },
@@ -862,6 +977,7 @@ export async function syncMasterFolder(
         documentsCreated: 0,
         documentsUpdated: 0,
         documentsUnchanged: 0,
+        documentsHeld: 0,
         documentsArchived: 0,
         documentsLinkedIn: 0,
         annotationsOrphaned: 0,
@@ -914,6 +1030,11 @@ export async function syncMasterFolder(
         await recordKinds();
         summary.referencesLinked = await rebuildReferences();
         summary.driveAccountsLinked = await recordDriveAccounts();
+
+        // Catches documents ingested before the search index existed, and any
+        // whose passages were lost. Documents that already have them cost
+        // nothing here, because they are not selected.
+        await rebuildPassages();
 
         await prisma.syncRun.update({
             where: { id: syncRun.id },

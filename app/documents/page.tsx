@@ -11,6 +11,7 @@ import {
     type DocumentListing,
 } from "@/api/documents";
 import DocumentSearch from "@/app/(components)/DocumentSearch";
+import NaturalLanguageSearch from "@/app/(components)/NaturalLanguageSearch";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
@@ -87,7 +88,9 @@ export default async function Documents({
                 </div>
             )}
 
-            {/* Reads the URL, so it renders once the request's params exist. */}
+
+            <NaturalLanguageSearch />
+
             <Suspense>
                 <DocumentSearch
                     query={q}

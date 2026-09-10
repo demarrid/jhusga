@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { generateStaleSections } from "@/lib/generate";
+import { pruneEphemeral } from "@/lib/prune";
 import { syncMasterFolder } from "@/lib/sync";
 
 /**
@@ -50,10 +51,15 @@ export async function GET(request: Request) {
         const sections =
             documentsChanged > 0 ? await generateStaleSections() : [];
 
+        // Expired sessions, sign-in codes and rate buckets. Nothing reads them
+        // once their clock has run out; this is so they are not kept anyway.
+        const pruned = await pruneEphemeral();
+
         return Response.json({
             ok: true,
             sync,
             sections,
+            pruned,
         });
     } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause);
