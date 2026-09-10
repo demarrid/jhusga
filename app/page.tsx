@@ -14,11 +14,6 @@ export default function Home() {
             <span className={styles.university}>at Johns Hopkins University</span>
           </h1>
 
-          <p className={styles.summary}>
-            Meetings, legislation, funding, and the people representing Hopkins
-            undergraduates—open to everyone.
-          </p>
-
           {/* This prompt is an invitation to ask the archive, not browse it. */}
           <Link className={styles.primaryLink} href="/documents?mode=ask">
             <span>See what happened this week</span>

@@ -286,6 +286,16 @@
   line-height: 1.35;
 }
 
+/* Keep the moderation record compact and aligned with the page header. */
+.moderationContent {
+  width: min(80rem, calc(100% - max(12vw, 3rem)));
+  padding-top: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.moderationContent > .recordSection:first-child {
+  margin-top: 0;
+}
+
 .rulesList {
   max-width: 52rem;
   margin-top: 3.5rem;

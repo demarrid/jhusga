@@ -35,26 +35,7 @@ export default async function ModerationLog() {
     return (
         <main className={styles.page}>
           <DiscussionHeader eyebrow="Public record" title="Moderation log" compact />
-          <div className={styles.content}>
-            <p className={styles.proseIntro}>
-                Everything a moderator has done on the forum, with the reason
-                given at the time — and everything the automatic screening has
-                held back before a moderator saw it. Nothing is deleted: held
-                and hidden material stays readable behind a click, so a removal
-                can be judged against the thing that was removed.{" "}
-                <Link className={styles.inlineLink} href="/discussion/rules">
-                    What moderators may do
-                </Link>{" "}
-                is set out with the rest of the rules.
-            </p>
-
-            <p className={styles.muted}>
-                A post the screening is holding does not appear on the
-                discussion at all, so this page is the only place it is
-                announced. That is the trade: the text waits, the fact that it
-                is waiting does not.
-            </p>
-
+          <div className={`${styles.content} ${styles.moderationContent}`}>
             <section className={styles.recordSection}>
                 <h2 className={styles.recordHeading}>
                     {held.length === 0
@@ -72,10 +53,12 @@ export default async function ModerationLog() {
                 ) : (
                     <>
                         <p className={styles.muted}>
-                            Waiting for a moderator. Each is readable here, so
-                            the hold can be checked against what was actually
-                            written — and so the backlog is countable, which is
-                            the number worth being embarrassed by.
+                            Waiting for a moderator. You can see what moderators
+                            can do{" "}
+                            <Link className={styles.inlineLink} href="/discussion/rules">
+                                here
+                            </Link>
+                            .
                         </p>
 
                         {held.map((item) => (
