@@ -6,6 +6,8 @@ import { useEffect, useRef, useTransition } from "react";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { documentKindLabel } from "@/lib/kinds";
 
+import styles from "./DocumentSearch.module.css";
+
 /** How long typing pauses before the listing is asked to catch up. */
 const TYPING_SETTLE_MS = 250;
 
@@ -79,11 +81,9 @@ export default function DocumentSearch({
         typingTimer.current = setTimeout(() => apply({ q: value }), TYPING_SETTLE_MS);
     }
 
-    const field = "border border-foreground-800 rounded-md px-2 py-1";
-
     return (
         <form
-            className="flex flex-row flex-wrap items-center gap-2 my-4"
+            className={styles.form}
             // Enter should apply what has been typed now rather than waiting
             // out the timer, but without the full page load a GET would do.
             onSubmit={(event) => {
@@ -93,93 +93,105 @@ export default function DocumentSearch({
                 apply({ q: typeof value === "string" ? value : "" });
             }}
         >
-            <input
-                type="text"
-                name="q"
-                defaultValue={query}
-                placeholder="Search documents and people"
-                className={field}
-                onChange={(event) => applyQuery(event.target.value)}
-            />
-
-            <select
-                name="kind"
-                defaultValue={kind ?? ""}
-                className={field}
-                onChange={(event) => apply({ kind: event.target.value })}
-            >
-                <option value="">All types</option>
-                {kinds.map((option) => (
-                    <option key={option.kind} value={option.kind}>
-                        {documentKindLabel(option.kind)} ({option.count})
-                    </option>
-                ))}
-            </select>
-
-            <select
-                name="person"
-                defaultValue={person ?? ""}
-                className={field}
-                onChange={(event) => apply({ person: event.target.value })}
-            >
-                <option value="">Anyone</option>
-                {people.map((option) => (
-                    <option key={option.id} value={option.id}>
-                        {option.name} ({option.count})
-                    </option>
-                ))}
-            </select>
-
-            <select
-                name="role"
-                defaultValue={role ?? ""}
-                className={field}
-                onChange={(event) => apply({ role: event.target.value })}
-            >
-                <option value="">Any capacity</option>
-                {roles.map((option) => (
-                    <option key={option.role} value={option.role}>
-                        {contributorRoleLabel(option.role)} ({option.count})
-                    </option>
-                ))}
-            </select>
-
-            {offices.length > 0 && (
-                <select
-                    name="office"
-                    defaultValue={office ?? ""}
-                    className={field}
-                    onChange={(event) => apply({ office: event.target.value })}
-                >
-                    <option value="">Any office</option>
-                    {offices.map((option) => (
-                        <option key={option.id} value={option.id}>
-                            {option.name} ({option.count})
-                        </option>
-                    ))}
-                </select>
-            )}
-
-            <label className="flex flex-row items-center gap-1">
+            <label className={styles.queryField}>
+                <span>Search documents and people</span>
                 <input
-                    type="checkbox"
-                    name="archive"
-                    value="1"
-                    defaultChecked={archive}
-                    onChange={(event) => apply({ archive: event.target.checked ? "1" : "" })}
+                    type="search"
+                    name="q"
+                    defaultValue={query}
+                    placeholder="Title, keyword, or person"
+                    onChange={(event) => applyQuery(event.target.value)}
                 />
-                Include past sessions
             </label>
 
+            <div className={styles.filterRow}>
+                <label className={styles.filterField}>
+                    <span>Type</span>
+                    <select
+                        name="kind"
+                        defaultValue={kind ?? ""}
+                        onChange={(event) => apply({ kind: event.target.value })}
+                    >
+                        <option value="">All types</option>
+                        {kinds.map((option) => (
+                            <option key={option.kind} value={option.kind}>
+                                {documentKindLabel(option.kind)} ({option.count})
+                            </option>
+                        ))}
+                    </select>
+                </label>
+
+                <label className={styles.filterField}>
+                    <span>Person</span>
+                    <select
+                        name="person"
+                        defaultValue={person ?? ""}
+                        onChange={(event) => apply({ person: event.target.value })}
+                    >
+                        <option value="">Anyone</option>
+                        {people.map((option) => (
+                            <option key={option.id} value={option.id}>
+                                {option.name} ({option.count})
+                            </option>
+                        ))}
+                    </select>
+                </label>
+
+                <label className={styles.filterField}>
+                    <span>Capacity</span>
+                    <select
+                        name="role"
+                        defaultValue={role ?? ""}
+                        onChange={(event) => apply({ role: event.target.value })}
+                    >
+                        <option value="">Any capacity</option>
+                        {roles.map((option) => (
+                            <option key={option.role} value={option.role}>
+                                {contributorRoleLabel(option.role)} ({option.count})
+                            </option>
+                        ))}
+                    </select>
+                </label>
+
+                {offices.length > 0 && (
+                    <label className={styles.filterField}>
+                        <span>Office</span>
+                        <select
+                            name="office"
+                            defaultValue={office ?? ""}
+                            onChange={(event) => apply({ office: event.target.value })}
+                        >
+                            <option value="">Any office</option>
+                            {offices.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                    {option.name} ({option.count})
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                )}
+
+                <label className={styles.archiveToggle}>
+                    <input
+                        type="checkbox"
+                        name="archive"
+                        value="1"
+                        defaultChecked={archive}
+                        onChange={(event) => apply({ archive: event.target.checked ? "1" : "" })}
+                    />
+                    <span>Include past sessions</span>
+                </label>
+            </div>
+
             <noscript>
-                <button type="submit" className="bg-primary-400 text-white px-2 py-1 rounded-md">
+                <button type="submit" className={styles.fallbackButton}>
                     Search
                 </button>
             </noscript>
 
             <span
                 aria-live="polite"
-                className={`text-foreground-400 text-sm ${pending ? "" : "invisible"}`}
+                className={`${styles.status} ${pending ? "" : styles.hidden}`}
             >
                 Filtering…
             </span>

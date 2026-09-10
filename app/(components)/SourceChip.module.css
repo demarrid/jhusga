@@ -1,0 +1,59 @@
+.chip {
+  position: relative;
+  display: inline-block;
+  margin: auto 0.15rem;
+  vertical-align: super;
+}
+
+.label,
+.mini {
+  display: inline-flex;
+  align-items: center;
+  background: #377ebc;
+  color: #ffffff;
+  font-size: 0.65rem;
+  line-height: 1.35;
+}
+
+.label {
+  padding: 0.08rem 0.35rem;
+}
+
+.mini {
+  padding: 0;
+}
+
+.mini svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  display: none;
+  width: 18rem;
+  margin-top: 0.25rem;
+  padding: 0.75rem;
+  background: #eaf3fb;
+  color: #172b44;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.tooltip span {
+  display: block;
+}
+
+.tooltip span + span {
+  margin-top: 0.35rem;
+}
+
+.chip:hover .tooltip,
+.chip:focus .tooltip {
+  display: block;
+}

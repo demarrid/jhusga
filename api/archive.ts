@@ -9,6 +9,14 @@ import {
     isDocumentKind,
 } from "@/lib/kinds";
 import { prisma } from "@/lib/prisma";
+import { demoModeEnabled } from "@/lib/data-mode";
+import {
+    demoComparableLineages,
+    demoComparison,
+    demoComparisonOptions,
+    demoLineage,
+    demoSessions,
+} from "@/lib/demo-data";
 
 /**
  * The historical record: prior sessions' documents, and the comparisons that
@@ -25,6 +33,7 @@ export type SessionSummary = {
 };
 
 export async function getSessions(): Promise<SessionSummary[]> {
+    if (demoModeEnabled()) return demoSessions();
     const grouped = await prisma.document.groupBy({
         by: ["sessionNumber"],
         _count: { sessionNumber: true },
@@ -76,6 +85,7 @@ function toMember(document: {
 
 /** Every session's copy of one guiding document, newest first. */
 export async function getLineage(lineageKey: string): Promise<Lineage> {
+    if (demoModeEnabled()) return demoLineage(lineageKey);
     const documents = await prisma.document.findMany({
         where: { lineageKey, kind: { in: COMPARABLE_KINDS } },
         select: {
@@ -97,6 +107,7 @@ export async function getLineage(lineageKey: string): Promise<Lineage> {
  * actually something to compare.
  */
 export async function getComparableLineages(): Promise<Lineage[]> {
+    if (demoModeEnabled()) return demoComparableLineages();
     const grouped = await prisma.document.groupBy({
         by: ["lineageKey"],
         where: { NOT: { lineageKey: "" }, kind: { in: COMPARABLE_KINDS } },
@@ -166,6 +177,7 @@ export type ComparisonOptions = {
 export async function getComparisonOptions(
     documentId: string,
 ): Promise<ComparisonOptions | null> {
+    if (demoModeEnabled()) return demoComparisonOptions(documentId);
     const document = await prisma.document.findUnique({
         where: { id: documentId },
         select: {
@@ -248,6 +260,7 @@ export async function compareDocuments(
     beforeId: string,
     afterId: string,
 ): Promise<Comparison | null> {
+    if (demoModeEnabled()) return demoComparison(beforeId, afterId);
     const select = {
         id: true,
         title: true,

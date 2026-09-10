@@ -1,0 +1,277 @@
+.page {
+  background: #ffffff;
+  color: #172b44;
+}
+
+.hero {
+  min-height: min(42rem, calc(100svh - 5.25rem));
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.65fr) minmax(24rem, 1.6fr);
+  align-items: end;
+  gap: clamp(3rem, 8vw, 9rem);
+  padding: clamp(5rem, 10vw, 9rem) max(6vw, 1.5rem);
+  background: #002d72;
+  color: #ffffff;
+}
+
+.heroLabel {
+  align-self: start;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.55);
+  color: #b9daf6;
+  font-size: 0.72rem;
+  font-weight: 680;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.heroContent {
+  animation: hero-in 650ms ease-out both;
+}
+
+.hero h1 {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  /* Match the quieter display scale used by the other redesigned pages. */
+  font-size: clamp(3.2rem, 6vw, 5.5rem);
+  font-weight: 470;
+  letter-spacing: -0.07em;
+  line-height: 0.75;
+}
+
+.hero h1 span {
+  color: #68ace5;
+  font-size: 0.46em;
+  letter-spacing: -0.035em;
+  line-height: 1.3;
+}
+
+.heroContent > p {
+  max-width: 48rem;
+  margin: clamp(3rem, 7vw, 5.5rem) 0 0;
+  color: #e5f1fb;
+  font-size: clamp(1.08rem, 1.5vw, 1.35rem);
+  line-height: 1.65;
+}
+
+.chapter {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.65fr) minmax(24rem, 1.6fr);
+  align-items: start;
+  gap: clamp(3rem, 8vw, 9rem);
+  padding: clamp(5rem, 10vw, 10rem) max(6vw, 1.5rem);
+}
+
+.sectionLabel {
+  position: sticky;
+  top: 6.75rem;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #7990aa;
+}
+
+.sectionLabel span {
+  color: #377ebc;
+  font-size: 0.69rem;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+}
+
+.sectionLabel h2 {
+  margin: 0;
+  color: #16365e;
+  font-size: 0.77rem;
+  font-weight: 680;
+  letter-spacing: 0.095em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.chapterContent {
+  max-width: 55rem;
+  font-size: 1.03rem;
+  line-height: 1.75;
+}
+
+.chapterContent > p,
+.generatedProse :global(p) {
+  margin: 0 0 1.4rem;
+}
+
+.generatedProse :global(ul) {
+  margin: 1.25rem 0 1.75rem;
+  padding-left: 1.25rem;
+}
+
+.lead {
+  color: #153a68;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: clamp(1.35rem, 2.2vw, 2rem);
+  letter-spacing: -0.035em;
+  line-height: 1.18;
+}
+
+.impactList {
+  margin: clamp(2.5rem, 5vw, 4.5rem) 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.impactList li {
+  display: grid;
+  grid-template-columns: 2.75rem 1fr;
+  gap: 1rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid #b8c7d7;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: clamp(1.1rem, 1.5vw, 1.4rem);
+  line-height: 1.35;
+}
+
+.impactList li:last-child {
+  border-bottom: 1px solid #b8c7d7;
+}
+
+.impactList span {
+  padding-top: 0.25rem;
+  color: #377ebc;
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.structure {
+  background: #eaf3fb;
+}
+
+.directoryLink {
+  margin-top: 2.5rem !important;
+  color: #4a5d73;
+}
+
+.directoryLink a {
+  color: #002d72;
+  font-weight: 670;
+  text-decoration-color: #68ace5;
+  text-underline-offset: 0.3em;
+}
+
+.tintedChapter {
+  background: #f4f8fb;
+}
+
+.positions {
+  margin-top: clamp(3rem, 6vw, 5rem);
+  border-bottom: 1px solid #bdcad7;
+}
+
+.position {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.75fr) minmax(18rem, 1.25fr);
+  gap: clamp(2rem, 5vw, 5rem);
+  padding: 1.75rem 0;
+  border-top: 1px solid #bdcad7;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.position:hover {
+  border-color: #68ace5;
+  transform: translateX(4px);
+}
+
+.position h3,
+.position h4,
+.subsection h3 {
+  margin: 0;
+  color: #002d72;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: clamp(1.25rem, 1.8vw, 1.65rem);
+  font-weight: 570;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.position h4 {
+  font-size: clamp(1.08rem, 1.5vw, 1.35rem);
+}
+
+.position .generatedProse {
+  color: #344960;
+}
+
+.position .generatedProse :global(p:last-child) {
+  margin-bottom: 0;
+}
+
+.subsection {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.75fr) minmax(18rem, 1.25fr);
+  gap: clamp(2rem, 5vw, 5rem);
+  padding: 3.5rem 0 1.75rem;
+  border-top: 1px solid #002d72;
+}
+
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 820px) {
+  .hero,
+  .chapter {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+  }
+
+  .hero {
+    min-height: auto;
+    align-items: start;
+  }
+
+  .heroLabel {
+    width: min(16rem, 70vw);
+  }
+
+  .sectionLabel {
+    position: static;
+    width: min(18rem, 75vw);
+  }
+}
+
+@media (max-width: 600px) {
+  .hero,
+  .chapter {
+    padding-inline: 1.25rem;
+  }
+
+  .hero h1 {
+    /* Align the stacked mobile title with the other page-level headings. */
+    font-size: clamp(3rem, 13vw, 3.5rem);
+  }
+
+  .position,
+  .subsection {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .position:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroContent {
+    animation: none;
+  }
+
+  .position {
+    transition: none;
+  }
+}

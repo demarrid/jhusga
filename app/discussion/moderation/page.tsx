@@ -5,6 +5,9 @@ import { getHeldQueue, getModerationLog } from "@/api/forum";
 import ModerationControls from "@/app/(components)/ModerationControls";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
 
+import DiscussionHeader from "../DiscussionHeader";
+import styles from "../discussion.module.css";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -30,36 +33,30 @@ export default async function ModerationLog() {
     const moderating = viewer?.role === "moderator";
 
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <p className="text-foreground-400">
-                <Link className="text-primary-700" href="/discussion">
-                    Discussion
-                </Link>
-            </p>
-
-            <h1>Moderation log</h1>
-
-            <p>
+        <main className={styles.page}>
+          <DiscussionHeader eyebrow="Public record" title="Moderation log" compact />
+          <div className={styles.content}>
+            <p className={styles.proseIntro}>
                 Everything a moderator has done on the forum, with the reason
                 given at the time — and everything the automatic screening has
                 held back before a moderator saw it. Nothing is deleted: held
                 and hidden material stays readable behind a click, so a removal
                 can be judged against the thing that was removed.{" "}
-                <Link className="text-primary-700" href="/discussion/rules">
+                <Link className={styles.inlineLink} href="/discussion/rules">
                     What moderators may do
                 </Link>{" "}
                 is set out with the rest of the rules.
             </p>
 
-            <p className="text-foreground-400">
+            <p className={styles.muted}>
                 A post the screening is holding does not appear on the
                 discussion at all, so this page is the only place it is
                 announced. That is the trade: the text waits, the fact that it
                 is waiting does not.
             </p>
 
-            <section className="my-6">
-                <h2>
+            <section className={styles.recordSection}>
+                <h2 className={styles.recordHeading}>
                     {held.length === 0
                         ? "Nothing is being held"
                         : held.length === 1
@@ -68,13 +65,13 @@ export default async function ModerationLog() {
                 </h2>
 
                 {held.length === 0 ? (
-                    <p className="text-foreground-400">
+                    <p className={styles.muted}>
                         Everything submitted is either on the discussion or has
                         been ruled on below.
                     </p>
                 ) : (
                     <>
-                        <p className="text-foreground-400">
+                        <p className={styles.muted}>
                             Waiting for a moderator. Each is readable here, so
                             the hold can be checked against what was actually
                             written — and so the backlog is countable, which is
@@ -82,17 +79,17 @@ export default async function ModerationLog() {
                         </p>
 
                         {held.map((item) => (
-                            <div key={item.id} className="my-4">
-                                <details className="bg-primary-100 rounded-md p-3">
+                            <div key={item.id}>
+                                <details className={styles.heldItem}>
                                     <summary>
                                         {item.title}
-                                        <span className="text-foreground-400">
+                                        <span className={styles.muted}>
                                             {" — "}
                                             {formatDateShort(item.createdAt)}
                                             {item.reason ? ` · ${item.reason}` : ""}
                                         </span>
                                     </summary>
-                                    <p className="whitespace-pre-wrap my-3">{item.body}</p>
+                                    <p className={styles.body}>{item.body}</p>
                                 </details>
 
                                 {moderating && (
@@ -109,17 +106,18 @@ export default async function ModerationLog() {
                 )}
             </section>
 
-            <h2>What has been done</h2>
+            <section className={styles.recordSection}>
+            <h2 className={styles.recordHeading}>What has been done</h2>
 
             {entries.length === 0 ? (
-                <p className="text-foreground-400 italic my-6">
+                <p className={styles.emptyState}>
                     Nothing has been moderated. This page will fill itself in if
                     that changes.
                 </p>
             ) : (
-                <ul className="my-6">
+                <ul className={styles.recordList}>
                     {entries.map((entry) => (
-                        <li key={entry.id} className="my-3">
+                        <li key={entry.id}>
                             <span>{describe(entry.action)}</span>{" "}
                             {entry.targetType === "post" ? (
                                 <Link href={`/discussion/${entry.targetId}`}>
@@ -129,7 +127,7 @@ export default async function ModerationLog() {
                                 <span>{entry.context}</span>
                             )}
 
-                            <span className="text-foreground-400">
+                            <span className={styles.muted}>
                                 {" — "}
                                 {entry.actorLabel}
                                 {" · "}
@@ -137,13 +135,16 @@ export default async function ModerationLog() {
                             </span>
 
                             {entry.reason && (
-                                <p className="text-foreground-400">{entry.reason}</p>
+                                <p className={styles.muted}>{entry.reason}</p>
                             )}
                         </li>
                     ))}
                 </ul>
             )}
-        </div>
+            </section>
+            <Link className={styles.backLink} href="/discussion">← Back to the discussion</Link>
+          </div>
+        </main>
     );
 }
 

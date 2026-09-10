@@ -2,6 +2,8 @@
 
 import { MAX_QUESTION_CHARS, type SearchScope } from "@/config/search";
 import { answerQuestion, type QuestionAnswer } from "@/lib/search";
+import { demoModeEnabled } from "@/lib/data-mode";
+import { demoSearchAnswer } from "@/lib/demo-data";
 
 /**
  * Asking the archive a question.
@@ -52,6 +54,8 @@ export async function askArchive(
     };
 
     if (asked.length < 3) return empty;
+
+    if (demoModeEnabled()) return demoSearchAnswer(asked, scope);
 
     if (!withinRateLimit()) {
         return {

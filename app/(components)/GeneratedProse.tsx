@@ -1,6 +1,8 @@
 import type { Section } from "@/api/sections";
 import CitedProse from "@/app/(components)/CitedProse";
 
+import styles from "./GeneratedProse.module.css";
+
 /**
  * Renders one cached, cited section.
  *
@@ -15,7 +17,7 @@ export default function GeneratedProse({
 }) {
     if (!section || !section.content) {
         return (
-            <p className="text-foreground-400 italic">
+            <p className={styles.muted}>
                 Not yet summarised from the governing documents.
             </p>
         );
@@ -24,7 +26,7 @@ export default function GeneratedProse({
     return (
         <div>
             {section.status === "stale" && (
-                <p className="text-foreground-400 italic">
+                <p className={styles.muted}>
                     A passage cited below has changed since this was written, so it is
                     awaiting recheck.
                 </p>

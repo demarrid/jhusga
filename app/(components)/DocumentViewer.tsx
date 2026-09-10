@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { Block, InlineRun, TableRow } from "@/lib/render";
+import styles from "@/app/documents/document-detail.module.css";
 
 /**
  * Renders a parsed document with its cited passages highlighted.
@@ -12,7 +13,7 @@ import type { Block, InlineRun, TableRow } from "@/lib/render";
  * scrolls here and the :target rule emphasises the passage -- no client JS.
  */
 export default function DocumentViewer({ blocks }: { blocks: Block[] }) {
-    return <article className="font-serif">{renderBlocks(blocks)}</article>;
+    return <article className={styles.viewer}>{renderBlocks(blocks)}</article>;
 }
 
 function renderBlocks(blocks: Block[]): ReactNode {
@@ -29,11 +30,11 @@ function BlockView({ block }: { block: Block }) {
         case "paragraph":
             // pre-wrap keeps the line breaks the author typed; the export does
             // not soft-wrap, so every newline inside a paragraph is deliberate.
-            return <p className="my-4 whitespace-pre-wrap">{renderRuns(block.runs)}</p>;
+            return <p className={styles.viewerParagraph}>{renderRuns(block.runs)}</p>;
 
         case "quote":
             return (
-                <blockquote className="border-primary-300 my-4 border-l-4 pl-4">
+                <blockquote>
                     {renderBlocks(block.blocks)}
                 </blockquote>
             );
@@ -42,18 +43,18 @@ function BlockView({ block }: { block: Block }) {
             return block.ordered ? (
                 // Numbering comes from the document itself, so a list that
                 // resumes at 7 is shown starting at 7.
-                <ol start={block.start} className="my-4 list-decimal pl-8">
+                <ol start={block.start}>
                     {block.items.map((item, index) => (
-                        <li key={index} className="my-1 whitespace-pre-wrap">
+                        <li key={index}>
                             {renderRuns(item.runs)}
                             {renderBlocks(item.blocks)}
                         </li>
                     ))}
                 </ol>
             ) : (
-                <ul className="my-4 list-disc pl-8">
+                <ul>
                     {block.items.map((item, index) => (
-                        <li key={index} className="my-1 whitespace-pre-wrap">
+                        <li key={index}>
                             {renderRuns(item.runs)}
                             {renderBlocks(item.blocks)}
                         </li>
@@ -63,8 +64,8 @@ function BlockView({ block }: { block: Block }) {
 
         case "table":
             return (
-                <div className="my-4 overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
+                <div className={styles.viewerTable}>
+                    <table>
                         {block.header && (
                             <thead>
                                 <Row row={block.header} cell="th" />
@@ -80,7 +81,7 @@ function BlockView({ block }: { block: Block }) {
             );
 
         case "rule":
-            return <hr className="border-primary-300 my-6" />;
+            return <hr />;
     }
 }
 
@@ -89,13 +90,13 @@ function Heading({ level, children }: { level: number; children: ReactNode }) {
     switch (level) {
         case 1:
         case 2:
-            return <h2 className="mt-8 mb-2">{children}</h2>;
+            return <h2>{children}</h2>;
         case 3:
-            return <h3 className="mt-6 mb-2">{children}</h3>;
+            return <h3>{children}</h3>;
         case 4:
-            return <h4 className="mt-6 mb-2">{children}</h4>;
+            return <h4>{children}</h4>;
         default:
-            return <h5 className="mt-4 mb-2">{children}</h5>;
+            return <h5>{children}</h5>;
     }
 }
 
@@ -104,10 +105,7 @@ function Row({ row, cell }: { row: TableRow; cell: "th" | "td" }) {
     return (
         <tr>
             {row.cells.map((runs, index) => (
-                <Cell
-                    key={index}
-                    className="border-primary-300 border p-2 align-top"
-                >
+                <Cell key={index}>
                     {renderRuns(runs)}
                 </Cell>
             ))}
@@ -132,7 +130,6 @@ function Run({ run }: { run: InlineRun }) {
                 href={run.href}
                 target="_blank"
                 rel="noreferrer"
-                className="text-primary-700 underline"
             >
                 {node}
             </a>
@@ -146,7 +143,7 @@ function Run({ run }: { run: InlineRun }) {
                 // highlight broken up by a bold word has one target, not three.
                 id={run.anchor ? `annotation-${run.annotationId}` : undefined}
                 // scroll-mt clears the sticky header.
-                className="bg-secondary-200 target:bg-secondary-300 scroll-mt-28"
+                className={styles.annotation}
             >
                 {node}
             </mark>

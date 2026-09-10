@@ -1,5 +1,6 @@
 import type { DocumentRestatement as Restatement, SummaryCitation } from "@/api/documents";
 import { citedIndexes, splitCitedParts, truncateAtWord } from "@/lib/cite";
+import styles from "@/app/documents/document-detail.module.css";
 
 /**
  * The plain-language reading of a document, shown beside it.
@@ -18,7 +19,7 @@ export default function DocumentRestatement({
 }) {
     if (!restatement || !restatement.content) {
         return (
-            <p className="text-foreground-400 italic">
+            <p className={styles.muted}>
                 No plain-language summary yet. Run <code>npm run summarize</code> to
                 write one from this document.
             </p>
@@ -34,9 +35,9 @@ export default function DocumentRestatement({
     const leftover = restatement.citations.filter((_, index) => !used.has(index + 1));
 
     return (
-        <div>
+        <div className={styles.summary}>
             {restatement.status === "stale" && (
-                <p className="text-foreground-400 italic">
+                <p className={styles.muted}>
                     The document has changed since this was written, so it is awaiting
                     recheck. Read the document itself for anything that matters.
                 </p>
@@ -45,7 +46,7 @@ export default function DocumentRestatement({
             {renderBlocks(restatement.content, byIndex)}
 
             {leftover.length > 0 && (
-                <p className="mt-2">
+                <p>
                     {leftover.map((citation, index) => (
                         <QuoteChip
                             key={citation.annotationId}
@@ -56,10 +57,6 @@ export default function DocumentRestatement({
                 </p>
             )}
 
-            <p className="text-foreground-400 text-sm mt-3">
-                Written from this document alone. Every claim links to the passage it
-                came from.
-            </p>
         </div>
     );
 }
@@ -85,12 +82,12 @@ function QuoteChip({
                     ? "This passage has changed since it was cited."
                     : quote
             }
-            className="relative inline-block align-super mx-0.5 group"
+            className={styles.citation}
         >
-            <span className="bg-primary-400 text-white px-1.5 rounded-md text-xs">
+            <span className={styles.citationMark}>
                 {citation.orphaned ? "changed" : index}
             </span>
-            <span className="hidden group-hover:block absolute left-0 top-full z-10 mt-1 w-72 bg-primary-100 text-foreground p-2 rounded-md text-sm font-normal whitespace-normal">
+            <span className={styles.citationTooltip}>
                 {quote}
             </span>
         </a>

@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { truncateAtWord } from "@/lib/cite";
 
+import styles from "./SourceChip.module.css";
+
 export type ChipCitation = {
     documentTitle: string;
     quote: string;
@@ -26,14 +28,13 @@ export default function SourceChip({ citation, mini }: { citation: ChipCitation,
         <Link
             href={citation.href}
             title={tooltip}
-            className="relative inline-block align-super mx-0.5 group my-auto"
+            className={styles.chip}
         >
 
             {mini ? (
-                <span className="inline-flex items-center rounded-md bg-primary-400 p-0 text-white">
+                <span className={styles.mini}>
                     <svg
                         aria-hidden="true"
-                        className="size-4"
                         fill="currentColor"
                         viewBox="0 0 16 16"
                     >
@@ -44,14 +45,14 @@ export default function SourceChip({ citation, mini }: { citation: ChipCitation,
                 </span>
             ) : (
                 <>
-                    <span className="bg-primary-400 text-white px-1.5 py-0.5 rounded-md text-xs">
+                    <span className={styles.label}>
                         {citation.orphaned
                             ? "Source changed"
                             : truncateAtWord(citation.documentTitle, 28)}
                     </span>
-                    <span className="hidden group-hover:block absolute left-0 top-full z-10 mt-1 w-72 bg-primary-100 text-foreground p-2 rounded-md text-sm font-normal whitespace-normal">
-                        <span className="block">{citation.documentTitle}</span>
-                        <span className="block mt-1">{quote}</span>
+                    <span className={styles.tooltip}>
+                        <span>{citation.documentTitle}</span>
+                        <span>{quote}</span>
                     </span>
                 </>
             )}

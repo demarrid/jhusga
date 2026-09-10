@@ -10,6 +10,8 @@ import { contributorRoleLabel } from "@/lib/contributors";
 import { formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind } from "@/lib/kinds";
 
+import styles from "../document-detail.module.css";
+
 export const dynamic = "force-dynamic";
 
 export default async function DocumentPage({
@@ -24,10 +26,12 @@ export default async function DocumentPage({
     if (!document) notFound();
 
     return (
-        <div className="max-w-7xl mx-auto p-6">
+        <main className={styles.page}>
+          <header className={styles.masthead}>
+            <Link className={styles.backLink} href="/documents">← All documents</Link>
             <h1>{document.title}</h1>
 
-            <p className="text-foreground-400">
+            <p className={styles.metadata}>
                 {[
                     documentKindLabel(document.kind),
                     document.meetingRole === "agenda" && "agenda",
@@ -52,7 +56,7 @@ export default async function DocumentPage({
               * should not have to hunt for it.
               */}
             {document.driveTitle !== document.title && (
-                <p className="text-foreground-400 text-sm">
+                <p className={styles.fileNote}>
                     {`Filed in Drive as “${document.driveTitle}”`}
                 </p>
             )}
@@ -64,14 +68,27 @@ export default async function DocumentPage({
               * the archive went and fetched because an agenda pointed at it.
               */}
             {document.discoveredVia === "link" && (
-                <p className="text-foreground-400 text-sm">
+                <p className={styles.fileNote}>
                     Not filed in the master folder. The archive holds it because
                     the documents under “Mentioned by” link to it.
                 </p>
             )}
 
+            <div className={styles.actions}>
+                <a href={document.source} target="_blank" rel="noreferrer">
+                    {originalLabel(document.source)} ↗
+                </a>
+                {document.lineageKey && isComparableKind(document.kind) && (
+                    <Link href={`/documents/${document.id}/compare`}>
+                        Compare across sessions
+                    </Link>
+                )}
+            </div>
+          </header>
+
+          <div className={styles.noticeStack}>
             {!document.isCurrentSession && (
-                <p className="bg-primary-100 text-red-500 rounded-md p-3 my-4">
+                <p className={styles.notice}>
                     This document is from a previous session and is kept for the
                     record. It may have been amended or replaced since.
                 </p>
@@ -84,7 +101,7 @@ export default async function DocumentPage({
               * lib/integrity.ts.
               */}
             {document.heldNotice && (
-                <p className="bg-primary-100 text-red-500 rounded-md p-3 my-4">
+                <p className={styles.notice}>
                     {document.heldNotice}
                 </p>
             )}
@@ -95,43 +112,26 @@ export default async function DocumentPage({
               * this document is watched more closely than the others.
               */}
             {document.anyoneCanEdit && (
-                <p className="text-foreground-400 text-sm my-2">
+                <p className={styles.notice}>
                     The source file is shared so that anyone with the link can edit
                     it, so any change to it is held for review before it appears here.
                 </p>
             )}
 
-            <p className="my-4 flex flex-row flex-wrap gap-4">
-                <a className="text-primary-500" href={document.source} target="_blank" rel="noreferrer">
-                    {originalLabel(document.source)}
-                </a>
-                {/*
-                  * Only the guiding documents. Every session adopts its own
-                  * constitution and bylaws, so the diff between two copies is
-                  * the amendment record; a meeting's minutes have no
-                  * counterpart in another session to diff against.
-                  */}
-                {document.lineageKey && isComparableKind(document.kind) && (
-                    <Link href={`/documents/${document.id}/compare`} className="text-green-400">
-                        Compare across sessions
-                    </Link>
-                )}
-            </p>
-
-            <hr className="my-4" />
+          </div>
 
             {/*
               * The reading pane and the aids to reading it. On a narrow screen
               * the summary comes first, because a reader who cannot see both
               * at once is better served by the short version.
               */}
-            <div className="flex flex-col-reverse lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start gap-8">
-                <article>
+            <div className={styles.readerLayout}>
+                <article className={styles.documentPane}>
                     <DocumentViewer blocks={document.blocks} />
                 </article>
 
-                <aside className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto flex flex-col gap-6">
-                    <section>
+                <aside className={styles.sidebar}>
+                    <section className={styles.sidebarSection}>
                         <h2>Summary</h2>
                         <DocumentRestatement restatement={document.restatement} />
                     </section>
@@ -144,29 +144,26 @@ export default async function DocumentPage({
                     />
 
                     {document.contributors.length > 0 && (
-                        <section>
+                        <section className={styles.sidebarSection}>
                             <h3>People named</h3>
                             <ul>
                                 {document.contributors.map((contributor) => (
                                     <li key={`${contributor.id}-${contributor.role}`}>
-                                        <Link className="text-secondary-600" href={`/documents?person=${contributor.id}`}>
+                                        <Link href={`/documents?mode=find&person=${contributor.id}`}>
                                             {contributor.name}
                                         </Link>
-                                        <span className="text-foreground-400 text-sm">
+                                        <span className={styles.asideMeta}>
                                             {` — ${contributorRoleLabel(contributor.role)}`}
                                             {contributor.note && ` (${contributor.note})`}
                                         </span>
                                     </li>
                                 ))}
                             </ul>
-                            <p className="text-foreground-400 text-sm">
-                                Read from the document text; open the original to verify.
-                            </p>
                         </section>
                     )}
 
                     {(document.driveOwnerName || document.driveLastEditorName) && (
-                        <p className="text-foreground-400 text-sm">
+                        <p className={styles.asideMeta}>
                             {[
                                 document.driveOwnerName &&
                                 `Drive file created by ${document.driveOwnerName}`,
@@ -179,7 +176,7 @@ export default async function DocumentPage({
                     )}
                 </aside>
             </div>
-        </div>
+        </main>
     );
 }
 

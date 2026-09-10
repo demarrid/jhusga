@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Source_Serif_4 } from "next/font/google";
+import { Source_Serif_4, Work_Sans } from "next/font/google";
 import Footer from "./(components)/Footer";
 import Header from "./(components)/Header";
 import "./globals.css";
@@ -9,8 +9,8 @@ const sourceSerif4 = Source_Serif_4({
   subsets: ["latin"],
 });
 
-const geistSans = Geist({
-  variable: "--font-geist",
+const workSans = Work_Sans({
+  variable: "--font-work-sans",
   subsets: ["latin"],
 });
 
@@ -37,7 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${sourceSerif4.variable} ${geistSans.variable} antialiased`}
+      className={`${sourceSerif4.variable} ${workSans.variable} antialiased`}
     >
       <body className="min-h-dvh flex flex-col bg-background text-foreground light">
         <Header />

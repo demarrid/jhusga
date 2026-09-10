@@ -14,6 +14,7 @@ import {
     type ForumViewer,
 } from "@/lib/login";
 import { consumeRateLimit } from "@/lib/ratelimit";
+import { demoModeEnabled } from "@/lib/data-mode";
 
 /**
  * Signing in to post.
@@ -26,10 +27,20 @@ import { consumeRateLimit } from "@/lib/ratelimit";
 export type AuthResult = { ok: boolean; error?: string; message?: string };
 
 export async function getViewer(): Promise<ForumViewer | null> {
+    if (demoModeEnabled()) {
+        return {
+            id: "demo-viewer",
+            role: "member",
+            affiliateId: "demo-maya",
+            affiliateName: "Maya Chen",
+            officeLabel: "Student Body President",
+        };
+    }
     return currentViewer();
 }
 
 export async function sendSignInCode(email: string): Promise<AuthResult> {
+    if (demoModeEnabled()) return { ok: true, message: "Demo mode: no email was sent. Use 000000 to preview the form." };
     const address = normalizeEmail(email);
 
     // Shape and domain are checked before either limit, so that a typo does
@@ -77,6 +88,7 @@ export async function submitSignInCode(
     email: string,
     code: string,
 ): Promise<AuthResult> {
+    if (demoModeEnabled()) return { ok: code === "000000", error: code === "000000" ? undefined : "Use 000000 in demo mode." };
     const limit = await consumeRateLimit("login_verify");
     if (!limit.allowed) {
         return {
@@ -99,6 +111,7 @@ export async function submitSignInCode(
 }
 
 export async function signOut(): Promise<AuthResult> {
+    if (demoModeEnabled()) return { ok: true, message: "Demo mode remains signed in." };
     await endSession();
     revalidatePath("/discussion");
     return { ok: true, message: "Signed out." };

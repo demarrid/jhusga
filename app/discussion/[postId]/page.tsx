@@ -7,6 +7,9 @@ import ModerationControls from "@/app/(components)/ModerationControls";
 import ReplyForm from "@/app/(components)/ReplyForm";
 import { formatDateShort } from "@/lib/dates";
 
+import DiscussionHeader from "../DiscussionHeader";
+import styles from "../discussion.module.css";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -30,23 +33,25 @@ export default async function Thread({
     const moderating = viewer?.role === "moderator";
 
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <p className="text-foreground-400">
-                <Link className="text-primary-700" href="/discussion">
+        <main className={styles.page}>
+          <DiscussionHeader eyebrow={post.categoryName} title="Discussion thread" compact />
+          <div className={styles.content}>
+           <article className={styles.thread}>
+            <p className={styles.breadcrumb}>
+                <Link href="/discussion">
                     Discussion
                 </Link>
                 {" · "}
                 <Link
-                    className="text-primary-700"
                     href={`/discussion?category=${post.categorySlug}`}
                 >
                     {post.categoryName}
                 </Link>
             </p>
 
-            <h1>{post.title}</h1>
+            <h1 className={styles.threadTitle}>{post.title}</h1>
 
-            <p className="text-foreground-400">
+            <p className={styles.threadMeta}>
                 <Byline author={post.author} />
                 {" · "}
                 {formatDateShort(post.createdAt)}
@@ -71,7 +76,8 @@ export default async function Thread({
                 />
             )}
 
-            <h2>
+            <section className={styles.replies}>
+            <h2 className={styles.repliesHeading}>
                 {post.replies.length === 0
                     ? "No replies yet"
                     : post.replies.length === 1
@@ -80,8 +86,8 @@ export default async function Thread({
             </h2>
 
             {post.replies.map((reply) => (
-                <div key={reply.id} className="border-l-2 border-primary-100 pl-3 my-4">
-                    <p className="text-foreground-400">
+                <article key={reply.id} className={styles.reply}>
+                    <p className={styles.threadMeta}>
                         <Byline author={reply.author} />
                         {" · "}
                         {formatDateShort(reply.createdAt)}
@@ -103,14 +109,15 @@ export default async function Thread({
                             hiddenBy={reply.hiddenBy}
                         />
                     )}
-                </div>
+                </article>
             ))}
+            </section>
 
             {post.locked ? (
-                <p className="text-foreground-400 italic my-6">
+                <p className={styles.lockedNotice}>
                     A moderator locked this thread. It stays readable, and the
                     reason is in the{" "}
-                    <Link className="text-primary-700" href="/discussion/moderation">
+                    <Link className={styles.inlineLink} href="/discussion/moderation">
                         log
                     </Link>
                     .
@@ -121,9 +128,9 @@ export default async function Thread({
                     officeLabel={viewer.affiliateId ? viewer.officeLabel : null}
                 />
             ) : (
-                <p className="my-6">
+                <p className={styles.replyPrompt}>
                     <Link
-                        className="text-primary-700"
+                        className={styles.inlineLink}
                         href={`/auth?next=/discussion/${post.id}`}
                     >
                         Sign in with a Hopkins address
@@ -131,7 +138,9 @@ export default async function Thread({
                     to reply. Reading needs nothing.
                 </p>
             )}
-        </div>
+           </article>
+          </div>
+        </main>
     );
 }
 
@@ -166,23 +175,23 @@ function Body({
     const paragraphs = text.split(/\n{2,}/).filter((line) => line.trim().length > 0);
 
     const content = paragraphs.map((paragraph, index) => (
-        <p key={index} className="whitespace-pre-wrap">
+        <p key={index}>
             {paragraph}
         </p>
     ));
 
-    if (!hidden) return <div className="my-3">{content}</div>;
+    if (!hidden) return <div className={styles.body}>{content}</div>;
 
     // A held item and a hidden one read differently on purpose. One is a
     // machine's guess nobody has checked; the other is somebody's decision.
     return (
-        <details className="bg-primary-100 rounded-md p-3 my-3">
-            <summary className="text-red-500">
+        <details className={styles.hiddenBody}>
+            <summary>
                 {hiddenBy === "screen"
                     ? `Screening is holding this ${what} until a moderator looks at it, so it is not listed on the discussion: ${reason}`
                     : `A moderator hid this ${what}: ${reason}`}
             </summary>
-            <div className="my-3">{content}</div>
+            <div className={styles.body}>{content}</div>
         </details>
     );
 }

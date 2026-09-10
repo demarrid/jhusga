@@ -4,6 +4,9 @@ import { getViewer } from "@/api/auth";
 import { getCategories, getPosts, type ForumPostSummary } from "@/api/forum";
 import { formatDateShort } from "@/lib/dates";
 
+import DiscussionHeader from "./DiscussionHeader";
+import styles from "./discussion.module.css";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -28,43 +31,49 @@ export default async function Discussion({
     const selected = categories.find((entry) => entry.slug === category);
 
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <h1>Discussion</h1>
-
-            <p>
+        <main className={styles.page}>
+            <DiscussionHeader eyebrow="Public forum" title="Discussion">
+              <p>
                 Anything undergraduates want to raise with the SGA, or with each
                 other, without a name attached.{" "}
-                <Link className="text-primary-700" href="/discussion/rules">
+                <Link href="/discussion/rules">
                     How it works
-                </Link>{" "}
-                — what is kept, what is not, and how moderation is published.
-            </p>
+                </Link> explains anonymity and public moderation.
+              </p>
+            </DiscussionHeader>
 
-            <div className="flex flex-row flex-wrap items-center gap-3 my-4">
+            <section className={styles.forumChapter}>
+              <aside className={styles.forumRail}>
+                <span>01</span>
+                <h2>Public threads</h2>
+                <Link href="/discussion/moderation">Moderation log ↗</Link>
+              </aside>
+
+              <div className={styles.forumContent}>
+                <div className={styles.toolbar}>
+                  <div>
+                    <h2>{selected ? selected.name : "All threads"}</h2>
+                    <p>{selected?.description ?? "Questions, proposals, criticism, and conversation from Hopkins undergraduates."}</p>
+                  </div>
                 {viewer ? (
                     <Link
-                        className="bg-primary-400 text-white px-3 py-1 rounded-md"
+                        className={styles.primaryAction}
                         href="/discussion/new"
                     >
                         Start a thread
                     </Link>
                 ) : (
                     <Link
-                        className="bg-primary-400 text-white px-3 py-1 rounded-md"
+                        className={styles.primaryAction}
                         href="/auth?next=/discussion/new"
                     >
                         Sign in to post
                     </Link>
                 )}
 
-                <Link className="text-primary-700" href="/discussion/moderation">
-                    Moderation log
-                </Link>
-            </div>
+                </div>
 
-            <section className="my-6">
-                <h2>Categories</h2>
-                <p className="flex flex-row flex-wrap gap-2 my-2">
+                <nav className={styles.categoryNav} aria-label="Discussion categories">
                     <CategoryChip
                         href="/discussion"
                         label="Everything"
@@ -78,26 +87,24 @@ export default async function Discussion({
                             active={selected?.slug === entry.slug}
                         />
                     ))}
-                </p>
-                {selected && (
-                    <p className="text-foreground-400">{selected.description}</p>
-                )}
-            </section>
+                </nav>
 
             {posts.length === 0 ? (
-                <p className="text-foreground-400 italic">
+                <p className={styles.emptyState}>
                     {selected
                         ? `Nothing in ${selected.name} yet.`
                         : "Nothing has been posted yet."}
                 </p>
             ) : (
-                <ul>
-                    {posts.map((post) => (
-                        <PostRow key={post.id} post={post} />
+                <ul className={styles.postList}>
+                    {posts.map((post, index) => (
+                        <PostRow key={post.id} post={post} index={index + 1} />
                     ))}
                 </ul>
             )}
-        </div>
+              </div>
+            </section>
+        </main>
     );
 }
 
@@ -113,30 +120,28 @@ function CategoryChip({
     return (
         <Link
             href={href}
-            className={
-                active
-                    ? "bg-primary-400 text-white px-2 py-1 rounded-md"
-                    : "bg-primary-100 text-primary-700 px-2 py-1 rounded-md"
-            }
+            // Filtering changes the list in place; keep the reader at the forum controls.
+            scroll={false}
+            className={`${styles.categoryLink} ${active ? styles.categoryLinkActive : ""}`}
         >
             {label}
         </Link>
     );
 }
 
-function PostRow({ post }: { post: ForumPostSummary }) {
+function PostRow({ post, index }: { post: ForumPostSummary; index: number }) {
     return (
-        <li className="my-3">
-            <Link href={`/discussion/${post.id}`}>{post.title}</Link>
+        <li className={styles.postRow}>
+            <span className={styles.postIndex}>{String(index).padStart(2, "0")}</span>
+            <article>
+              <Link className={styles.postTitle} href={`/discussion/${post.id}`}>{post.title}</Link>
 
-            <span className="text-foreground-400">
-                {" — "}
+              <div className={styles.postMeta}>
                 {[
                     post.categoryName,
                     formatDateShort(post.createdAt),
                     post.replyCount === 1 ? "1 reply" : `${post.replyCount} replies`,
                 ].join(" · ")}
-            </span>
 
             {/*
               * An officer's post says so in the listing. This is the only
@@ -145,21 +150,24 @@ function PostRow({ post }: { post: ForumPostSummary }) {
               * these came from inside the SGA.
               */}
             {post.author.name && (
-                <span className="text-foreground-400">
+                <span>
                     {" · "}
                     {post.author.name}
                     {post.author.label ? `, ${post.author.label}` : ""}
                 </span>
             )}
+              </div>
 
             {post.hidden ? (
-                <p className="text-foreground-400 italic">
+                <p className={styles.postPreview}>
                     Hidden by a moderator: {post.hiddenReason} It is still
                     readable, and the decision is in the log.
                 </p>
             ) : (
-                <p className="text-foreground-400 text-sm">{post.preview}</p>
+                <p className={styles.postPreview}>{post.preview}</p>
             )}
+            </article>
+            <Link className={styles.postArrow} href={`/discussion/${post.id}`} aria-label={`Open ${post.title}`}>↗</Link>
         </li>
     );
 }

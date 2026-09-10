@@ -4,6 +4,7 @@ import type { MeetingCounterpart, RelatedDocument, UnresolvedLink } from "@/api/
 import { sessionOrdinal } from "@/config/session";
 import { documentKindLabel } from "@/lib/kinds";
 import { meetingRoleLabel } from "@/lib/meetings";
+import styles from "@/app/documents/document-detail.module.css";
 
 /**
  * How a document connects to the rest of the archive.
@@ -36,9 +37,9 @@ export default function RelatedDocuments({
     }
 
     return (
-        <div className="flex flex-col gap-4">
+        <>
             {counterpart && (
-                <section>
+                <section className={styles.sidebarSection}>
                     <h3>
                         {counterpart.role === "minutes"
                             ? "Minutes of this meeting"
@@ -47,10 +48,10 @@ export default function RelatedDocuments({
                     <ul>
                         {counterpart.documents.map((document) => (
                             <li key={document.id}>
-                                <Link className="text-primary-500" href={`/documents/${document.id}`}>
+                                <Link href={`/documents/${document.id}`}>
                                     {document.title.trim()}
                                 </Link>
-                                <span className="text-foreground-400 text-sm">
+                                <span className={styles.asideMeta}>
                                     {` — ${meetingRoleLabel(counterpart.role)}`}
                                 </span>
                             </li>
@@ -71,7 +72,7 @@ export default function RelatedDocuments({
                 caption="Documents that link here."
                 documents={referencedBy}
             />
-        </div>
+        </>
     );
 }
 
@@ -89,13 +90,12 @@ function RelatedList({
     if (documents.length === 0 && unresolved.length === 0) return null;
 
     return (
-        <section>
+        <section className={styles.sidebarSection}>
             <h3>{heading}</h3>
             <ul>
                 {documents.map((document) => (
                     <li key={document.id}>
                         <Link
-                            className="text-primary-700"
                             href={`/documents/${document.id}`}
                             // The author's own link text is often more useful
                             // than the Drive filename, so it is the label and
@@ -104,7 +104,7 @@ function RelatedList({
                         >
                             {(document.anchorText || document.title).trim()}
                         </Link>
-                        <span className="text-foreground-400 text-sm">
+                        <span className={styles.asideMeta}>
                             {` — ${documentKindLabel(document.kind)}`}
                             {document.sessionNumber !== null &&
                                 `, ${sessionOrdinal(document.sessionNumber)} session`}
@@ -116,7 +116,7 @@ function RelatedList({
                         <a href={link.url} target="_blank" rel="noreferrer">
                             {unresolvedLabel(link)}
                         </a>
-                        <span className="text-foreground-400 text-sm">
+                        <span className={styles.asideMeta}>
                             {link.source === "sharepoint"
                                 ? " — SharePoint (sign-in required to read)"
                                 : " — Google Doc (not in the archive)"}
@@ -124,7 +124,7 @@ function RelatedList({
                     </li>
                 ))}
             </ul>
-            <p className="text-foreground-400 text-sm">{caption}</p>
+            <p className={styles.asideMeta}>{caption}</p>
         </section>
     );
 }

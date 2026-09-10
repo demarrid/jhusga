@@ -10,6 +10,7 @@ import {
     FORUM_CATEGORIES,
     TITLE_MAX_CHARS,
 } from "@/config/forum";
+import styles from "@/app/discussion/discussion.module.css";
 
 /**
  * Writing a thread.
@@ -55,14 +56,14 @@ export default function NewPostForm({
 
     return (
         <form
-            className="my-6"
+            className={styles.form}
             onSubmit={(event) => {
                 event.preventDefault();
                 submit();
             }}
         >
-            <p className="my-3">
-                <label className="block" htmlFor="post-title">
+            <p className={styles.field}>
+                <label htmlFor="post-title">
                     Title
                 </label>
                 <input
@@ -71,19 +72,19 @@ export default function NewPostForm({
                     value={title}
                     maxLength={TITLE_MAX_CHARS}
                     placeholder="What is this about?"
-                    className="border border-foreground-800 rounded-md px-2 py-1 w-full bg-background"
+                    className={styles.input}
                     onChange={(event) => setTitle(event.target.value)}
                 />
             </p>
 
-            <p className="my-3">
-                <label className="block" htmlFor="post-category">
+            <p className={styles.field}>
+                <label htmlFor="post-category">
                     Category
                 </label>
                 <select
                     id="post-category"
                     value={categorySlug}
-                    className="border border-foreground-800 rounded-md px-2 py-1 bg-background"
+                    className={styles.select}
                     onChange={(event) => setCategorySlug(event.target.value)}
                 >
                     {FORUM_CATEGORIES.map((category) => (
@@ -94,8 +95,8 @@ export default function NewPostForm({
                 </select>
             </p>
 
-            <p className="my-3">
-                <label className="block" htmlFor="post-body">
+            <p className={styles.field}>
+                <label htmlFor="post-body">
                     What you want to say
                 </label>
                 <textarea
@@ -103,18 +104,18 @@ export default function NewPostForm({
                     value={body}
                     rows={10}
                     maxLength={BODY_MAX_CHARS}
-                    className="border border-foreground-800 rounded-md px-2 py-1 w-full bg-background"
+                    className={styles.textarea}
                     onChange={(event) => setBody(event.target.value)}
                 />
-                <span className="text-foreground-400 text-sm">
+                <span className={styles.fieldNote}>
                     {body.length.toLocaleString()} of{" "}
                     {BODY_MAX_CHARS.toLocaleString()} characters
                 </span>
             </p>
 
             {officeLabel && (
-                <p className="my-3">
-                    <label className="flex flex-row items-center gap-2">
+                <p className={styles.field}>
+                    <label className={styles.checkboxLabel}>
                         <input
                             type="checkbox"
                             checked={named}
@@ -122,28 +123,28 @@ export default function NewPostForm({
                         />
                         Post on the record, as {officeLabel}
                     </label>
-                    <span className="text-foreground-400 text-sm">
+                    <span className={styles.fieldNote}>
                         Leave this off and the post is anonymous, exactly like
                         anyone else&rsquo;s.
                     </span>
                 </p>
             )}
 
-            <p className="my-3 flex flex-row items-center gap-3">
+            <p className={styles.formActions}>
                 <button
                     type="submit"
                     disabled={pending || title.trim().length < 8 || body.trim().length < 10}
-                    className="bg-primary-400 text-white px-3 py-1 rounded-md disabled:opacity-50"
+                    className={styles.submitButton}
                 >
                     {pending ? "Posting…" : "Post"}
                 </button>
-                <span className="text-foreground-400 text-sm">
+                <span className={styles.fieldNote}>
                     Once posted this stays up. You cannot delete it; a moderator
                     can, and the reason is published.
                 </span>
             </p>
 
-            <div aria-live="polite">{error && <p className="text-red-500">{error}</p>}</div>
+            <div aria-live="polite">{error && <p className={styles.error}>{error}</p>}</div>
         </form>
     );
 }

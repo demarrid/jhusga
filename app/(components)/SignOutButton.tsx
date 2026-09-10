@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { signOut } from "@/api/auth";
+import styles from "@/app/auth/auth.module.css";
 
 /**
  * Signing out deletes the session row rather than just dropping the cookie,
@@ -17,7 +18,7 @@ export default function SignOutButton() {
         <button
             type="button"
             disabled={pending}
-            className="text-primary-700 underline disabled:opacity-50"
+            className={styles.textButton}
             onClick={() =>
                 startTransition(async () => {
                     await signOut();

@@ -2,6 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { type SectionStatus } from "@/lib/sections";
+import { demoModeEnabled } from "@/lib/data-mode";
+import { demoSections } from "@/lib/demo-data";
 
 /**
  * Read access to cached, cited prose.
@@ -38,6 +40,7 @@ function normaliseStatus(status: string): SectionStatus {
 }
 
 export async function getSection(key: string): Promise<Section | null> {
+    if (demoModeEnabled()) return demoSections([key])[key] ?? null;
     const section = await prisma.generatedSection.findUnique({
         where: { key },
         include: {
@@ -77,6 +80,7 @@ export async function getSection(key: string): Promise<Section | null> {
 export async function getSections(
     keys: string[],
 ): Promise<Record<string, Section>> {
+    if (demoModeEnabled()) return demoSections(keys);
     const sections = await Promise.all(keys.map((key) => getSection(key)));
 
     return sections.reduce<Record<string, Section>>((accumulator, section) => {
@@ -87,5 +91,8 @@ export async function getSections(
 
 /** Most recent sync attempt, for a "last updated" or health indicator. */
 export async function getLatestSyncRun() {
+    if (demoModeEnabled()) {
+        return { id: "demo-sync", startedAt: new Date("2026-09-09T15:15:00.000Z"), finishedAt: new Date("2026-09-09T15:16:00.000Z"), status: "completed" };
+    }
     return prisma.syncRun.findFirst({ orderBy: { startedAt: "desc" } });
 }

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { sendSignInCode, submitSignInCode } from "@/api/auth";
 import { ALLOWED_EMAIL_DOMAINS } from "@/config/forum";
+import styles from "@/app/auth/auth.module.css";
 
 /**
  * Signing in, in two steps.
@@ -52,8 +53,8 @@ export default function SignIn({ next }: { next?: string }) {
     }
 
     return (
-        <section className="bg-primary-100 rounded-md p-4 my-6">
-            <p className="text-foreground-400">
+        <section className={styles.signIn}>
+            <p>
                 A Hopkins address ({ALLOWED_EMAIL_DOMAINS.join(", ")}) is sent a
                 one-time code; it is stored only as a one-way hash, and
                 nothing posted afterward is attached to it.
@@ -61,7 +62,7 @@ export default function SignIn({ next }: { next?: string }) {
 
             {!sent ? (
                 <form
-                    className="flex flex-row flex-wrap items-center gap-2 my-3"
+                    className={styles.authForm}
                     onSubmit={(event) => {
                         event.preventDefault();
                         request();
@@ -73,20 +74,20 @@ export default function SignIn({ next }: { next?: string }) {
                         autoComplete="email"
                         placeholder="jdoe1@jh.edu"
                         aria-label="Your Hopkins email address"
-                        className="border border-foreground-800 rounded-md px-2 py-1 grow min-w-64 bg-background"
+                        className={styles.input}
                         onChange={(event) => setEmail(event.target.value)}
                     />
                     <button
                         type="submit"
                         disabled={pending || email.trim().length < 5}
-                        className="bg-primary-400 text-white px-3 py-1 rounded-md disabled:opacity-50"
+                        className={styles.button}
                     >
                         {pending ? "Sending…" : "Send code"}
                     </button>
                 </form>
             ) : (
                 <form
-                    className="flex flex-row flex-wrap items-center gap-2 my-3"
+                    className={styles.authForm}
                     onSubmit={(event) => {
                         event.preventDefault();
                         verify();
@@ -100,19 +101,19 @@ export default function SignIn({ next }: { next?: string }) {
                         maxLength={6}
                         placeholder="000000"
                         aria-label="The six-digit code"
-                        className="border border-foreground-800 rounded-md px-2 py-1 w-32 bg-background tracking-widest"
+                        className={`${styles.input} ${styles.codeInput}`}
                         onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
                     />
                     <button
                         type="submit"
                         disabled={pending || code.length !== 6}
-                        className="bg-primary-400 text-white px-3 py-1 rounded-md disabled:opacity-50"
+                        className={styles.button}
                     >
                         {pending ? "Checking…" : "Sign in"}
                     </button>
                     <button
                         type="button"
-                        className="text-primary-700 underline"
+                        className={styles.textButton}
                         onClick={() => {
                             setSent(false);
                             setCode("");
@@ -126,8 +127,8 @@ export default function SignIn({ next }: { next?: string }) {
             )}
 
             <div aria-live="polite">
-                {error && <p className="text-red-500">{error}</p>}
-                {!error && message && <p className="text-foreground-400">{message}</p>}
+                {error && <p className={styles.error}>{error}</p>}
+                {!error && message && <p className={styles.message}>{message}</p>}
             </div>
         </section>
     );

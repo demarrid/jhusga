@@ -4,6 +4,8 @@ import { getViewer } from "@/api/auth";
 import SignIn from "@/app/(components)/SignIn";
 import SignOutButton from "@/app/(components)/SignOutButton";
 
+import styles from "./auth.module.css";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -27,32 +29,41 @@ export default async function Auth({
     const destination = next?.startsWith("/") ? next : undefined;
 
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <h1>Sign in</h1>
+        <main className={styles.page}>
+          <header className={styles.masthead}>
+            <p>Discussion access</p>
+            <div>
+              <h1>Sign in</h1>
+              <p>Read everything without an account. Sign in only when you want to post or reply.</p>
+            </div>
+          </header>
 
+          <section className={styles.content}>
+            <div className={styles.sectionLabel}><span>01</span> Hopkins verification</div>
+            <div className={styles.panel}>
             {viewer ? (
                 <>
-                    <p>
+                    <p className={styles.lead}>
                         You are signed in
                         {viewer.affiliateName
                             ? ` as ${viewer.affiliateName}${viewer.officeLabel ? `, ${viewer.officeLabel}` : ""}`
                             : " anonymously"}
                         .{" "}
-                        <Link className="text-primary-700" href={destination ?? "/discussion"}>
+                        <Link className={styles.inlineLink} href={destination ?? "/discussion"}>
                             Go to the discussion
                         </Link>
                         .
                     </p>
 
                     {viewer.affiliateId ? (
-                        <p className="text-foreground-400">
+                        <p className={styles.supporting}>
                             Because you hold office, each post asks whether you
                             want your name on it. It is off unless you turn it
                             on, and a post you make anonymously is as anonymous
                             as anyone else&rsquo;s.
                         </p>
                     ) : (
-                        <p className="text-foreground-400">
+                        <p className={styles.supporting}>
                             Your session records that somebody at Hopkins signed
                             in. It does not record which address, and there is
                             no column anywhere joining it to what you post.
@@ -60,10 +71,10 @@ export default async function Auth({
                     )}
 
                     {viewer.role === "moderator" && (
-                        <p className="text-foreground-400">
+                        <p className={styles.supporting}>
                             You can moderate. Every action you take is published
                             under your name in the{" "}
-                            <Link className="text-primary-700" href="/discussion/moderation">
+                            <Link className={styles.inlineLink} href="/discussion/moderation">
                                 moderation log
                             </Link>
                             .
@@ -76,9 +87,9 @@ export default async function Auth({
                 <>
                     <SignIn next={destination} />
 
-                    <p className="text-foreground-400">
+                    <p className={styles.supporting}>
                         What happens to the address is set out in the{" "}
-                        <Link className="text-primary-700" href="/discussion/rules">
+                        <Link className={styles.inlineLink} href="/discussion/rules">
                             forum rules
                         </Link>
                         , along with everything else the forum does and does not
@@ -86,6 +97,8 @@ export default async function Auth({
                     </p>
                 </>
             )}
-        </div>
+            </div>
+          </section>
+        </main>
     );
 }
