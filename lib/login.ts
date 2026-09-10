@@ -137,19 +137,19 @@ export async function requestLoginCode(email: string): Promise<RequestCodeResult
     try {
         await sendMail({
             to: address,
-            subject: `${code} is your SGA discussion sign-in code`,
+            subject: `${code} is your jhusga.org sign-in code`,
             text: [
-                `Your sign-in code is ${code}.`,
+                `Your sign-in code for https://www.jhusga.org/ is ${code}.`,
+                `It will expire in ${LOGIN_CODE_MINUTES} minutes.`,
                 "",
-                `It is good for ${LOGIN_CODE_MINUTES} minutes.`,
-                "",
-                "This code proves to the forum that somebody at Hopkins is signing in.",
-                "It is not stored against anything you go on to post: your address is",
-                "kept only as a one-way hash, and posts carry no author unless you",
-                "hold office and choose to be named.",
-                "",
-                "If you did not ask for this, nothing has happened and you can ignore it.",
+                "Do not share this code with anyone. If you did not ask for this, nothing has happened and you can ignore it.",
             ].join("\n"),
+            html: [
+                `<p>Your sign-in code for<a href="https://www.jhusga.org/">jhusga.org</a> is <strong>${code}</strong>.</p>`,
+                `<p>It will expire in ${LOGIN_CODE_MINUTES} minutes.</p>`,
+                `<p style="color: #b91c1c;"><strong>Do not share this code with anyone.</strong></p>`,
+                `<p>If you did not ask for this, nothing has happened and you can ignore it.</p>`,
+            ].join(""),
         });
     } catch (cause) {
         await prisma.loginCode.deleteMany({ where: { emailHash } });
@@ -335,7 +335,7 @@ export async function currentViewer(): Promise<ForumViewer | null> {
     if (!session) return null;
 
     if (session.expiresAt.getTime() < Date.now()) {
-        await prisma.forumSession.delete({ where: { id: session.id } }).catch(() => {});
+        await prisma.forumSession.delete({ where: { id: session.id } }).catch(() => { });
         return null;
     }
 
@@ -361,7 +361,7 @@ export async function signOut(): Promise<void> {
     if (token) {
         await prisma.forumSession
             .delete({ where: { tokenHash: hashToken(token) } })
-            .catch(() => {});
+            .catch(() => { });
     }
 
     store.delete(COOKIE_NAME);

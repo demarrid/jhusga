@@ -20,6 +20,8 @@ export type Mail = {
     to: string;
     subject: string;
     text: string;
+    /** Optional; the text part is always sent, so a client that refuses HTML still reads. */
+    html?: string;
 };
 
 export function mailIsConfigured(): boolean {
@@ -61,6 +63,7 @@ export async function sendMail(mail: Mail): Promise<{ id: string }> {
             to: [mail.to],
             subject: mail.subject,
             text: mail.text,
+            ...(mail.html ? { html: mail.html } : {}),
         }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         cache: "no-store",

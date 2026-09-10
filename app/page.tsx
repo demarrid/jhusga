@@ -28,15 +28,30 @@ export default function Home() {
         <p className="z-10 text-xl">The Student Government Association (SGA) at Johns Hopkins University is the representative body of undergraduate students. It is a student-run organization that is responsible for representing the interests of the student body to the University's administration.</p>
       </div>
 
-      <div>
-
-        <h2>QUICK LINKS</h2>
-        <div className="flex flex-row justify-between px-20">
-          <Link href="/documents">Documents</Link>
-          <Link href="/contact#funding">Club Funding</Link>
-          <Link href="/discussion">Discussion</Link>
+      <div className="flex flex-col items-center w-full my-8">
+        <h2 className="text-2xl font-semibold mb-6 text-center">QUICK LINKS</h2>
+        <div className="flex flex-row gap-8">
+          <Link
+            href="/documents"
+            className="bg-primary-300 px-8 py-6 text-center font-medium text-xl flex flex-col items-center "
+          >
+            Documents
+          </Link>
+          <Link
+            href="/contact#funding"
+            className="bg-primary-300 px-8 py-6 text-center font-medium text-xl flex flex-col items-center "
+          >
+            Club Funding
+          </Link>
+          <Link
+            href="/discussion"
+            className="bg-primary-300 px-8 py-6 text-center font-medium text-xl flex flex-col items-center "
+          >
+            Discussion
+          </Link>
         </div>
       </div>
+ 
     </div>
   );
 }
