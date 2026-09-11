@@ -1,11 +1,9 @@
 import Link from "next/link";
 
-import BlueJayAsciiVideo from "@/app/(components)/BlueJayAsciiVideo";
+import HeroBackground from "@/app/(components)/HeroBackground";
 import styles from "@/app/home.module.css";
-import { useWebGL } from "./utils";
 
 export default function Home() {
-  const hasWebGL = useWebGL();
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
@@ -22,18 +20,7 @@ export default function Home() {
             <span className={styles.arrow} aria-hidden="true">↗</span>
           </Link>
         </div>
-        {hasWebGL ? (
-          <BlueJayAsciiVideo />
-        ) : (
-          <div className={styles.backgroundImageWrap}>
-            <img
-              src="/home_background.jpg"
-              alt="Gilman Background"
-              className={styles.backgroundDimmed}
-            />
-          </div>
-        )}
-  
+        <HeroBackground />
       </section>
 
       <section
