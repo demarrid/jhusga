@@ -1,5 +1,6 @@
 import type { DocumentRestatement as Restatement, SummaryCitation } from "@/api/documents";
 import { citedIndexes, splitCitedParts, truncateAtWord } from "@/lib/cite";
+import styles from "@/app/documents/document-detail.module.css";
 
 /**
  * The plain-language reading of a document, shown beside it.
@@ -18,9 +19,10 @@ export default function DocumentRestatement({
 }) {
     if (!restatement || !restatement.content) {
         return (
-            <p className="text-foreground-400 italic">
-                No plain-language summary yet. Run <code>npm run summarize</code> to
-                write one from this document.
+            <p className={styles.muted}>
+                No plain-language summary yet. 
+                {/* Run <code>npm run summarize</code> to
+                write one from this document. */}
             </p>
         );
     }
@@ -34,9 +36,9 @@ export default function DocumentRestatement({
     const leftover = restatement.citations.filter((_, index) => !used.has(index + 1));
 
     return (
-        <div>
+        <div className={styles.summary}>
             {restatement.status === "stale" && (
-                <p className="text-foreground-400 italic">
+                <p className={styles.muted}>
                     The document has changed since this was written, so it is awaiting
                     recheck. Read the document itself for anything that matters.
                 </p>
@@ -45,7 +47,7 @@ export default function DocumentRestatement({
             {renderBlocks(restatement.content, byIndex)}
 
             {leftover.length > 0 && (
-                <p className="mt-2">
+                <p>
                     {leftover.map((citation, index) => (
                         <QuoteChip
                             key={citation.annotationId}
@@ -56,10 +58,6 @@ export default function DocumentRestatement({
                 </p>
             )}
 
-            <p className="text-foreground-400 text-sm mt-3">
-                Written from this document alone. Every claim links to the passage it
-                came from.
-            </p>
         </div>
     );
 }
@@ -85,12 +83,12 @@ function QuoteChip({
                     ? "This passage has changed since it was cited."
                     : quote
             }
-            className="relative inline-block align-super mx-0.5 group"
+            className={styles.citation}
         >
-            <span className="bg-primary-400 text-white px-1.5 rounded-md text-xs">
+            <span className={styles.citationMark}>
                 {citation.orphaned ? "changed" : index}
             </span>
-            <span className="hidden group-hover:block absolute left-0 top-full z-10 mt-1 w-72 bg-primary-100 text-foreground p-2 rounded-md text-sm font-normal whitespace-normal">
+            <span className={styles.citationTooltip}>
                 {quote}
             </span>
         </a>
@@ -98,35 +96,19 @@ function QuoteChip({
 }
 
 function renderBlocks(content: string, byIndex: Map<number, SummaryCitation>) {
-    const blocks = content.split(/\n\s*\n/).filter(Boolean);
+    const points = content
+        .split(/\n\s*\n/)
+        .flatMap((block) => block.split("\n"))
+        .map((line) => line.trim().replace(/^[-*•]\s+/, ""))
+        .filter(Boolean);
 
-    return blocks.map((block, index) => {
-        const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
-        const bullets = lines.filter((line) => /^[-*•]\s+/.test(line));
-
-        if (bullets.length > 0 && bullets.length === lines.length) {
-            return (
-                <ul key={index}>
-                    {lines.map((line, lineIndex) => (
-                        <li key={lineIndex}>
-                            {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex)}
-                        </li>
-                    ))}
-                </ul>
-            );
-        }
-
-        return (
-            <p key={index}>
-                {lines.map((line, lineIndex) => (
-                    <span key={lineIndex}>
-                        {lineIndex > 0 && <br />}
-                        {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex)}
-                    </span>
-                ))}
-            </p>
-        );
-    });
+    return (
+        <ul>
+            {points.map((point, index) => (
+                <li key={index}>{renderCitedLine(point, byIndex)}</li>
+            ))}
+        </ul>
+    );
 }
 
 function renderCitedLine(text: string, byIndex: Map<number, SummaryCitation>) {

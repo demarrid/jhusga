@@ -1,0 +1,185 @@
+.page {
+  min-height: 100vh;
+  padding: clamp(3rem, 8vw, 6rem) max(1.25rem, calc((100vw - 46rem) / 2));
+  background: #ffffff;
+  color: #1f2f42;
+}
+
+.masthead {
+  padding-bottom: 2rem;
+  border-bottom: 1px solid #d3dbe3;
+}
+
+.masthead > p {
+  margin: 0 0 0.65rem;
+  color: #65768a;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.masthead h1 {
+  margin: 0;
+  color: #172b44;
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: clamp(1.8rem, 4vw, 2.35rem);
+  font-weight: 680;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+
+.masthead div > p {
+  max-width: 38rem;
+  margin: 0.75rem 0 0;
+  color: #65768a;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.content {
+  padding: 2rem 0 0;
+}
+
+.sectionLabel {
+  margin-bottom: 1rem;
+  color: #65768a;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.sectionLabel span {
+  display: none;
+}
+
+.panel {
+  max-width: 50rem;
+}
+
+.lead {
+  margin: 0;
+  color: #1f2f42;
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 540;
+  line-height: 1.5;
+}
+
+.supporting {
+  margin: 1.25rem 0 0;
+  color: #627589;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.supporting a,
+.inlineLink {
+  color: #164f87;
+  font-weight: 650;
+  text-decoration-color: #79addb;
+  text-underline-offset: 0.22em;
+}
+
+.signIn {
+  margin: 1.75rem 0 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid #d3dbe3;
+}
+
+.signIn > p {
+  max-width: 42rem;
+  margin: 0;
+  color: #52677d;
+  line-height: 1.65;
+}
+
+.authForm {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) auto;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.authForm .textButton {
+  grid-column: 1 / -1;
+}
+
+.input {
+  min-height: 3.1rem;
+  padding: 0 0.9rem;
+  border: 1px solid #92a7bb;
+  border-radius: 0;
+  background: #ffffff;
+  color: #172b44;
+  font: inherit;
+}
+
+.codeInput {
+  max-width: 10rem;
+  letter-spacing: 0.2em;
+}
+
+.input:focus {
+  border-color: #377ebc;
+  outline: 2px solid #b9daf6;
+  outline-offset: 1px;
+}
+
+.button {
+  min-height: 3.1rem;
+  padding: 0 1.1rem;
+  border: 1px solid #002d72;
+  border-radius: 0;
+  background: #002d72;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 680;
+  letter-spacing: 0.055em;
+  text-transform: none;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.textButton {
+  width: max-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #164f87;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.message,
+.error {
+  margin-top: 1rem;
+  color: #607286;
+  font-size: 0.85rem;
+}
+
+.error {
+  color: #9f2525;
+}
+
+@media (max-width: 820px) {
+  .panel {
+    max-width: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .authForm {
+    grid-template-columns: 1fr;
+  }
+
+  .button {
+    width: 100%;
+  }
+}

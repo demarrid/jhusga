@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { createReply } from "@/api/forum";
+import Checkbox from "@/app/(components)/Checkbox";
 import { BODY_MAX_CHARS } from "@/config/forum";
+import styles from "@/app/discussion/discussion.module.css";
 
 export default function ReplyForm({
     postId,
@@ -37,13 +39,13 @@ export default function ReplyForm({
 
     return (
         <form
-            className="my-6"
+            className={styles.replyForm}
             onSubmit={(event) => {
                 event.preventDefault();
                 submit();
             }}
         >
-            <label className="block" htmlFor="reply-body">
+            <label htmlFor="reply-body">
                 Reply
             </label>
             <textarea
@@ -51,32 +53,29 @@ export default function ReplyForm({
                 value={body}
                 rows={6}
                 maxLength={BODY_MAX_CHARS}
-                className="border border-foreground-800 rounded-md px-2 py-1 w-full bg-background"
+                className={styles.textarea}
                 onChange={(event) => setBody(event.target.value)}
             />
 
             {officeLabel && (
-                <label className="flex flex-row items-center gap-2 my-2">
-                    <input
-                        type="checkbox"
-                        checked={named}
-                        onChange={(event) => setNamed(event.target.checked)}
-                    />
-                    Reply on the record, as {officeLabel}
-                </label>
+                <span className={styles.checkboxLabel}>
+                    <Checkbox checked={named} onChange={setNamed}>
+                        Reply publicly, as {officeLabel}
+                    </Checkbox>
+                </span>
             )}
 
-            <p className="my-2">
+            <p className={styles.formActions}>
                 <button
                     type="submit"
                     disabled={pending || body.trim().length < 10}
-                    className="bg-primary-400 text-white px-3 py-1 rounded-md disabled:opacity-50"
+                    className={styles.submitButton}
                 >
                     {pending ? "Posting…" : "Reply"}
                 </button>
             </p>
 
-            <div aria-live="polite">{error && <p className="text-red-500">{error}</p>}</div>
+            <div aria-live="polite">{error && <p className={styles.error}>{error}</p>}</div>
         </form>
     );
 }

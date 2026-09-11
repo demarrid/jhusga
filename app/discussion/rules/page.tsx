@@ -2,6 +2,9 @@ import Link from "next/link";
 
 import { ALLOWED_EMAIL_DOMAINS, SESSION_DAYS } from "@/config/forum";
 
+import DiscussionHeader from "../DiscussionHeader";
+import styles from "../discussion.module.css";
+
 /**
  * How the forum works, written out in full.
  *
@@ -13,14 +16,14 @@ import { ALLOWED_EMAIL_DOMAINS, SESSION_DAYS } from "@/config/forum";
  */
 export default function Rules() {
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <h1>How the discussion works</h1>
+        <main className={styles.page}>
+          <DiscussionHeader eyebrow="Discussion rules" title="How the discussion works" compact>
+            <p>Raise issues anonymously, with moderation decisions kept public.</p>
+          </DiscussionHeader>
 
-            <p>
-                Raise issues anonymously. Freedom of (publicly moderated) spech.
-            </p>
-
-            <section className="my-6">
+          <div className={styles.content}>
+            <div className={styles.rulesList}>
+            <section className={styles.rule}>
                 <h2>Anonymous</h2>
                 <p>
                     Only if a person holds office will their name be displayed. 
@@ -28,8 +31,8 @@ export default function Rules() {
                 </p>
             </section>
 
-            <section className="my-6">
-                <h2>Hopkins Affiliates Only</h2>
+            <section className={styles.rule}>
+                <h2>Hopkins affiliates only</h2>
                 <p>
                     Posting requires a valid address (
                     {ALLOWED_EMAIL_DOMAINS.join(", ")}), which is sent a
@@ -38,14 +41,14 @@ export default function Rules() {
                     somebody at Hopkins signed in, with no record of which
                     address did. Sessions last {SESSION_DAYS} days and can be
                     ended at any time from the{" "}
-                    <Link className="text-primary-700" href="/auth">
+                    <Link className={styles.inlineLink} href="/auth">
                         sign-in page
                     </Link>
                     .
                 </p>
             </section>
 
-            <section className="my-6">
+            <section className={styles.rule}>
                 <h2>Screening</h2>
                 <p>
                     Submissions are screened
@@ -57,7 +60,7 @@ export default function Rules() {
                     A flagged post is held back rather than published, so spam
                     does not land in front of everyone before anyone has looked
                     at it. The hold is announced the moment it happens: the{" "}
-                    <Link className="text-primary-700" href="/discussion/moderation">
+                    <Link className={styles.inlineLink} href="/discussion/moderation">
                         moderation log
                     </Link>{" "}
                     names what is being held, on what grounds, and how long it
@@ -65,14 +68,14 @@ export default function Rules() {
                     moderator then either publishes it or upholds the hold under
                     their own name.
                 </p>
-                <p className="text-foreground-400">
+                <p className={styles.muted}>
                     If the screening cannot run at all, submissions go up
                     unscreened. Screening that breaks must not become screening
                     that blocks everything.
                 </p>
             </section>
 
-            <section className="my-6">
+            <section className={styles.rule}>
                 <h2>Posts are permanent</h2>
                 <p>
                     They may only be delisted by a moderator,
@@ -80,7 +83,7 @@ export default function Rules() {
                 </p>
             </section>
 
-            <section className="my-6">
+            <section className={styles.rule}>
                 <h2>Moderation happens in public</h2>
                 <p>
                     Every moderation action is logged and visible: what was
@@ -88,18 +91,16 @@ export default function Rules() {
                 </p>
                 <p>
                     Moderators act under their own names; the{" "}
-                    <Link className="text-primary-700" href="/discussion/moderation">
+                    <Link className={styles.inlineLink} href="/discussion/moderation">
                         log
                     </Link>{" "}
                     is public.
                 </p>
             </section>
 
-            <p>
-                <Link className="text-primary-700" href="/discussion">
-                    Back to the discussion
-                </Link>
-            </p>
-        </div>
+            </div>
+            <Link className={styles.backLink} href="/discussion">← Back to the discussion</Link>
+          </div>
+        </main>
     );
 }

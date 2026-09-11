@@ -10,6 +10,8 @@ import {
 } from "@/lib/directory";
 import { nameKey } from "@/lib/contributors";
 import { prisma } from "@/lib/prisma";
+import { demoModeEnabled } from "@/lib/data-mode";
+import { demoDirectory } from "@/lib/demo-data";
 
 export type ContactMember = DirectoryMember & {
     id: string | null;
@@ -25,6 +27,7 @@ export type ContactDirectory = {
 export async function getContactDirectory(
     session: number = SESSION_NUMBER,
 ): Promise<ContactDirectory> {
+    if (demoModeEnabled()) return demoDirectory();
     const documents = await prisma.document.findMany({
         where: { sessionNumber: session },
         select: {

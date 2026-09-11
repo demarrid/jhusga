@@ -10,6 +10,15 @@ import { isMeetingRole, type MeetingRole } from "@/lib/meetings";
 import { prisma } from "@/lib/prisma";
 import { renderDocument, type Block } from "@/lib/render";
 import type { SectionStatus } from "@/lib/sections";
+import { demoModeEnabled } from "@/lib/data-mode";
+import {
+    demoDocument,
+    demoDocuments,
+    demoKinds,
+    demoOffices,
+    demoPeople,
+    demoRoles,
+} from "@/lib/demo-data";
 
 /** One row in the document listing. */
 export type DocumentListing = {
@@ -59,6 +68,7 @@ export async function getDocuments(filters: {
     /** Only documents naming someone who holds this office (HopkinsCategory id). */
     officeId?: string;
 } = {}): Promise<DocumentListing[]> {
+    if (demoModeEnabled()) return demoDocuments(filters);
     const kind =
         filters.kind && isDocumentKind(filters.kind) ? filters.kind : undefined;
     const query = filters.query?.trim();
@@ -166,6 +176,7 @@ export async function getDocuments(filters: {
 export async function getPeopleInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ id: string; name: string; count: number }[]> {
+    if (demoModeEnabled()) return demoPeople(session);
     const people = await prisma.hopkinsAffiliate.findMany({
         where: {
             contributions: { some: { document: sessionWhere(session) } },
@@ -188,6 +199,46 @@ export async function getPeopleInUse(
 }
 
 /**
+ * One person for the filter dropdown, including when they name no documents.
+ *
+ * Directory links can arrive with a person id that `getPeopleInUse` omits
+ * because its count is zero. Without this the URL still filters while the
+ * control reads "Anyone".
+ */
+export async function getPersonFilterOption(
+    personId: string,
+    session: SessionFilter = SESSION_NUMBER,
+): Promise<{ id: string; name: string; count: number } | null> {
+    const id = personId.trim();
+    if (!id) return null;
+
+    if (demoModeEnabled()) {
+        return demoPeople(session).find((person) => person.id === id) ?? null;
+    }
+
+    const person = await prisma.hopkinsAffiliate.findUnique({
+        where: { id },
+        select: {
+            id: true,
+            name: true,
+            _count: {
+                select: {
+                    contributions: { where: { document: sessionWhere(session) } },
+                },
+            },
+        },
+    });
+
+    if (!person) return null;
+
+    return {
+        id: person.id,
+        name: person.name,
+        count: person._count.contributions,
+    };
+}
+
+/**
  * Offices currently held by people the archive names, for the office filter.
  *
  * Restricted to seats (`position`) that are still held. A relationship the
@@ -199,6 +250,7 @@ export async function getPeopleInUse(
 export async function getOfficesInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ id: string; name: string; count: number }[]> {
+    if (demoModeEnabled()) return demoOffices();
     const held = {
         endedAt: null,
         hopkinsAffiliate: {
@@ -230,6 +282,7 @@ export async function getOfficesInUse(
 export async function getContributorRolesInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ role: string; count: number }[]> {
+    if (demoModeEnabled()) return demoRoles(session);
     const grouped = await prisma.documentContributor.groupBy({
         by: ["role"],
         where: { document: sessionWhere(session) },
@@ -388,6 +441,7 @@ function normaliseStatus(status: string): SectionStatus {
 export async function getDocument(
     documentId: string,
 ): Promise<DocumentDetail | null> {
+    if (demoModeEnabled()) return demoDocument(documentId);
     const document = await prisma.document.findUnique({
         where: { id: documentId },
         include: {
@@ -540,6 +594,7 @@ export async function getDocument(
 export async function getDocumentKindsInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ kind: DocumentKind; count: number }[]> {
+    if (demoModeEnabled()) return demoKinds(session);
     const grouped = await prisma.document.groupBy({
         by: ["kind"],
         where: sessionWhere(session),
@@ -560,6 +615,7 @@ export async function getDocumentKindsInUse(
 
 /** Version history for a document, newest first. Content excluded. */
 export async function getDocumentRevisions(documentId: string) {
+    if (demoModeEnabled()) return [];
     return prisma.documentRevision.findMany({
         where: { documentId },
         select: {

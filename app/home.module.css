@@ -1,0 +1,265 @@
+.page {
+  background: #ffffff;
+  color: #14243a;
+}
+
+.hero {
+  position: relative;
+  min-height: calc(100svh - 5.25rem);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: clamp(5rem, 10vw, 9rem) max(6vw, 1.5rem) 7rem;
+  isolation: isolate;
+}
+
+/* The wash reserves a calm reading field while leaving the bird vivid. */
+.hero::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(90deg,
+      #ffffff 0%,
+      rgba(255, 255, 255, 0.98) 31%,
+      rgba(255, 255, 255, 0.8) 48%,
+      rgba(255, 255, 255, 0.06) 75%);
+  content: "";
+  pointer-events: none;
+}
+
+.copy {
+  position: relative;
+  z-index: 2;
+  width: min(47rem, 58vw);
+  animation: copy-in 700ms ease-out both;
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  color: #002d72;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  /* Keep the name dominant without letting it consume the full viewport. */
+  font-size: clamp(3.2rem, 5vw, 5.5rem);
+  font-weight: 510;
+  letter-spacing: -0.065em;
+  line-height: 0.84;
+  user-select: none;
+}
+
+.session,
+.university {
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: clamp(0.78rem, 1vw, 1rem);
+  font-weight: 680;
+  letter-spacing: 0.105em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+.session::before {
+  width: 2.75rem;
+  height: 1px;
+  background: currentColor;
+  content: "";
+}
+
+.university {
+  margin-top: 1.8rem;
+}
+
+.summary {
+  max-width: 35rem;
+  margin: 2.5rem 0 0;
+  color: #2e4159;
+  font-size: clamp(1rem, 1.2vw, 1.18rem);
+  line-height: 1.65;
+}
+
+.primaryLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid #002d72;
+  color: #002d72;
+  font-size: 0.84rem;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.arrow {
+  transition: transform 180ms ease;
+}
+
+.primaryLink:hover .arrow {
+  transform: translate(3px, -3px);
+}
+
+.videoStage {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  overflow: hidden;
+  background: #b9d9f5;
+  animation: video-in 1.1s 120ms ease-out both;
+}
+
+.asciiVideo {
+  width: 100%;
+  height: 100%;
+}
+
+.introduction {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.7fr) minmax(20rem, 1.5fr);
+  gap: clamp(3rem, 8vw, 9rem);
+  scroll-margin-top: 5.25rem;
+  padding: clamp(5rem, 10vw, 10rem) max(6vw, 1.5rem);
+  background: #002d72;
+  color: #ffffff;
+}
+
+.sectionLabel {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.48);
+}
+
+.sectionLabel span {
+  color: #68ace5;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.sectionLabel h2 {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.introductionCopy p {
+  max-width: 49rem;
+  margin: 0;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: clamp(1.5rem, 2.6vw, 2.6rem);
+  font-weight: 410;
+  letter-spacing: -0.035em;
+  line-height: 1.13;
+}
+
+.introductionCopy a {
+  display: inline-flex;
+  gap: 1rem;
+  margin-top: 3rem;
+  color: #b9daf6;
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: gap 180ms ease, color 180ms ease;
+}
+
+.introductionCopy a:hover {
+  gap: 1.35rem;
+  color: #ffffff;
+}
+
+@keyframes copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes video-in {
+  from {
+    opacity: 0;
+    transform: scale(1.025);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 900px) {
+  .hero::after {
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(255, 255, 255, 0.91) 50%,
+        rgba(255, 255, 255, 0.38) 100%);
+  }
+
+  .copy {
+    width: min(38rem, 82vw);
+  }
+
+  .introduction {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionLabel {
+    max-width: 18rem;
+  }
+}
+
+@media (max-width: 680px) {
+  .hero {
+    min-height: calc(100svh - 7.7rem);
+    padding: 4.5rem 1.25rem 6rem;
+  }
+
+  .hero::after {
+    background: rgba(255, 255, 255, 0.75);
+  }
+
+  .copy {
+    width: 100%;
+  }
+
+  .title {
+    font-size: clamp(2.8rem, 11vw, 3.8rem);
+  }
+
+  .introduction {
+    scroll-margin-top: 7.7rem;
+    padding-inline: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .copy,
+  .videoStage {
+    animation: none;
+  }
+
+  .arrow,
+  .introductionCopy a {
+    transition: none;
+  }
+}

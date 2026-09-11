@@ -5,7 +5,12 @@
 
 @theme inline {
   --font-serif: var(--font-source-serif-4);
-  --font-sans: var(--font-geist);
+  --font-sans: var(--font-work-sans);
+}
+
+/* Work Sans is the current Hopkins-approved sans serif for web interfaces. */
+body {
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
 }
 
 /* Establish global CSS styles to meet Article 5 guidelines:

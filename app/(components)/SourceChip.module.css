@@ -1,0 +1,93 @@
+.chip {
+  position: relative;
+  display: inline-block;
+  margin: 0 0.15rem;
+  vertical-align: super;
+  color: inherit;
+  line-height: 0;
+  text-decoration: none;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.35rem;
+  background: #377ebc;
+  color: #ffffff;
+  font-size: 0.65rem;
+  line-height: 1.35;
+}
+
+.miniChipWrap {
+  position: relative;
+  display: inline-block;
+  margin: 0 0.15rem;
+  vertical-align: super;
+  line-height: 0;
+}
+
+.miniChipWrap:hover .tooltip,
+.miniChipWrap:focus-within .tooltip {
+  display: block;
+}
+
+.miniChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 50%;
+  background: #377ebc;
+  color: #ffffff;
+  vertical-align: super;
+}
+
+.miniChip svg {
+  display: block;
+  width: 0.78rem;
+  height: 0.78rem;
+  color: #ffffff;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  display: none;
+  width: 18rem;
+  margin-top: 0.25rem;
+  padding: 0.75rem;
+  background: #eaf3fb;
+  color: #172b44;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.tooltip span {
+  display: block;
+}
+
+.tooltip span + span {
+  margin-top: 0.35rem;
+}
+
+.chip:hover .tooltip,
+.chip:focus .tooltip {
+  display: block;
+}
+
+.chip:focus-visible {
+  outline: 2px solid #68ace5;
+  outline-offset: 2px;
+}
+
+.miniChip:focus-visible {
+  outline-offset: 1px;
+}

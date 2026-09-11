@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { moderate } from "@/api/forum";
+import styles from "@/app/discussion/discussion.module.css";
 
 /**
  * A moderator's controls, and the reason box they cannot get past.
@@ -48,30 +49,30 @@ export default function ModerationControls({
     }
 
     return (
-        <div className="bg-primary-100 rounded-md p-3 my-3 text-sm">
-            <p className="text-foreground-400">
+        <div className={styles.moderationControls}>
+            <p className={styles.muted}>
                 {awaitingReview
                     ? "Screening is holding this, so nobody else can see it. Publishing it or upholding the hold both go in the log under your name — leaving it is the only option that does not."
                     : "Moderating. Whatever you do here is published under your name, with the reason, in the log."}
             </p>
 
-            <p className="my-2">
+            <p className={styles.field}>
                 <input
                     type="text"
                     value={reason}
                     placeholder="Why — this is published"
                     aria-label="Reason, which is published"
-                    className="border border-foreground-800 rounded-md px-2 py-1 w-full bg-background"
+                    className={styles.input}
                     onChange={(event) => setReason(event.target.value)}
                 />
             </p>
 
-            <p className="flex flex-row flex-wrap gap-3">
+            <p className={styles.moderationActions}>
                 {hidden ? (
                     <button
                         type="button"
                         disabled={pending}
-                        className="text-primary-700 underline disabled:opacity-50"
+                        className={styles.textButton}
                         onClick={() => act("restore")}
                     >
                         {awaitingReview ? "Publish it" : "Restore"}
@@ -80,7 +81,7 @@ export default function ModerationControls({
                     <button
                         type="button"
                         disabled={pending || reason.trim().length < 4}
-                        className="text-red-500 underline disabled:opacity-50"
+                        className={styles.dangerButton}
                         onClick={() => act("hide")}
                     >
                         Hide
@@ -96,7 +97,7 @@ export default function ModerationControls({
                     <button
                         type="button"
                         disabled={pending || reason.trim().length < 4}
-                        className="text-red-500 underline disabled:opacity-50"
+                        className={styles.dangerButton}
                         onClick={() => act("uphold")}
                     >
                         Uphold the hold
@@ -108,7 +109,7 @@ export default function ModerationControls({
                         <button
                             type="button"
                             disabled={pending}
-                            className="text-primary-700 underline disabled:opacity-50"
+                            className={styles.textButton}
                             onClick={() => act("unlock")}
                         >
                             Unlock replies
@@ -117,7 +118,7 @@ export default function ModerationControls({
                         <button
                             type="button"
                             disabled={pending || reason.trim().length < 4}
-                            className="text-red-500 underline disabled:opacity-50"
+                            className={styles.dangerButton}
                             onClick={() => act("lock")}
                         >
                             Lock replies
@@ -125,7 +126,7 @@ export default function ModerationControls({
                     ))}
             </p>
 
-            <div aria-live="polite">{error && <p className="text-red-500">{error}</p>}</div>
+            <div aria-live="polite">{error && <p className={styles.error}>{error}</p>}</div>
         </div>
     );
 }

@@ -18,9 +18,11 @@ export type ProseCitation = ChipCitation & { id: string };
 export default function CitedProse({
     content,
     citations,
+    bulleted = false,
 }: {
     content: string;
     citations: ProseCitation[];
+    bulleted?: boolean;
 }) {
     const byIndex = new Map<number, ProseCitation>();
     citations.forEach((citation, index) => {
@@ -32,12 +34,12 @@ export default function CitedProse({
 
     return (
         <>
-            {renderBlocks(content, byIndex)}
+            {bulleted ? renderBulletedBlocks(content, byIndex, bulleted) : renderBlocks(content, byIndex, bulleted)}
 
             {leftover.length > 0 && (
                 <p>
                     {leftover.map((citation) => (
-                        <SourceChip key={citation.id} citation={citation} />
+                        <SourceChip key={citation.id} citation={citation} mini={bulleted} />
                     ))}
                 </p>
             )}
@@ -45,7 +47,27 @@ export default function CitedProse({
     );
 }
 
-function renderBlocks(content: string, byIndex: Map<number, ProseCitation>) {
+function renderBulletedBlocks(
+    content: string,
+    byIndex: Map<number, ProseCitation>,
+    miniChips: boolean,
+) {
+    const points = content
+        .split(/\n\s*\n/)
+        .flatMap((block) => block.split("\n"))
+        .map((line) => line.trim().replace(/^[-*•]\s+/, ""))
+        .filter(Boolean);
+
+    return (
+        <ul>
+            {points.map((point, index) => (
+                <li key={index}>{renderCitedLine(point, byIndex, miniChips)}</li>
+            ))}
+        </ul>
+    );
+}
+
+function renderBlocks(content: string, byIndex: Map<number, ProseCitation>, miniChips: boolean) {
     const blocks = content.split(/\n\s*\n/).filter(Boolean);
 
     return blocks.map((block, index) => {
@@ -57,7 +79,7 @@ function renderBlocks(content: string, byIndex: Map<number, ProseCitation>) {
                 <ul key={index}>
                     {lines.map((line, lineIndex) => (
                         <li key={lineIndex}>
-                            {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex)}
+                            {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex, miniChips)}
                         </li>
                     ))}
                 </ul>
@@ -69,7 +91,7 @@ function renderBlocks(content: string, byIndex: Map<number, ProseCitation>) {
                 {lines.map((line, lineIndex) => (
                     <span key={lineIndex}>
                         {lineIndex > 0 && <br />}
-                        {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex)}
+                        {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex, miniChips)}
                     </span>
                 ))}
             </p>
@@ -77,7 +99,7 @@ function renderBlocks(content: string, byIndex: Map<number, ProseCitation>) {
     });
 }
 
-function renderCitedLine(text: string, byIndex: Map<number, ProseCitation>) {
+function renderCitedLine(text: string, byIndex: Map<number, ProseCitation>, miniChips: boolean) {
     return splitCitedParts(text).map((part, index) => {
         if (part.type === "text") {
             return <span key={index}>{part.value}</span>;
@@ -88,6 +110,6 @@ function renderCitedLine(text: string, byIndex: Map<number, ProseCitation>) {
             return <span key={index}>{`[${part.index}]`}</span>;
         }
 
-        return <SourceChip key={`${citation.id}-${index}`} citation={citation} />;
+        return <SourceChip key={`${citation.id}-${index}`} citation={citation} mini={miniChips} />;
     });
 }

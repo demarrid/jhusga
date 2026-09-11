@@ -1,4 +1,5 @@
 import type { Comparison } from "@/api/archive";
+import styles from "@/app/documents/document-detail.module.css";
 
 /**
  * Renders a line diff between two versions of a document.
@@ -8,11 +9,11 @@ import type { Comparison } from "@/api/archive";
  */
 export default function DocumentDiff({ ops }: { ops: Comparison["ops"] }) {
     return (
-        <div className="font-mono text-sm whitespace-pre-wrap">
+        <div className={styles.diff}>
             {ops.map((op, index) => {
                 if (op.type === "skipped") {
                     return (
-                        <p key={index} className="text-foreground-400 py-2">
+                        <p key={index} className={styles.diffSkipped}>
                             {`... ${op.count} unchanged line${op.count === 1 ? "" : "s"}`}
                         </p>
                     );
@@ -22,15 +23,15 @@ export default function DocumentDiff({ ops }: { ops: Comparison["ops"] }) {
                     op.type === "added" ? "+" : op.type === "removed" ? "-" : " ";
                 const tone =
                     op.type === "added"
-                        ? "bg-green-100 text-green-950"
+                        ? styles.diffAdded
                         : op.type === "removed"
-                            ? "bg-red-100 text-red-950"
+                            ? styles.diffRemoved
                             : "";
 
                 return (
                     <div key={index} className={tone}>
                         {op.lines.map((line, lineIndex) => (
-                            <div key={lineIndex}>{`${prefix} ${line}`}</div>
+                            <div className={styles.diffLine} key={lineIndex}>{`${prefix} ${line}`}</div>
                         ))}
                     </div>
                 );

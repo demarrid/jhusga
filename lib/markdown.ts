@@ -12,6 +12,31 @@
  * exactly as exported, because citation offsets index into the stored string.
  */
 
+/**
+ * A line break inside a table cell.
+ *
+ * Google Docs writes a table row on one line, so every paragraph and bullet an
+ * author put inside a cell arrives joined by spaces -- and the minutes template
+ * keeps a whole meeting inside table cells. lib/cells.ts puts those breaks back
+ * at ingest using this marker, which is the conventional one for a markdown
+ * table, and lib/render.ts reads it as the newline it stands for.
+ */
+export const CELL_BREAK = "<br>";
+
+const CELL_BREAKS = /<br\s*\/?>/gi;
+const CELL_BREAK_HERE = /^<br\s*\/?>/i;
+
+/**
+ * The length of the cell break at `index`, or 0 if there is not one there.
+ *
+ * For the character-by-character scans in lib/render.ts and lib/anchor.ts,
+ * which have to step over the marker rather than read it as text.
+ */
+export function cellBreakAt(text: string, index: number): number {
+    if (text[index] !== "<") return 0;
+    return CELL_BREAK_HERE.exec(text.slice(index, index + 8))?.[0].length ?? 0;
+}
+
 /** `[image1]: <data:image/png;base64,...>` at the foot of the export. */
 const IMAGE_DEFINITION = /^\s*\[[^\]\n]+\]:\s*<data:[^>]*>[ \t]*$/gm;
 
@@ -71,6 +96,7 @@ export function toPlainText(markdown: string): string {
         .replace(INLINE_LINK, "$1")
         .replace(REFERENCE_LINK, "$1")
         .replace(LINK_DEFINITION, "")
+        .replace(CELL_BREAKS, " ")
         // Table pipes and rules read as noise once the layout is gone.
         .replace(/^\s*\|?[\s:|-]{4,}\|?\s*$/gm, " ")
         .replace(/\|/g, " ")

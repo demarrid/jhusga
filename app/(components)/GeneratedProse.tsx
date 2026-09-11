@@ -1,6 +1,8 @@
 import type { Section } from "@/api/sections";
 import CitedProse from "@/app/(components)/CitedProse";
 
+import styles from "./GeneratedProse.module.css";
+
 /**
  * Renders one cached, cited section.
  *
@@ -10,12 +12,14 @@ import CitedProse from "@/app/(components)/CitedProse";
  */
 export default function GeneratedProse({
     section,
+    bulleted = false,
 }: {
     section: Section | null;
+    bulleted?: boolean;
 }) {
     if (!section || !section.content) {
         return (
-            <p className="text-foreground-400 italic">
+            <p className={styles.muted}>
                 Not yet summarised from the governing documents.
             </p>
         );
@@ -24,13 +28,17 @@ export default function GeneratedProse({
     return (
         <div>
             {section.status === "stale" && (
-                <p className="text-foreground-400 italic">
+                <p className={styles.muted}>
                     A passage cited below has changed since this was written, so it is
                     awaiting recheck.
                 </p>
             )}
 
-            <CitedProse content={section.content} citations={section.citations} />
+            <CitedProse
+                content={section.content}
+                citations={section.citations}
+                bulleted={bulleted}
+            />
         </div>
     );
 }

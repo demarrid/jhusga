@@ -1,0 +1,140 @@
+{
+  "documents": [
+    {
+      "id": "demo-constitution",
+      "title": "SGA Constitution (114th Session)",
+      "driveTitle": "114th SGA Constitution 2026-2027",
+      "description": "The governing constitution of the Student Government Association.",
+      "kind": "guiding.constitution",
+      "folderPath": "Guiding Documents",
+      "discoveredVia": "walk",
+      "source": "https://docs.google.com/document/d/demo-constitution",
+      "sessionNumber": 114,
+      "driveCreatedTime": "2026-08-20T14:00:00.000Z",
+      "driveModifiedTime": "2026-09-08T18:30:00.000Z",
+      "lineageKey": "sga-constitution",
+      "content": "# Constitution of the Student Government Association\n\n## Article I — Purpose\n\nThe Student Government Association represents the undergraduate students of Johns Hopkins University and advocates for their academic, social, and institutional interests.\n\n## Article II — Branches\n\nThe Association consists of an Executive Branch, a Legislative Branch, and a Judicial Branch.\n\n## Article III — The Senate\n\nThe Senate considers legislation, allocates student activity funds, and communicates student concerns to University leadership.",
+      "summary": "The constitution establishes the SGA as the representative body for Hopkins undergraduates. It divides authority among executive, legislative, and judicial branches [1]. The Senate passes legislation and allocates student activity funding [2].",
+      "summaryQuotes": [
+        "The Association consists of an Executive Branch, a Legislative Branch, and a Judicial Branch.",
+        "The Senate considers legislation, allocates student activity funds, and communicates student concerns to University leadership."
+      ],
+      "contributors": [
+        { "id": "demo-maya", "name": "Maya Chen", "role": "author", "note": null, "evidence": "Prepared by Maya Chen, Student Body President" }
+      ]
+    },
+    {
+      "id": "demo-senate-minutes",
+      "title": "Senate Meeting — September 8, 2026",
+      "driveTitle": "General SGA Meeting Minutes 9.8.26",
+      "description": "Minutes from the second Senate meeting of the fall semester.",
+      "kind": "minutes.senate",
+      "folderPath": "Senate/Minutes",
+      "discoveredVia": "walk",
+      "source": "https://docs.google.com/document/d/demo-minutes",
+      "sessionNumber": 114,
+      "driveCreatedTime": "2026-09-08T20:00:00.000Z",
+      "driveModifiedTime": "2026-09-09T15:15:00.000Z",
+      "lineageKey": "",
+      "content": "# Senate Meeting Minutes\n\nSeptember 8, 2026\n\n## Officers and attendance\n\nMaya Chen — Student Body President\n\nJordan Williams — President of the Senate\n\nAisha Rahman — Senior Class Senator 1; Finance Committee\n\nLeo Martinez — Chief Justice\n\nNia Brooks — Director of Communications\n\n## Call to order\n\nThe meeting was called to order at 7:04 p.m. Quorum was present.\n\n## New business\n\nThe Senate discussed extending library hours during midterms and referred the proposal to the Academic Affairs Committee.\n\nA funding bill for the First-Generation Students Association was approved by voice vote.\n\n## Public comment\n\nStudents asked for clearer publication of shuttle service changes.",
+      "summary": "The Senate referred a proposal for longer midterm library hours to committee [1] and approved a student-organization funding bill [2]. Students also raised concerns about shuttle communications.",
+      "summaryQuotes": [
+        "The Senate discussed extending library hours during midterms and referred the proposal to the Academic Affairs Committee.",
+        "A funding bill for the First-Generation Students Association was approved by voice vote."
+      ],
+      "contributors": [
+        { "id": "demo-maya", "name": "Maya Chen", "role": "present", "note": null, "evidence": "Maya Chen — Student Body President" },
+        { "id": "demo-jordan", "name": "Jordan Williams", "role": "present", "note": null, "evidence": "Jordan Williams — President of the Senate" },
+        { "id": "demo-aisha", "name": "Aisha Rahman", "role": "present", "note": null, "evidence": "Aisha Rahman — Senior Class Senator 1; Finance Committee" },
+        { "id": "demo-leo", "name": "Leo Martinez", "role": "present", "note": null, "evidence": "Leo Martinez — Chief Justice" },
+        { "id": "demo-nia", "name": "Nia Brooks", "role": "present", "note": null, "evidence": "Nia Brooks — Director of Communications" }
+      ]
+    },
+    {
+      "id": "demo-funding-bill",
+      "title": "Student Organization Funding Bill 26-04",
+      "driveTitle": "S.B.26-27.04 Funding Bill",
+      "description": "A sample allocation for registered student organization programming.",
+      "kind": "bill.funding",
+      "folderPath": "Senate/Legislation",
+      "discoveredVia": "link",
+      "source": "https://docs.google.com/document/d/demo-funding",
+      "sessionNumber": 114,
+      "driveCreatedTime": "2026-09-05T16:00:00.000Z",
+      "driveModifiedTime": "2026-09-08T21:00:00.000Z",
+      "lineageKey": "",
+      "content": "# Student Organization Funding Bill 26-04\n\n## Purpose\n\nTo support a campus-wide first-generation student welcome dinner.\n\n## Allocation\n\nThe Student Activities Commission shall allocate $2,400 for venue, food, and accessibility expenses.\n\n## Vote\n\nApproved by the Senate on September 8, 2026.",
+      "summary": "This bill allocates $2,400 for a first-generation student welcome dinner [1].",
+      "summaryQuotes": [
+        "The Student Activities Commission shall allocate $2,400 for venue, food, and accessibility expenses."
+      ],
+      "contributors": [
+        { "id": "demo-aisha", "name": "Aisha Rahman", "role": "sponsor", "note": null, "evidence": "Sponsored by Aisha Rahman" }
+      ]
+    },
+    {
+      "id": "demo-constitution-113",
+      "title": "SGA Constitution (113th Session)",
+      "driveTitle": "113th SGA Constitution 2025-2026",
+      "description": "The previous session's constitution, retained for comparison.",
+      "kind": "guiding.constitution",
+      "folderPath": "113th SGA Master Folder/Guiding Documents",
+      "discoveredVia": "walk",
+      "source": "https://docs.google.com/document/d/demo-constitution-113",
+      "sessionNumber": 113,
+      "driveCreatedTime": "2025-08-20T14:00:00.000Z",
+      "driveModifiedTime": "2026-04-12T18:30:00.000Z",
+      "lineageKey": "sga-constitution",
+      "content": "# Constitution of the Student Government Association\n\n## Article I — Purpose\n\nThe Student Government Association represents the undergraduate students of Johns Hopkins University.\n\n## Article II — Branches\n\nThe Association consists of an Executive Branch and a Legislative Branch.\n\n## Article III — The Senate\n\nThe Senate considers legislation and allocates student activity funds.",
+      "summary": "The prior constitution established executive and legislative branches [1].",
+      "summaryQuotes": [
+        "The Association consists of an Executive Branch and a Legislative Branch."
+      ],
+      "contributors": []
+    },
+    {
+      "id": "demo-bylaws-113",
+      "title": "SGA Bylaws (113th Session)",
+      "driveTitle": "113th SGA Bylaws 2025-2026",
+      "description": "An archived copy included to exercise historical labels and filters.",
+      "kind": "guiding.bylaws",
+      "folderPath": "113th SGA Master Folder/Guiding Documents",
+      "discoveredVia": "walk",
+      "source": "https://docs.google.com/document/d/demo-bylaws",
+      "sessionNumber": 113,
+      "driveCreatedTime": "2025-08-22T14:00:00.000Z",
+      "driveModifiedTime": "2026-04-18T12:00:00.000Z",
+      "lineageKey": "sga-bylaws",
+      "content": "# Bylaws\n\n## Committees\n\nThe Senate shall maintain standing committees for academic affairs, student organizations, finance, and student services.",
+      "summary": "These archived bylaws define four standing Senate committees [1].",
+      "summaryQuotes": [
+        "The Senate shall maintain standing committees for academic affairs, student organizations, finance, and student services."
+      ],
+      "contributors": []
+    }
+  ],
+  "directory": {
+    "members": [
+      { "id": "demo-maya", "name": "Maya Chen", "email": "mchen@example.edu", "positions": ["Student Body President"], "group": "executive", "committees": ["Executive Committee"] },
+      { "id": "demo-jordan", "name": "Jordan Williams", "email": "jwilliams@example.edu", "positions": ["President of the Senate"], "group": "senate", "subgroup": "Officers", "committees": ["Rules Committee"] },
+      { "id": "demo-aisha", "name": "Aisha Rahman", "email": "arahman@example.edu", "positions": ["Senior Class Senator 1"], "group": "senate", "subgroup": "Senior Class", "committees": ["Finance Committee"] },
+      { "id": "demo-leo", "name": "Leo Martinez", "email": "lmartinez@example.edu", "positions": ["Chief Justice"], "group": "judiciary", "committees": [] },
+      { "id": "demo-nia", "name": "Nia Brooks", "email": "nbrooks@example.edu", "positions": ["Director of Communications"], "group": "executive", "committees": ["Executive Committee"] }
+    ],
+    "inboxes": [
+      { "email": "sga@example.edu", "label": "General questions", "evidence": "Questions may be sent to sga@example.edu.", "documentId": "demo-constitution", "documentTitle": "SGA Constitution (114th Session)" },
+      { "email": "finance@example.edu", "label": "Funding questions", "evidence": "Funding questions may be sent to finance@example.edu.", "documentId": "demo-funding-bill", "documentTitle": "Student Organization Funding Bill 26-04" }
+    ]
+  },
+  "forum": {
+    "posts": [
+      { "id": "demo-post-library", "title": "Keep Brody open later during midterms", "categorySlug": "academics", "createdAt": "2026-09-09T18:20:00.000Z", "body": "Could SGA work with the libraries to keep Brody Learning Commons open two hours later during the week before midterms? The quiet floors are usually full by early evening.", "authorName": null, "authorLabel": null, "locked": false, "replies": [
+        { "id": "demo-reply-1", "body": "This came up at the September 8 Senate meeting and was referred to Academic Affairs.", "createdAt": "2026-09-09T20:10:00.000Z", "authorName": "Jordan Williams", "authorLabel": "President of the Senate" }
+      ] },
+      { "id": "demo-post-shuttle", "title": "Publish shuttle changes in one place", "categorySlug": "campus-life", "createdAt": "2026-09-08T13:05:00.000Z", "body": "Route and stop changes are spread across several accounts. A single current service page would make it much easier to know where to look.", "authorName": null, "authorLabel": null, "locked": false, "replies": [] },
+      { "id": "demo-post-funding", "title": "What should a club budget include?", "categorySlug": "money", "createdAt": "2026-09-07T16:40:00.000Z", "body": "It would help to have one example budget showing the difference between a funding request and the later purchase request.", "authorName": "Maya Chen", "authorLabel": "Student Body President", "locked": false, "replies": [
+        { "id": "demo-reply-2", "body": "A plain-language example is being drafted. The current SLI guide is linked from the contact page.", "createdAt": "2026-09-08T10:30:00.000Z", "authorName": null, "authorLabel": null }
+      ] }
+    ]
+  }
+}

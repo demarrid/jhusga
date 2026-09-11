@@ -5,6 +5,8 @@ import { compareDocuments, getComparisonOptions } from "@/api/archive";
 import DocumentDiff from "@/app/(components)/DocumentDiff";
 import { sessionOrdinal } from "@/config/session";
 
+import styles from "../../document-detail.module.css";
+
 export const dynamic = "force-dynamic";
 
 export default async function ComparePage({
@@ -36,65 +38,65 @@ export default async function ComparePage({
         : null;
 
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <h1>Compare</h1>
-
-            <p>
-                <Link href={`/documents/${document.id}`}>{document.title}</Link>
+        <main className={styles.page}>
+          <header className={styles.masthead}>
+            <Link className={styles.backLink} href={`/documents/${document.id}`}>← Back to document</Link>
+            <h1>Compare across sessions</h1>
+            <p className={styles.metadata}>
+                {document.title}
                 {document.sessionNumber !== null && (
-                    <span className="text-foreground-400">
+                    <span>
                         {` · ${sessionOrdinal(document.sessionNumber)} session`}
                     </span>
                 )}
             </p>
+          </header>
+
+          <div className={styles.compareContent}>
 
             {!comparable ? (
-                <p className="text-foreground-400 italic my-4">
+                <p className={styles.compareIntro}>
                     Only the guiding documents are compared across sessions. Each
                     session adopts its own constitution and bylaws, so the difference
                     between two sessions&apos; copies is the record of what was
                     amended; this document has no counterpart in another session.
                 </p>
             ) : otherSessions.length === 0 ? (
-                <p className="text-foreground-400 italic my-4">
+                <p className={styles.compareIntro}>
                     No other session has a copy of this document, so there is nothing
                     to compare against yet.
                 </p>
             ) : (
-                <p className="my-4 flex flex-row flex-wrap gap-4">
+                <nav className={styles.compareOptions} aria-label="Sessions to compare">
                     {otherSessions.map((member) => (
                         <Link
                             key={member.id}
                             href={`/documents/${document.id}/compare?against=${member.id}`}
-                            className={
-                                member.id === against ? "font-bold underline" : undefined
-                            }
+                            className={`${styles.compareOption} ${member.id === against ? styles.compareOptionActive : ""}`}
                         >
                             {member.sessionNumber === null
                                 ? member.title
                                 : `vs. ${sessionOrdinal(member.sessionNumber)} session`}
                         </Link>
                     ))}
-                </p>
+                </nav>
             )}
 
             {comparison && (
                 <>
-                    <hr className="my-4" />
-
-                    <p className="text-foreground-400">
+                    <p className={styles.diffSummary}>
                         {`${comparison.added} line${comparison.added === 1 ? "" : "s"} added, ${comparison.removed} removed`}
                     </p>
 
                     {comparison.coarse && (
-                        <p className="bg-primary-100 rounded-md p-3 my-4">
+                        <p className={styles.notice}>
                             These versions differ too extensively to align line by line, so
                             the whole changed region is shown as a replacement.
                         </p>
                     )}
 
                     {comparison.added === 0 && comparison.removed === 0 ? (
-                        <p className="text-foreground-400 italic my-4">
+                        <p className={styles.compareIntro}>
                             These two versions are identical.
                         </p>
                     ) : (
@@ -102,6 +104,7 @@ export default async function ComparePage({
                     )}
                 </>
             )}
-        </div>
+          </div>
+        </main>
     );
 }

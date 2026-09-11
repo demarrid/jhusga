@@ -1,5 +1,6 @@
 import type { AnnotationSpan } from "@/lib/anchor";
 import { csvCellRanges } from "@/lib/csv";
+import { cellBreakAt } from "@/lib/markdown";
 
 /**
  * Rendering a document's markdown without breaking its citations.
@@ -55,15 +56,25 @@ export type Block =
     | { kind: "quote"; blocks: Block[] }
     | { kind: "list"; ordered: boolean; start: number; items: ListItem[] }
     | { kind: "table"; header: TableRow | null; rows: TableRow[] }
+    /** A table the author used to lay out a page rather than to hold data. */
+    | { kind: "layout"; rows: TableRow[] }
     | { kind: "rule" };
+
+/** The text a cell's runs spell out, with the markdown syntax already gone. */
+export function runsText(runs: InlineRun[]): string {
+    return runs.map((run) => run.text).join("");
+}
 
 /** A half-open slice of the original document. */
 type Range = { start: number; end: number };
 
+/** The same, named for the modules outside this one that read offsets. */
+export type SourceRange = Range;
+
 /** A source line, with the offset it begins at. */
 type Line = { text: string; start: number };
 
-type Inline = (ranges: Range[]) => InlineRun[];
+type Inline = (ranges: Range[], mode?: "cell") => InlineRun[];
 
 // Indentation carries no meaning outside a list here. Docs indents headings
 // and rules to whatever the paragraph style used, and with no support for
@@ -100,8 +111,8 @@ export function renderDocument(
 ): Block[] {
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
-    const inline: Inline = (ranges) =>
-        inlineRuns(content, ranges, resolved, anchored);
+    const inline: Inline = (ranges, mode) =>
+        inlineRuns(content, ranges, resolved, anchored, mode);
 
     const lines = toLines(content);
 
@@ -363,16 +374,85 @@ function joinedRanges(lines: Line[]): Range[] {
 
 function parseTable(rows: Line[], inline: Inline): Block {
     const toRow = (line: Line): TableRow => ({
-        cells: cellRanges(line).map((range) => inline([range])),
+        cells: cellRanges(line).map((range) => inline([range], "cell")),
     });
 
     const headed = rows.length > 1 && TABLE_DELIMITER.test(rows[1].text);
 
-    return {
-        kind: "table",
-        header: headed ? toRow(rows[0]) : null,
-        rows: (headed ? rows.slice(2) : rows).map(toRow),
-    };
+    // Built before the kind is decided so that the runs are produced in
+    // document order either way: `inline` hands out citation anchors as it
+    // goes, and the first run of a citation is the one that carries it.
+    const header = headed ? toRow(rows[0]) : null;
+    const body = (headed ? rows.slice(2) : rows).map(toRow);
+
+    if (isValueGrid(header ? [header, ...body] : body)) {
+        return { kind: "table", header, rows: body };
+    }
+
+    // The delimiter row is syntax, so it is dropped; the header row is not,
+    // and in a layout table it is the first agenda item.
+    return { kind: "layout", rows: header ? [header, ...body] : body };
+}
+
+/**
+ * Whether a pipe table is a roster of values rather than page furniture.
+ *
+ * Spreadsheets are a separate path (`sheetDelimiter`) and always render as a
+ * table. Everything else in a Google Doc that looks like a table is usually
+ * the minutes template laying out an agenda item next to who leads it, and
+ * those are printed as text. The one grid in a Doc that is still a table is
+ * the attendance roll: names in one cell, Present/Absent/Excused in the next.
+ */
+function isValueGrid(rows: TableRow[]): boolean {
+    if (rows.length < 2) return false;
+
+    const columns = rows.reduce((widest, row) => Math.max(widest, row.cells.length), 0);
+    if (columns < 2) return false;
+
+    return looksLikeAttendance(rows);
+}
+
+const ATTENDANCE_STATUS = /^(present|absent|excused|late|here)\b/i;
+
+function looksLikeAttendance(rows: TableRow[]): boolean {
+    const cells = rows
+        .flatMap((row) => row.cells.map((cell) => runsText(cell).trim()))
+        .filter(Boolean);
+
+    const statuses = cells.filter((cell) => ATTENDANCE_STATUS.test(cell)).length;
+    if (statuses < 2) return false;
+
+    // "All Present" on an agenda row is a status word, but the rest of that
+    // row is a sentence. A roster's other cells are names and seats.
+    return cells.every((cell) => ATTENDANCE_STATUS.test(cell) || cell.length <= 60);
+}
+
+/**
+ * Every pipe table in a document, as offsets into it: tables, then rows, then
+ * cells. Delimiter rows are syntax and are left out.
+ *
+ * Exported for lib/cells.ts, which repairs cells at ingest and has to agree
+ * with this module about where one begins and ends -- a repair written into a
+ * span the renderer then read differently would be worse than no repair.
+ */
+export function markdownTables(content: string): SourceRange[][][] {
+    const tables: SourceRange[][][] = [];
+    let rows: SourceRange[][] | null = null;
+
+    for (const line of toLines(content)) {
+        if (!TABLE_ROW.test(line.text)) {
+            if (rows) tables.push(rows);
+            rows = null;
+            continue;
+        }
+
+        rows ??= [];
+        if (!TABLE_DELIMITER.test(line.text)) rows.push(cellRanges(line));
+    }
+
+    if (rows) tables.push(rows);
+
+    return tables;
 }
 
 /** The cells of `| a | b |`, as trimmed ranges into the document. */
@@ -553,6 +633,61 @@ function flatten(
 }
 
 /**
+ * Minutes labels and speaker turns, used only when a cell is still one line.
+ *
+ * Tight on purpose: a colon after a short name is how these notes are taken,
+ * and a URL or `Intr. Peter Tarpley` must not start a new line.
+ */
+const CELL_LABEL =
+    /^(Discussion:|Changes Made:|Decision:|S-B\.|Motion by |Aye:|Nay:|Abstain:|Second:)/i;
+const CELL_SPEAKER = /^[A-Za-z]{3,}(?:\s+\([^)]+\))?:/;
+
+function suggestCellBreaks(input: {
+    text: string;
+    offsets: number[];
+}): { text: string; offsets: number[] } {
+    const characters: string[] = [];
+    const offsets: number[] = [];
+    let index = 0;
+    let skipUntil = 0;
+
+    while (index < input.text.length) {
+        if (input.text[index] === "[") {
+            const link = LINK.exec(input.text.slice(index));
+            if (link) {
+                for (let step = 0; step < link[0].length; step += 1) {
+                    characters.push(input.text[index + step]!);
+                    offsets.push(input.offsets[index + step]!);
+                }
+                index += link[0].length;
+                continue;
+            }
+        }
+
+        const atWord = index === 0 || /\s/.test(input.text[index - 1]!);
+        const rest = input.text.slice(index);
+        if (atWord && index > 0 && index >= skipUntil) {
+            const label = CELL_LABEL.exec(rest);
+            if (label || CELL_SPEAKER.test(rest)) {
+                if (characters.length > 0 && /\s/.test(characters[characters.length - 1]!)) {
+                    characters.pop();
+                    offsets.pop();
+                }
+                characters.push("\n");
+                offsets.push(input.offsets[index]!);
+                if (label) skipUntil = index + label[0].length;
+            }
+        }
+
+        characters.push(input.text[index]!);
+        offsets.push(input.offsets[index]!);
+        index += 1;
+    }
+
+    return { text: characters.join(""), offsets };
+}
+
+/**
  * Turn a block's ranges into styled runs, split wherever a citation begins or
  * ends.
  *
@@ -566,8 +701,16 @@ function inlineRuns(
     ranges: Range[],
     spans: ResolvedSpan[],
     anchored: Set<string>,
+    mode?: "cell",
 ): InlineRun[] {
-    const { text, offsets } = flatten(content, ranges);
+    let flattened = flatten(content, ranges);
+    // Layout cells keep an hour of notes. HTML may have restored some
+    // paragraphs; the rest still read as one line, so speaker turns and
+    // minutes labels are broken out here for display only.
+    if (mode === "cell") {
+        flattened = suggestCellBreaks(flattened);
+    }
+    const { text, offsets } = flattened;
     const runs: InlineRun[] = [];
 
     let bold = false;
@@ -633,6 +776,15 @@ function inlineRuns(
         }
 
         const character = text[index];
+
+        // A break lib/cells.ts restored inside a flattened cell, rendered as
+        // the newline it stands for. The viewer is pre-wrap, so it shows.
+        const breakWidth = cellBreakAt(text, index);
+        if (breakWidth > 0) {
+            emit("\n", index);
+            index += breakWidth;
+            continue;
+        }
 
         if (
             character === "\\" &&

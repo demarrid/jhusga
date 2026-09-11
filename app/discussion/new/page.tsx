@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { getViewer } from "@/api/auth";
 import NewPostForm from "@/app/(components)/NewPostForm";
 
+import DiscussionHeader from "../DiscussionHeader";
+import styles from "../discussion.module.css";
+
 export const dynamic = "force-dynamic";
 
 export default async function NewPost() {
@@ -14,20 +17,21 @@ export default async function NewPost() {
     if (!viewer) redirect("/auth?next=/discussion/new");
 
     return (
-        <div className="max-w-4xl mx-auto p-6">
-            <h1>Start a thread</h1>
-
-            <p className="text-foreground-400">
+        <main className={styles.page}>
+          <DiscussionHeader eyebrow="Discussion" title="Start a thread" compact />
+          <div className={styles.content}>
+            <p className={styles.proseIntro}>
                 {viewer.affiliateId
                     ? "Anonymous unless you tick the box below. Nothing is stored linking this to you unless you do."
                     : "This will be anonymous. Your session records that somebody at Hopkins is signed in, not who, and the post carries no author at all."}{" "}
-                <Link className="text-primary-700" href="/discussion/rules">
+                <Link className={styles.inlineLink} href="/discussion/rules">
                     The rules
                 </Link>{" "}
                 set out what that means in full.
             </p>
 
             <NewPostForm officeLabel={viewer.affiliateId ? viewer.officeLabel : null} />
-        </div>
+          </div>
+        </main>
     );
 }

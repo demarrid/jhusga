@@ -14,6 +14,14 @@ import { currentViewer } from "@/lib/login";
 import { screenSubmission } from "@/lib/moderate";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit } from "@/lib/ratelimit";
+import { demoModeEnabled } from "@/lib/data-mode";
+import {
+    demoForumCategories,
+    demoForumPost,
+    demoForumPosts,
+    demoHeldQueue,
+    demoModerationLog,
+} from "@/lib/demo-data";
 
 /**
  * Reading and writing the forum.
@@ -92,6 +100,7 @@ export type WriteResult = { ok: boolean; error?: string; id?: string; notice?: s
 export async function getCategories(): Promise<
     { slug: string; name: string; description: string; count: number }[]
 > {
+    if (demoModeEnabled()) return demoForumCategories();
     await ensureCategories();
 
     const counts = await prisma.forumPost.groupBy({
@@ -151,6 +160,7 @@ const PREVIEW_CHARS = 240;
 export async function getPosts(
     categorySlug?: string,
 ): Promise<ForumPostSummary[]> {
+    if (demoModeEnabled()) return demoForumPosts(categorySlug);
     const posts = await prisma.forumPost.findMany({
         where: {
             // Held by screening and not yet looked at, so it is not put in
@@ -200,6 +210,7 @@ export async function getPosts(
 }
 
 export async function getPost(postId: string): Promise<ForumPostView | null> {
+    if (demoModeEnabled()) return demoForumPost(postId);
     const post = await prisma.forumPost.findUnique({
         where: { id: postId },
         select: {
@@ -285,6 +296,7 @@ export type ModerationEntry = {
  * hold shows up at all, since a held post is kept out of the listing.
  */
 export async function getModerationLog(): Promise<ModerationEntry[]> {
+    if (demoModeEnabled()) return demoModerationLog();
     const actions = await prisma.moderationAction.findMany({
         orderBy: { createdAt: "desc" },
         take: 200,
@@ -344,6 +356,7 @@ export async function createPost(input: {
     /** Officeholders only, and off by default. */
     postAsOfficer?: boolean;
 }): Promise<WriteResult> {
+    if (demoModeEnabled()) return { ok: true, id: "demo-post-library", notice: "Demo mode: the post was not saved." };
     const viewer = await currentViewer();
     if (!viewer) {
         return { ok: false, error: "Sign in with a Hopkins address to post." };
@@ -451,6 +464,7 @@ export async function createReply(input: {
     body: string;
     postAsOfficer?: boolean;
 }): Promise<WriteResult> {
+    if (demoModeEnabled()) return { ok: true, id: "demo-reply-1", notice: "Demo mode: the reply was not saved." };
     const viewer = await currentViewer();
     if (!viewer) {
         return { ok: false, error: "Sign in with a Hopkins address to reply." };
@@ -608,6 +622,7 @@ export async function moderate(input: {
 export async function getHeldQueue(): Promise<
     { id: string; targetType: "post" | "reply"; title: string; body: string; reason: string; createdAt: Date }[]
 > {
+    if (demoModeEnabled()) return demoHeldQueue();
     const [posts, replies] = await Promise.all([
         prisma.forumPost.findMany({
             where: { hiddenBy: "screen" },

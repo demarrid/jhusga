@@ -4,19 +4,21 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 
 import { askArchive } from "@/api/search";
+import Checkbox from "@/app/(components)/Checkbox";
 import CitedProse from "@/app/(components)/CitedProse";
 import { MAX_QUESTION_CHARS, type SearchScope } from "@/config/search";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { documentKindLabel } from "@/lib/kinds";
 import type { QuestionAnswer } from "@/lib/search";
 
+import styles from "./NaturalLanguageSearch.module.css";
+
 /**
  * Asking the archive a question in the reader's own words.
  *
- * Separate from the filters below it, and deliberately so: those narrow a list
- * of files, this one answers a question. Someone who wants to know how many
- * caucus senators there can be does not know which document says so, and
- * typing the question into a filename filter finds nothing.
+ * Shown alongside the document filters as the second mode of one archive
+ * search surface. Filters narrow a list of files; this mode answers a question
+ * for someone who may not know which governing document contains the answer.
  *
  * The two halves of the reply are shown differently on purpose. The documents
  * that matched come from Postgres and are always right about what they are --
@@ -47,16 +49,9 @@ export default function NaturalLanguageSearch() {
     }
 
     return (
-        <section className="bg-primary-100 rounded-md p-4 my-6">
-            <h2>Ask the archive</h2>
-
-            <p className="text-foreground-400">
-                A question in your own words, answered from the documents below.
-                Every claim links to the passage it came from.
-            </p>
-
+        <div className={styles.panel}>
             <form
-                className="flex flex-row flex-wrap items-center gap-2 my-3"
+                className={styles.form}
                 onSubmit={(event) => {
                     event.preventDefault();
                     ask(question, scope);
@@ -68,44 +63,51 @@ export default function NaturalLanguageSearch() {
                     maxLength={MAX_QUESTION_CHARS}
                     placeholder="How many caucus senators can there be?"
                     aria-label="Ask a question about the SGA"
-                    className="border border-foreground-800 rounded-md px-2 py-1 grow min-w-64 bg-background"
+                    className={styles.question}
                     onChange={(event) => setQuestion(event.target.value)}
                 />
 
                 <button
                     type="submit"
                     disabled={pending || question.trim().length < 3}
-                    className="bg-primary-400 text-white px-3 py-1 rounded-md disabled:opacity-50"
+                    className={styles.askButton}
                 >
                     {pending ? "Reading…" : "Ask"}
                 </button>
 
-                <label className="flex flex-row items-center gap-1">
-                    <input
-                        type="checkbox"
+                <div className={styles.scopeToggle}>
+                    <Checkbox
                         checked={scope === "all"}
-                        onChange={(event) => {
-                            const next: SearchScope = event.target.checked ? "all" : "current";
+                        onChange={(checked) => {
+                            const next: SearchScope = checked ? "all" : "current";
                             setScope(next);
                             // Re-asking immediately is the point of the toggle:
                             // it is how a reader moves a question from "what
                             // are the rules now" to "when did that change".
                             if (answer) ask(question, next);
                         }}
-                    />
-                    Search past sessions too
-                </label>
+                    >
+                        Include past sessions
+                    </Checkbox>
+                </div>
+
+                <div
+                    className={`${styles.loadingTrack} ${pending ? styles.loading : ""}`}
+                    aria-hidden="true"
+                >
+                    <span />
+                </div>
             </form>
 
             {!answer && !pending && (
-                <p className="text-foreground-400 text-sm">
+                <p className={styles.examples}>
                     {"For example: "}
                     {EXAMPLES.map((example, index) => (
                         <span key={example}>
                             {index > 0 && " · "}
                             <button
                                 type="button"
-                                className="text-primary-700 underline"
+                                className={styles.exampleButton}
                                 onClick={() => {
                                     setQuestion(example);
                                     ask(example, scope);
@@ -118,10 +120,10 @@ export default function NaturalLanguageSearch() {
                 </p>
             )}
 
-            <div aria-live="polite" aria-busy={pending}>
+            <div className={styles.answerRegion} aria-live="polite" aria-busy={pending}>
                 {answer && !pending && <Answer answer={answer} />}
             </div>
-        </section>
+        </div>
     );
 }
 
@@ -134,11 +136,11 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
     const reason = noAnswerReason(answer, scopeLabel);
 
     return (
-        <div className="my-3">
+        <div className={styles.answer}>
             {answer.content ? (
-                <div className="bg-background rounded-md p-3">
+                <div className={styles.answerContent}>
                     {answer.status === "stale" && (
-                        <p className="text-foreground-400 italic">
+                        <p className={styles.notice}>
                             A passage cited below has changed since this was answered, so
                             it is awaiting recheck.
                         </p>
@@ -147,17 +149,17 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
                     <CitedProse content={answer.content} citations={answer.citations} />
                 </div>
             ) : (
-                reason && <p className="text-foreground-400 italic">{reason}</p>
+                reason && <p className={styles.notice}>{reason}</p>
             )}
 
             {answer.matches.length > 0 && (
-                <div className="my-3">
+                <div className={styles.matches}>
                     <h3>{answer.content ? "Read for this answer" : "Closest documents"}</h3>
                     <ul>
                         {answer.matches.map((match) => (
-                            <li key={match.id} className="my-2">
+                            <li key={match.id}>
                                 <Link href={`/documents/${match.id}`}>{match.title}</Link>
-                                <span className="text-foreground-400">
+                                <span className={styles.matchMetadata}>
                                     {" — "}
                                     {[
                                         documentKindLabel(match.kind),
@@ -169,7 +171,7 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
                                         .filter(Boolean)
                                         .join(" · ")}
                                 </span>
-                                <p className="text-foreground-400 text-sm">{match.excerpt}</p>
+                                <p>{match.excerpt}</p>
                             </li>
                         ))}
                     </ul>
@@ -177,7 +179,7 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
             )}
 
             {answer.status === "empty" && answer.matches.length === 0 && (
-                <p className="text-foreground-400 italic">
+                <p className={styles.notice}>
                     {`Nothing in ${scopeLabel} matches those words.`}
                     {answer.scope === "current" &&
                         " Past sessions are not searched unless you ask for them."}
