@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { createPost } from "@/api/forum";
+import Checkbox from "@/app/(components)/Checkbox";
+import Select from "@/app/(components)/Select";
 import {
     BODY_MAX_CHARS,
     DEFAULT_CATEGORY_SLUG,
@@ -81,18 +83,17 @@ export default function NewPostForm({
                 <label htmlFor="post-category">
                     Category
                 </label>
-                <select
-                    id="post-category"
-                    value={categorySlug}
-                    className={styles.select}
-                    onChange={(event) => setCategorySlug(event.target.value)}
-                >
-                    {FORUM_CATEGORIES.map((category) => (
-                        <option key={category.slug} value={category.slug}>
-                            {category.name}
-                        </option>
-                    ))}
-                </select>
+                <span className={styles.select}>
+                    <Select
+                        id="post-category"
+                        value={categorySlug}
+                        onChange={setCategorySlug}
+                        options={FORUM_CATEGORIES.map((category) => ({
+                            value: category.slug,
+                            label: category.name,
+                        }))}
+                    />
+                </span>
             </p>
 
             <p className={styles.field}>
@@ -115,14 +116,11 @@ export default function NewPostForm({
 
             {officeLabel && (
                 <p className={styles.field}>
-                    <label className={styles.checkboxLabel}>
-                        <input
-                            type="checkbox"
-                            checked={named}
-                            onChange={(event) => setNamed(event.target.checked)}
-                        />
-                        Post on the record, as {officeLabel}
-                    </label>
+                    <span className={styles.checkboxLabel}>
+                        <Checkbox checked={named} onChange={setNamed}>
+                            Post publicly, as {officeLabel}
+                        </Checkbox>
+                    </span>
                     <span className={styles.fieldNote}>
                         Leave this off and the post is anonymous, exactly like
                         anyone else&rsquo;s.

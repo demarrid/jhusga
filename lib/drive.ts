@@ -5,6 +5,7 @@ import {
     MAX_FOLDER_DEPTH,
     SESSION_NUMBER,
 } from "@/config/sga";
+import { restoreCellBreaks } from "@/lib/cells";
 import { sanitizeExport } from "@/lib/markdown";
 
 /**
@@ -327,18 +328,10 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
     return found;
 }
 
-/**
- * Export a Google Doc as markdown.
- *
- * Markdown rather than plain text because it preserves the heading and list
- * structure that makes an article or section citable, and rather than HTML
- * because Drive only offers HTML as a zipped bundle.
- */
-export async function exportDocumentAsMarkdown(
-    fileId: string,
-): Promise<string> {
+/** One Drive export, as text. */
+async function exportFile(fileId: string, mimeType: string): Promise<string> {
     const params = new URLSearchParams({
-        mimeType: "text/markdown",
+        mimeType,
         supportsAllDrives: "true",
         key: apiKey(),
     });
@@ -347,10 +340,40 @@ export async function exportDocumentAsMarkdown(
         `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
     );
 
+    return response.text();
+}
+
+/** A markdown table row, which is where the export loses the author's breaks. */
+const TABLE_ROW = /^[ \t]*\|/m;
+
+/**
+ * Export a Google Doc as markdown, with the line breaks Drive drops put back.
+ *
+ * Markdown rather than plain text because it preserves the heading and list
+ * structure that makes an article or section citable.
+ *
+ * HTML is fetched as well, but only for documents with a table in them, and
+ * only for its structure: a markdown table row is one line, so Drive flattens
+ * everything an author put inside a cell onto it, and the minutes template
+ * holds whole meetings in cells. See lib/cells.ts. The second export is worth
+ * the call because the alternative is storing an hour of discussion as a single
+ * line, but it is a repair rather than a requirement -- if it fails, the
+ * document is still the document.
+ */
+export async function exportDocumentAsMarkdown(
+    fileId: string,
+): Promise<string> {
     // Images are stripped here rather than downstream so that the stored text,
     // the hash, the model input, and the citation offsets all agree on one
     // version of the document.
-    return sanitizeExport(await response.text());
+    const markdown = sanitizeExport(await exportFile(fileId, "text/markdown"));
+    if (!TABLE_ROW.test(markdown)) return markdown;
+
+    try {
+        return restoreCellBreaks(markdown, await exportFile(fileId, "text/html"));
+    } catch {
+        return markdown;
+    }
 }
 
 /**
@@ -362,17 +385,7 @@ export async function exportDocumentAsMarkdown(
  * document structure.
  */
 export async function exportPresentationAsText(fileId: string): Promise<string> {
-    const params = new URLSearchParams({
-        mimeType: "text/plain",
-        supportsAllDrives: "true",
-        key: apiKey(),
-    });
-
-    const response = await driveFetch(
-        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
-    );
-
-    return sanitizeExport(await response.text());
+    return sanitizeExport(await exportFile(fileId, "text/plain"));
 }
 
 /**

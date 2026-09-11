@@ -103,8 +103,20 @@
 }
 
 .generatedProse :global(ul) {
+  display: grid;
+  gap: 0.75rem;
   margin: 1.25rem 0 1.75rem;
   padding-left: 1.25rem;
+  list-style: disc;
+  list-style-position: outside;
+}
+
+.generatedProse :global(li) {
+  padding-left: 0.3rem;
+}
+
+.generatedProse :global(li::marker) {
+  color: #377ebc;
 }
 
 .lead {
@@ -207,6 +219,10 @@
 
 .position .generatedProse :global(p:last-child) {
   margin-bottom: 0;
+}
+
+.position .generatedProse :global(ul) {
+  margin: 0;
 }
 
 .subsection {

@@ -3,6 +3,8 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useTransition } from "react";
 
+import Checkbox from "@/app/(components)/Checkbox";
+import Select from "@/app/(components)/Select";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { documentKindLabel } from "@/lib/kinds";
 
@@ -49,6 +51,7 @@ export default function DocumentSearch({
     const searchParams = useSearchParams();
     const [pending, startTransition] = useTransition();
     const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const queryInput = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         return () => {
@@ -93,94 +96,117 @@ export default function DocumentSearch({
                 apply({ q: typeof value === "string" ? value : "" });
             }}
         >
-            <label className={styles.queryField}>
-                <span>Search documents and people</span>
-                <input
-                    type="search"
-                    name="q"
-                    defaultValue={query}
-                    placeholder="Title, keyword, or person"
-                    onChange={(event) => applyQuery(event.target.value)}
-                />
-            </label>
-
-            <div className={styles.filterRow}>
-                <label className={styles.filterField}>
-                    <span>Type</span>
-                    <select
-                        name="kind"
-                        defaultValue={kind ?? ""}
-                        onChange={(event) => apply({ kind: event.target.value })}
-                    >
-                        <option value="">All types</option>
-                        {kinds.map((option) => (
-                            <option key={option.kind} value={option.kind}>
-                                {documentKindLabel(option.kind)} ({option.count})
-                            </option>
-                        ))}
-                    </select>
-                </label>
-
-                <label className={styles.filterField}>
-                    <span>Person</span>
-                    <select
-                        name="person"
-                        defaultValue={person ?? ""}
-                        onChange={(event) => apply({ person: event.target.value })}
-                    >
-                        <option value="">Anyone</option>
-                        {people.map((option) => (
-                            <option key={option.id} value={option.id}>
-                                {option.name} ({option.count})
-                            </option>
-                        ))}
-                    </select>
-                </label>
-
-                <label className={styles.filterField}>
-                    <span>Capacity</span>
-                    <select
-                        name="role"
-                        defaultValue={role ?? ""}
-                        onChange={(event) => apply({ role: event.target.value })}
-                    >
-                        <option value="">Any capacity</option>
-                        {roles.map((option) => (
-                            <option key={option.role} value={option.role}>
-                                {contributorRoleLabel(option.role)} ({option.count})
-                            </option>
-                        ))}
-                    </select>
-                </label>
-
-                {offices.length > 0 && (
-                    <label className={styles.filterField}>
-                        <span>Office</span>
-                        <select
-                            name="office"
-                            defaultValue={office ?? ""}
-                            onChange={(event) => apply({ office: event.target.value })}
-                        >
-                            <option value="">Any office</option>
-                            {offices.map((option) => (
-                                <option key={option.id} value={option.id}>
-                                    {option.name} ({option.count})
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                )}
-
-                <label className={styles.archiveToggle}>
+            <div className={styles.queryRow}>
+                <span className={styles.queryCaption}>Search documents and people</span>
+                <label className={styles.queryControl}>
+                    <span className={styles.hiddenLabel}>Search documents and people</span>
                     <input
-                        type="checkbox"
+                        ref={queryInput}
+                        type="search"
+                        name="q"
+                        defaultValue={query}
+                        placeholder="Title, keyword, or person"
+                        onChange={(event) => applyQuery(event.target.value)}
+                    />
+                    <button
+                        type="button"
+                        className={styles.clearQuery}
+                        aria-label="Clear document search"
+                        onClick={() => {
+                            if (typingTimer.current) clearTimeout(typingTimer.current);
+                            if (queryInput.current) {
+                                queryInput.current.value = "";
+                                queryInput.current.focus();
+                            }
+                            apply({ q: "" });
+                        }}
+                    >
+                        <span aria-hidden="true">×</span>
+                    </button>
+                </label>
+
+                <div className={styles.archiveToggle}>
+                    <Checkbox
                         name="archive"
                         value="1"
                         defaultChecked={archive}
-                        onChange={(event) => apply({ archive: event.target.checked ? "1" : "" })}
+                        onChange={(checked) => apply({ archive: checked ? "1" : "" })}
+                    >
+                        Include past sessions
+                    </Checkbox>
+                </div>
+            </div>
+
+            <div className={styles.filterRow}>
+                <div className={styles.filterField}>
+                    <span>Type</span>
+                    <Select
+                        name="kind"
+                        value={kind ?? ""}
+                        ariaLabel="Filter by document type"
+                        onChange={(value) => apply({ kind: value })}
+                        options={[
+                            { value: "", label: "All types" },
+                            ...kinds.map((option) => ({
+                                value: option.kind,
+                                label: `${documentKindLabel(option.kind)} (${option.count})`,
+                            })),
+                        ]}
                     />
-                    <span>Include past sessions</span>
-                </label>
+                </div>
+
+                <div className={styles.filterField}>
+                    <span>Person</span>
+                    <Select
+                        name="person"
+                        value={person ?? ""}
+                        ariaLabel="Filter by person"
+                        onChange={(value) => apply({ person: value })}
+                        options={[
+                            { value: "", label: "Anyone" },
+                            ...people.map((option) => ({
+                                value: option.id,
+                                label: `${option.name} (${option.count})`,
+                            })),
+                        ]}
+                    />
+                </div>
+
+                <div className={styles.filterField}>
+                    <span>Capacity</span>
+                    <Select
+                        name="role"
+                        value={role ?? ""}
+                        ariaLabel="Filter by capacity"
+                        onChange={(value) => apply({ role: value })}
+                        options={[
+                            { value: "", label: "Any capacity" },
+                            ...roles.map((option) => ({
+                                value: option.role,
+                                label: `${contributorRoleLabel(option.role)} (${option.count})`,
+                            })),
+                        ]}
+                    />
+                </div>
+
+                {offices.length > 0 && (
+                    <div className={styles.filterField}>
+                        <span>Office</span>
+                        <Select
+                            name="office"
+                            value={office ?? ""}
+                            ariaLabel="Filter by office"
+                            onChange={(value) => apply({ office: value })}
+                            options={[
+                                { value: "", label: "Any office" },
+                                ...offices.map((option) => ({
+                                    value: option.id,
+                                    label: `${option.name} (${option.count})`,
+                                })),
+                            ]}
+                        />
+                    </div>
+                )}
             </div>
 
             <noscript>

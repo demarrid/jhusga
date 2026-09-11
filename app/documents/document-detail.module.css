@@ -89,9 +89,9 @@
 
 .readerLayout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem);
+  grid-template-columns: minmax(0, 1fr) minmax(21rem, 28rem);
   align-items: start;
-  gap: clamp(3rem, 6vw, 6rem);
+  gap: clamp(2.5rem, 4vw, 4.5rem);
   padding: clamp(3rem, 6vw, 5rem) max(6vw, 1.5rem) clamp(6rem, 10vw, 9rem);
 }
 
@@ -103,10 +103,32 @@
 .sidebar {
   position: sticky;
   top: 6.5rem;
-  max-height: calc(100dvh - 8rem);
-  overflow-y: auto;
-  padding-top: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  width: 100%;
+  /* The pane has to be no taller than the window, or sticky pins its first
+     line and the rest is unreachable until the document itself ends. */
+  max-height: calc(100dvh - 6.5rem);
+  overflow: hidden;
+}
+
+/* Fixed chrome: translated content passes underneath, not through, this bar. */
+.sidebar::before {
+  content: "";
+  display: block;
+  flex: none;
+  box-sizing: border-box;
+  height: calc(0.8rem + 2px);
   border-top: 2px solid #002d72;
+  background: #f7f9fb;
+  z-index: 2;
+}
+
+.sidebar > div {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebarSection {
@@ -172,7 +194,17 @@
 }
 
 .summary ul {
-  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.75rem;
+  padding-left: 1.15rem;
+}
+
+.summary li {
+  padding-left: 0.25rem;
+}
+
+.summary li::marker {
+  color: #377ebc;
 }
 
 .muted {
@@ -231,6 +263,51 @@
   overflow-x: auto;
 }
 
+.viewerLayout {
+  margin: 1.5rem 0;
+}
+
+/*
+ * A table the author used to place things on a page, printed as the text it
+ * is. The item keeps the line breaks restored into the cell; whoever it
+ * belongs to follows underneath rather than as a second column, so a closing
+ * motion is not mistaken for a spreadsheet.
+ */
+.viewerLayoutRow {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.15rem 0;
+  border-top: 1px solid #dbe4ed;
+}
+
+.viewerLayoutRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.viewerLayoutRow:last-child {
+  padding-bottom: 0;
+}
+
+.viewerLayoutItem {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.viewerLayoutAside {
+  margin: 0;
+  color: #52677d;
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+.viewerLayoutAside span + span::before {
+  content: " · ";
+}
+
 .viewer table {
   width: 100%;
   border-collapse: collapse;
@@ -244,6 +321,7 @@
   border: 1px solid #b4c3d1;
   text-align: left;
   vertical-align: top;
+  white-space: pre-wrap;
 }
 
 .viewer th {
@@ -387,6 +465,10 @@
     position: static;
     order: -1;
     max-height: none;
+    overflow: visible;
+  }
+
+  .sidebar > div {
     overflow: visible;
   }
 }

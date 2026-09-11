@@ -36,7 +36,7 @@ export default async function Discussion({
               <p>
                 Anything undergraduates want to raise with the SGA, or with each
                 other, without a name attached.{" "}
-                <Link href="/discussion/rules">
+                <Link href="/discussion/rules" className={styles.howItWorksLink}>
                     How it works
                 </Link> explains anonymity and public moderation.
               </p>

@@ -20,8 +20,9 @@ export default function DocumentRestatement({
     if (!restatement || !restatement.content) {
         return (
             <p className={styles.muted}>
-                No plain-language summary yet. Run <code>npm run summarize</code> to
-                write one from this document.
+                No plain-language summary yet. 
+                {/* Run <code>npm run summarize</code> to
+                write one from this document. */}
             </p>
         );
     }
@@ -95,35 +96,19 @@ function QuoteChip({
 }
 
 function renderBlocks(content: string, byIndex: Map<number, SummaryCitation>) {
-    const blocks = content.split(/\n\s*\n/).filter(Boolean);
+    const points = content
+        .split(/\n\s*\n/)
+        .flatMap((block) => block.split("\n"))
+        .map((line) => line.trim().replace(/^[-*•]\s+/, ""))
+        .filter(Boolean);
 
-    return blocks.map((block, index) => {
-        const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
-        const bullets = lines.filter((line) => /^[-*•]\s+/.test(line));
-
-        if (bullets.length > 0 && bullets.length === lines.length) {
-            return (
-                <ul key={index}>
-                    {lines.map((line, lineIndex) => (
-                        <li key={lineIndex}>
-                            {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex)}
-                        </li>
-                    ))}
-                </ul>
-            );
-        }
-
-        return (
-            <p key={index}>
-                {lines.map((line, lineIndex) => (
-                    <span key={lineIndex}>
-                        {lineIndex > 0 && <br />}
-                        {renderCitedLine(line.replace(/^[-*•]\s+/, ""), byIndex)}
-                    </span>
-                ))}
-            </p>
-        );
-    });
+    return (
+        <ul>
+            {points.map((point, index) => (
+                <li key={index}>{renderCitedLine(point, byIndex)}</li>
+            ))}
+        </ul>
+    );
 }
 
 function renderCitedLine(text: string, byIndex: Map<number, SummaryCitation>) {

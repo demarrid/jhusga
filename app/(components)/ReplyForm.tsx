@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { createReply } from "@/api/forum";
+import Checkbox from "@/app/(components)/Checkbox";
 import { BODY_MAX_CHARS } from "@/config/forum";
 import styles from "@/app/discussion/discussion.module.css";
 
@@ -57,14 +58,11 @@ export default function ReplyForm({
             />
 
             {officeLabel && (
-                <label className={styles.checkboxLabel}>
-                    <input
-                        type="checkbox"
-                        checked={named}
-                        onChange={(event) => setNamed(event.target.checked)}
-                    />
-                    Reply on the record, as {officeLabel}
-                </label>
+                <span className={styles.checkboxLabel}>
+                    <Checkbox checked={named} onChange={setNamed}>
+                        Reply publicly, as {officeLabel}
+                    </Checkbox>
+                </span>
             )}
 
             <p className={styles.formActions}>

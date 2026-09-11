@@ -8,6 +8,7 @@ import {
   getDocuments,
   getOfficesInUse,
   getPeopleInUse,
+  getPersonFilterOption,
   type DocumentListing,
 } from "@/api/documents";
 import ArchiveSearch from "@/app/(components)/ArchiveSearch";
@@ -48,11 +49,32 @@ export default async function Documents({
     lineage ? getLineage(lineage) : Promise.resolve(null),
   ]);
 
-  const resultLabel = `${documents.length} document${documents.length === 1 ? "" : "s"}${
-    session === "all"
-      ? " across all sessions"
-      : ` in the ${sessionOrdinal(SESSION_NUMBER)} session`
-  }`;
+  let peopleForFilter = people;
+  let activePerson = person ? people.find((entry) => entry.id === person) : undefined;
+
+  if (person && !activePerson) {
+    const linkedPerson = await getPersonFilterOption(person, session);
+    if (linkedPerson) {
+      peopleForFilter = [...people, linkedPerson].sort((left, right) =>
+        left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+      );
+      activePerson = linkedPerson;
+    }
+  }
+
+  const filterCount = [q, kind, person, role, office, archive === "1" ? archive : undefined].filter(
+    Boolean,
+  ).length;
+
+  const listHeading =
+    filterCount === 0
+      ? "All documents"
+      : `${filterCount} filter${filterCount === 1 ? "" : "s"} applied`;
+
+  const sessionScope =
+    session === "all" ? "the archive" : `the ${sessionOrdinal(SESSION_NUMBER)} session`;
+
+  const resultLabel = `${documents.length} document${documents.length === 1 ? "" : "s"} found in ${sessionScope}`;
 
   // Filtered and lineage links are document-finding actions; an explicit mode
   // wins so a visitor can still switch tabs without losing active filters.
@@ -100,7 +122,7 @@ export default async function Documents({
             office={office}
             archive={archive === "1"}
             kinds={kinds}
-            people={people}
+            people={peopleForFilter}
             roles={roles}
             offices={offices}
           />
@@ -110,14 +132,25 @@ export default async function Documents({
           <div className={styles.catalogueHeading}>
             <div>
               <span>Browse the record</span>
-              <h2 id="document-list-heading">All documents</h2>
+              <h2 id="document-list-heading">{listHeading}</h2>
             </div>
             <p>{resultLabel}</p>
           </div>
 
           {documents.length === 0 ? (
             <p className={styles.emptyState}>
-              Nothing matches. Run <code>npm run sync</code> if the archive is empty.
+              {activePerson
+                ? `${activePerson.name} is not named in any documents${
+                    session === "all"
+                      ? " in the archive"
+                      : ` in the ${sessionOrdinal(SESSION_NUMBER)} session`
+                  }. Try including past sessions, or choose Anyone above.`
+                : (
+                    <>
+                      No results.
+                       {/* Run <code>npm run sync</code> if the archive is empty. */}
+                    </>
+                  )}
             </p>
           ) : (
             <ul className={styles.documentList}>

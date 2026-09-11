@@ -10,7 +10,20 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 3rem;
-  padding-bottom: clamp(3rem, 7vw, 6rem);
+  padding-bottom: clamp(2rem, 4vw, 2rem);
+}
+
+.githubLink {
+  padding-bottom: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  color: #c9c9c9;
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.githubLink:hover {
+  color: #ffffff;
 }
 
 .identity {
@@ -38,18 +51,25 @@
   line-height: 1.45;
 }
 
-.identity strong {
+.identity strong:hover {
   color: #ffffff;
+}
+
+.identity strong {
+  color: #d3d3d3;
   font-family: var(--font-source-serif-4), Georgia, serif;
   font-size: clamp(1.2rem, 2vw, 1.65rem);
   font-weight: 520;
   letter-spacing: -0.025em;
+  margin-top: -0.3rem;
+  transition: color 160ms ease, transform 160ms ease;
 }
 
 .navigation {
   display: grid;
   grid-template-columns: repeat(2, minmax(7rem, 1fr));
   gap: 0.8rem 2.5rem;
+  margin-right: -20px;
 }
 
 .navigation a {

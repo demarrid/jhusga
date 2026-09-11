@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { Block, InlineRun, TableRow } from "@/lib/render";
+import { runsText, type Block, type InlineRun, type TableRow } from "@/lib/render";
 import styles from "@/app/documents/document-detail.module.css";
 
 /**
@@ -80,9 +80,46 @@ function BlockView({ block }: { block: Block }) {
                 </div>
             );
 
+        case "layout":
+            return (
+                <div className={styles.viewerLayout}>
+                    {block.rows.map((row, index) => (
+                        <LayoutRow key={index} row={row} />
+                    ))}
+                </div>
+            );
+
         case "rule":
             return <hr />;
     }
+}
+
+/**
+ * A row of a table the author used for layout, read as text instead.
+ *
+ * The first cell with anything in it is the item; the minutes template puts
+ * who leads it, or who was present for it, in the cells after. Those are an
+ * aside beside the text rather than a column, and an empty cell -- the
+ * template leaves plenty -- is nothing at all.
+ */
+function LayoutRow({ row }: { row: TableRow }) {
+    const filled = row.cells.filter((cell) => runsText(cell).trim().length > 0);
+    if (filled.length === 0) return null;
+
+    const [item, ...aside] = filled;
+
+    return (
+        <div className={styles.viewerLayoutRow}>
+            <p className={styles.viewerLayoutItem}>{renderRuns(item)}</p>
+            {aside.length > 0 && (
+                <p className={styles.viewerLayoutAside}>
+                    {aside.map((cell, index) => (
+                        <span key={index}>{renderRuns(cell)}</span>
+                    ))}
+                </p>
+            )}
+        </div>
+    );
 }
 
 function Heading({ level, children }: { level: number; children: ReactNode }) {

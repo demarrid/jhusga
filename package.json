@@ -18,7 +18,7 @@
     "review": "tsx scripts/review.ts",
     "prune": "tsx scripts/prune.ts",
     "reprocess": "tsx scripts/reprocess.ts",
-    "check": "tsx scripts/anchor.check.ts && tsx scripts/archive.check.ts && tsx scripts/accounts.check.ts && tsx scripts/attendance.check.ts && tsx scripts/cite.check.ts && tsx scripts/contributors.check.ts && tsx scripts/directory.check.ts && tsx scripts/links.check.ts && tsx scripts/identity.check.ts && tsx scripts/meetings.check.ts && tsx scripts/names.check.ts && tsx scripts/passages.check.ts && tsx scripts/titles.check.ts && tsx scripts/render.check.ts && tsx scripts/db.check.ts",
+    "check": "tsx scripts/anchor.check.ts && tsx scripts/archive.check.ts && tsx scripts/accounts.check.ts && tsx scripts/attendance.check.ts && tsx scripts/cells.check.ts && tsx scripts/cite.check.ts && tsx scripts/contributors.check.ts && tsx scripts/directory.check.ts && tsx scripts/links.check.ts && tsx scripts/identity.check.ts && tsx scripts/meetings.check.ts && tsx scripts/names.check.ts && tsx scripts/passages.check.ts && tsx scripts/titles.check.ts && tsx scripts/render.check.ts && tsx scripts/db.check.ts",
     "seed:demo": "tsx scripts/seed.demo.ts",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio"

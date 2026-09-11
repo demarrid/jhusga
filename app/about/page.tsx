@@ -29,7 +29,7 @@ function Position({
     <article className={styles.position}>
       <Heading>{title}</Heading>
       <div className={styles.generatedProse}>
-        <GeneratedProse section={section} />
+        <GeneratedProse section={section} bulleted />
       </div>
     </article>
   );

@@ -5,14 +5,13 @@
   padding: 1.5rem 0 0;
 }
 
-.queryField,
 .filterField {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.queryField > span,
+.queryCaption,
 .filterField > span {
   color: #52677d;
   font-size: 0.66rem;
@@ -21,9 +20,13 @@
   text-transform: uppercase;
 }
 
-.queryField input {
+.queryControl {
+  position: relative;
+}
+
+.queryRow input {
   width: 100%;
-  padding: 1rem 0;
+  padding: 1rem 3rem 1rem 0;
   border: 0;
   border-bottom: 1px solid #52708e;
   border-radius: 0;
@@ -34,53 +37,98 @@
   font-size: clamp(1.2rem, 2vw, 1.65rem);
 }
 
-.queryField input::placeholder {
+.queryRow input::placeholder {
   color: #8292a2;
 }
 
-.queryField input:focus {
+.queryRow input:focus {
   border-color: #002d72;
+}
+
+.queryRow input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.clearQuery {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: #52677d;
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+  transform: translateY(-50%);
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.clearQuery:hover {
+  background: #eaf3fb;
+  color: #002d72;
+}
+
+.clearQuery:focus-visible {
+  outline: 2px solid #68ace5;
+  outline-offset: 1px;
+}
+
+.queryControl:has(input:placeholder-shown) .clearQuery {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.queryRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "caption caption"
+    "input toggle";
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+}
+
+.queryCaption {
+  grid-area: caption;
+}
+
+.queryRow .queryControl {
+  grid-area: input;
+}
+
+.hiddenLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .filterRow {
   display: grid;
-  grid-template-columns: repeat(4, minmax(8rem, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(8rem, 1fr));
   align-items: end;
   gap: 1rem;
 }
 
-.filterField select {
-  width: 100%;
-  min-height: 2.7rem;
-  padding: 0 2rem 0 0.75rem;
-  border: 1px solid #b4c3d1;
-  border-radius: 0;
-  background: #ffffff;
-  color: #263d55;
-  font-size: 0.8rem;
-}
-
-.filterField select:focus,
-.archiveToggle input:focus-visible {
-  outline: 2px solid #68ace5;
-  outline-offset: 2px;
-}
-
 .archiveToggle {
-  min-height: 2.7rem;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.65rem;
+  grid-area: toggle;
   color: #3e5369;
   font-size: 0.76rem;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.archiveToggle input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #002d72;
 }
 
 .fallbackButton {
@@ -109,8 +157,24 @@
   }
 }
 
+@media (max-width: 720px) {
+  .queryRow {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "caption"
+      "input"
+      "toggle";
+  }
+}
+
 @media (max-width: 560px) {
   .filterRow {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clearQuery {
+    transition: none;
   }
 }

@@ -12,8 +12,10 @@ import styles from "./GeneratedProse.module.css";
  */
 export default function GeneratedProse({
     section,
+    bulleted = false,
 }: {
     section: Section | null;
+    bulleted?: boolean;
 }) {
     if (!section || !section.content) {
         return (
@@ -32,7 +34,11 @@ export default function GeneratedProse({
                 </p>
             )}
 
-            <CitedProse content={section.content} citations={section.citations} />
+            <CitedProse
+                content={section.content}
+                citations={section.citations}
+                bulleted={bulleted}
+            />
         </div>
     );
 }

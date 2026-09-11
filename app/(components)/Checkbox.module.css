@@ -1,0 +1,82 @@
+.field {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  cursor: pointer;
+  line-height: 1.45;
+}
+
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  /*
+   * Centred on the label's first line rather than nudged by a fixed amount, so
+   * the box sits on the text it belongs to at any font size, and a label that
+   * wraps still starts level with it.
+   */
+  margin-top: calc((1lh - 1.2rem) / 2);
+  border: 1px solid #8fa3b7;
+  border-radius: 0.15rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfe 100%);
+  color: #ffffff;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.box svg {
+  width: 0.82rem;
+  height: 0.82rem;
+  opacity: 0;
+  transform: scale(0.65);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.field:hover .box {
+  border-color: #377ebc;
+  background: #ffffff;
+}
+
+.input:checked + .box {
+  border-color: #002d72;
+  background: #002d72;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.input:checked + .box svg {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.input:focus-visible + .box {
+  outline: 2px solid #68ace5;
+  outline-offset: 2px;
+}
+
+.label {
+  min-width: 0;
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .box,
+  .box svg {
+    transition: none;
+  }
+}

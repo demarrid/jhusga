@@ -93,7 +93,8 @@ export default async function Contact() {
 
           {directorySections.length === 0 ? (
             <p className={styles.emptyState}>
-              No {session} contact list is on file yet. Run <code>npm run sync</code> if the archive has one.
+              No {session} contact list is on file yet. 
+              {/* Run <code>npm run sync</code> if the archive has one. */}
             </p>
           ) : (
             <div className={styles.directory}>

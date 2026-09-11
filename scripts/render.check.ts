@@ -29,6 +29,8 @@ function allRuns(blocks: Block[]): InlineRun[] {
             case "table":
                 return [...(block.header ? [block.header] : []), ...block.rows]
                     .flatMap((row) => row.cells.flat());
+            case "layout":
+                return block.rows.flatMap((row) => row.cells.flat());
             case "rule":
                 return [];
         }
@@ -66,6 +68,8 @@ function words(blocks: Block[]): string[] {
                 case "table":
                     return [...(block.header ? [block.header] : []), ...block.rows]
                         .flatMap((row) => row.cells.map(text));
+                case "layout":
+                    return block.rows.flatMap((row) => row.cells.map(text));
                 case "rule":
                     return [];
             }
@@ -170,18 +174,94 @@ check("a rule is its own block", blocks[6].kind === "rule", blocks[6]);
 
 const table = blocks[7];
 check(
-    "the delimiter row becomes a header, not a row",
-    table.kind === "table" &&
-    table.header?.cells.length === 2 &&
-    table.rows.length === 1,
+    "a two-column office list is prose, not a table",
+    table.kind === "layout" && table.rows.length === 2,
     table,
 );
 check(
     "cells are parsed inline too",
-    table.kind === "table" &&
-    table.rows[0].cells[0][0].bold &&
-    table.rows[0].cells[0][0].text === "Treasurer",
-    table.kind === "table" && table.rows[0]?.cells,
+    table.kind === "layout" &&
+    table.rows[1].cells[0][0].bold &&
+    table.rows[1].cells[0][0].text === "Treasurer",
+    table.kind === "layout" && table.rows[1]?.cells,
+);
+
+// Docs has no other way to put two things side by side, so the minutes
+// template uses a table to hold an agenda item and whoever leads it. Those are
+// not data, and a reader given a one-cell spreadsheet to scroll is worse off
+// than one given the text.
+
+console.log("\nlayout tables");
+
+const layoutDoc = [
+    "| Closing Adjournment: 4:36 motion: Shreeman Second; demarri, cole Aye: Nay: | All Present |",
+    "| :---- | ----: |",
+    "",
+    "| Welcome Reintroductions (If necessary) Agenda Amendment or Approval | All Present |",
+    "| :---- | ----: |",
+    "| The Senate shall consider the bill at its next meeting, and the Chair shall circulate it beforehand. |  |",
+    "",
+    "| A notice the author drew a box around |",
+    "| :---- |",
+    "| And a second line of it |",
+].join("\n");
+const layoutBlocks = renderDocument(layoutDoc, []);
+
+check(
+    "a single row of two cells is prose, not a table",
+    layoutBlocks[0].kind === "layout" && layoutBlocks[0].rows.length === 1,
+    layoutBlocks[0],
+);
+check(
+    "a grid holding a sentence is prose, not a table",
+    layoutBlocks[1].kind === "layout" && layoutBlocks[1].rows.length === 2,
+    layoutBlocks[1],
+);
+check(
+    "the header row of a layout table is content, not a heading",
+    layoutBlocks[1].kind === "layout" &&
+    cellText(layoutBlocks[1].rows[0].cells[0]).startsWith("Welcome"),
+    layoutBlocks[1],
+);
+check(
+    "one column is never a table",
+    layoutBlocks[2].kind === "layout",
+    layoutBlocks[2],
+);
+check(
+    "a grid of short values in several columns is still a table",
+    renderDocument(
+        ["| Ada | Present | Grace | Absent |", "| :---- | :---- | :---- | :---- |",
+            "| Alan | Present | Ida | Present |"].join("\n"),
+        [],
+    )[0].kind === "table",
+);
+check(
+    "an agenda of short items next to All Present is still prose",
+    renderDocument(
+        [
+            "| Welcome Reintroductions | All Present |",
+            "| :---- | ----: |",
+            "| Closing Adjournment: 4:36 motion: Shreeman Second; demarri, cole Aye: Nay: | All Present |",
+        ].join("\n"),
+        [],
+    )[0].kind === "layout",
+);
+
+const flatMinutes = renderDocument(
+    "| S-B.114.09.01.26-1 Fast-Forward Finance Bill – Intr. Peter Tarpley Discussion: Peter: SIF, this Friday Changes Made: Decision: Pass | Chair |",
+    [],
+);
+const flatCell =
+    flatMinutes[0]?.kind === "layout" ? cellText(flatMinutes[0].rows[0]!.cells[0]!) : "";
+check(
+    "a flattened minutes cell is shown with a break at each heading and speaker",
+    flatMinutes[0]?.kind === "layout" &&
+    flatCell.includes("\nDiscussion:") &&
+    flatCell.includes("\nPeter:") &&
+    flatCell.includes("\nChanges Made:") &&
+    flatCell.includes("\nDecision:"),
+    flatCell,
 );
 
 console.log("\ncontent fidelity");

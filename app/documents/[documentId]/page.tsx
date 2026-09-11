@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getDocument } from "@/api/documents";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentViewer from "@/app/(components)/DocumentViewer";
+import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
 import { contributorRoleLabel } from "@/lib/contributors";
@@ -131,49 +132,51 @@ export default async function DocumentPage({
                 </article>
 
                 <aside className={styles.sidebar}>
-                    <section className={styles.sidebarSection}>
-                        <h2>Summary</h2>
-                        <DocumentRestatement restatement={document.restatement} />
-                    </section>
-
-                    <RelatedDocuments
-                        counterpart={document.counterpart}
-                        references={document.references}
-                        referencedBy={document.referencedBy}
-                        unresolvedLinks={document.unresolvedLinks}
-                    />
-
-                    {document.contributors.length > 0 && (
+                    <DoubleStickyHolder>
                         <section className={styles.sidebarSection}>
-                            <h3>People named</h3>
-                            <ul>
-                                {document.contributors.map((contributor) => (
-                                    <li key={`${contributor.id}-${contributor.role}`}>
-                                        <Link href={`/documents?mode=find&person=${contributor.id}`}>
-                                            {contributor.name}
-                                        </Link>
-                                        <span className={styles.asideMeta}>
-                                            {` — ${contributorRoleLabel(contributor.role)}`}
-                                            {contributor.note && ` (${contributor.note})`}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
+                            <h2>Summary</h2>
+                            <DocumentRestatement restatement={document.restatement} />
                         </section>
-                    )}
 
-                    {(document.driveOwnerName || document.driveLastEditorName) && (
-                        <p className={styles.asideMeta}>
-                            {[
-                                document.driveOwnerName &&
-                                `Drive file created by ${document.driveOwnerName}`,
-                                document.driveLastEditorName &&
-                                `last edited by ${document.driveLastEditorName}`,
-                            ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                        </p>
-                    )}
+                        <RelatedDocuments
+                            counterpart={document.counterpart}
+                            references={document.references}
+                            referencedBy={document.referencedBy}
+                            unresolvedLinks={document.unresolvedLinks}
+                        />
+
+                        {document.contributors.length > 0 && (
+                            <section className={styles.sidebarSection}>
+                                <h3>People named</h3>
+                                <ul>
+                                    {document.contributors.map((contributor) => (
+                                        <li key={`${contributor.id}-${contributor.role}`}>
+                                            <Link href={`/documents?mode=find&person=${contributor.id}`}>
+                                                {contributor.name}
+                                            </Link>
+                                            <span className={styles.asideMeta}>
+                                                {` — ${contributorRoleLabel(contributor.role)}`}
+                                                {contributor.note && ` (${contributor.note})`}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
+
+                        {(document.driveOwnerName || document.driveLastEditorName) && (
+                            <p className={styles.asideMeta}>
+                                {[
+                                    document.driveOwnerName &&
+                                    `Drive file created by ${document.driveOwnerName}`,
+                                    document.driveLastEditorName &&
+                                    `last edited by ${document.driveLastEditorName}`,
+                                ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                            </p>
+                        )}
+                    </DoubleStickyHolder>
                 </aside>
             </div>
         </main>

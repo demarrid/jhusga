@@ -199,6 +199,46 @@ export async function getPeopleInUse(
 }
 
 /**
+ * One person for the filter dropdown, including when they name no documents.
+ *
+ * Directory links can arrive with a person id that `getPeopleInUse` omits
+ * because its count is zero. Without this the URL still filters while the
+ * control reads "Anyone".
+ */
+export async function getPersonFilterOption(
+    personId: string,
+    session: SessionFilter = SESSION_NUMBER,
+): Promise<{ id: string; name: string; count: number } | null> {
+    const id = personId.trim();
+    if (!id) return null;
+
+    if (demoModeEnabled()) {
+        return demoPeople(session).find((person) => person.id === id) ?? null;
+    }
+
+    const person = await prisma.hopkinsAffiliate.findUnique({
+        where: { id },
+        select: {
+            id: true,
+            name: true,
+            _count: {
+                select: {
+                    contributions: { where: { document: sessionWhere(session) } },
+                },
+            },
+        },
+    });
+
+    if (!person) return null;
+
+    return {
+        id: person.id,
+        name: person.name,
+        count: person._count.contributions,
+    };
+}
+
+/**
  * Offices currently held by people the archive names, for the office filter.
  *
  * Restricted to seats (`position`) that are still held. A relationship the
