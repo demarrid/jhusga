@@ -5,6 +5,8 @@ import { isComparableKind, isDocumentKind, type DocumentKind } from "@/lib/kinds
 import { renderDocument } from "@/lib/render";
 import type { SearchScope } from "@/config/search";
 import { collapseUnchanged, diffLines } from "@/lib/diff";
+import { byNewestFirst, listedDate } from "@/lib/dates";
+import { parseTimeframe } from "@/lib/when";
 
 type RawDocument = (typeof site.documents)[number];
 
@@ -33,7 +35,8 @@ export function demoDocuments(filters: {
         .filter((document) => !filters.role || document.contributors.some((person) => person.role === filters.role))
         .filter((document) => !filters.officeId || document.contributors.some((person) => person.id === officePersonId))
         .filter((document) => !query || `${document.title} ${document.description} ${document.content} ${document.contributors.map((person) => person.name).join(" ")}`.toLowerCase().includes(query))
-        .map(toListing);
+        .map(toListing)
+        .sort(byNewestFirst);
 }
 
 function officeHolder(officeId: string): string | undefined {
@@ -50,6 +53,7 @@ function toListing(document: RawDocument) {
         title: document.title,
         driveTitle: document.driveTitle,
         description: document.description,
+        summary: document.summary,
         kind: documentKind(document.kind),
         folderPath: document.folderPath,
         discoveredVia: document.discoveredVia,
@@ -340,7 +344,50 @@ export function demoHeldQueue() {
 }
 
 export function demoSearchAnswer(question: string, scope: SearchScope) {
-    const matches = demoDocuments({ session: scope === "all" ? "all" : SESSION_NUMBER }).slice(0, 3);
+    const documents = demoDocuments({ session: scope === "all" ? "all" : SESSION_NUMBER });
+
+    // A question naming a period is answered by date here too, so the demo
+    // shows the behaviour rather than only the prose.
+    const period = parseTimeframe(question);
+    const inPeriod = period
+        ? documents.filter((document) => {
+            const date = listedDate(document);
+            return date !== null && date >= period.start && date < period.end;
+        })
+        : [];
+    const outside = Boolean(period) && inPeriod.length === 0;
+
+    const matches = (period ? (outside ? documents.slice(0, 3) : inPeriod) : documents.slice(0, 3))
+        .map((document) => ({
+            id: document.id,
+            title: document.title,
+            kind: document.kind,
+            sessionNumber: document.sessionNumber,
+            date: listedDate(document),
+            summary: document.summary,
+            heading: period ? "" : "Demo result",
+            excerpt: document.description,
+        }));
+
+    if (period) {
+        return {
+            question,
+            scope,
+            status: "empty" as const,
+            content: "",
+            citations: [],
+            matches,
+            timeframe: {
+                label: period.label,
+                start: period.start,
+                end: period.end,
+                outside,
+            },
+            generatedAt: null,
+            error: null,
+        };
+    }
+
     return {
         question,
         scope,
@@ -355,14 +402,8 @@ export function demoSearchAnswer(question: string, scope: SearchScope) {
             href: "/documents/demo-constitution",
             orphaned: false,
         }],
-        matches: matches.map((document) => ({
-            id: document.id,
-            title: document.title,
-            kind: document.kind,
-            sessionNumber: document.sessionNumber,
-            heading: "Demo result",
-            excerpt: document.description,
-        })),
+        matches,
+        timeframe: null,
         generatedAt: new Date("2026-09-09T15:15:00.000Z"),
         error: null,
     };

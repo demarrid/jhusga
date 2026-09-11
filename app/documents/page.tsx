@@ -13,6 +13,7 @@ import {
 } from "@/api/documents";
 import ArchiveSearch from "@/app/(components)/ArchiveSearch";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
+import { proseLine } from "@/lib/cite";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
 import { documentKindLabel } from "@/lib/kinds";
@@ -212,7 +213,18 @@ function DocumentCard({ document, index }: { document: DocumentListing; index: n
           dated={Boolean(document.datedAt)}
         />
 
-        {document.description && <p className={styles.documentDescription}>{document.description}</p>}
+        {/*
+          * The restatement, not the Drive description. The description is
+          * whatever the officer who uploaded the file typed into the box, which
+          * is usually nothing; the restatement says what the document does and
+          * every claim in it was checked against the document's own words. See
+          * lib/summarize.ts.
+          */}
+        {(document.summary || document.description) && (
+          <p className={styles.documentDescription}>
+            {document.summary ? proseLine(document.summary, 260) : document.description}
+          </p>
+        )}
 
         {byPerson.size > 0 && (
           <div className={styles.contributors} aria-label="People named in this document">

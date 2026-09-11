@@ -5,8 +5,10 @@
  *   npm run search -- --index            -- index documents that have none
  *   npm run search -- --index --force    -- re-split the whole corpus
  *   npm run search -- "how many caucus senators can there be?"
+ *   npm run search -- "what happened last week?"
  *   npm run search -- --all "when was the first caucus position introduced?"
  *   npm run search -- --passages "caucus"   -- retrieval only, no model call
+ *   npm run search -- --passages "what happened last week"  -- and the period
  *
  * Indexing is free. Asking a question costs one model call unless the answer
  * is already cached, which --force ignores.
@@ -39,8 +41,19 @@ async function main() {
     }
 
     if (passagesOnly) {
-        const { retrievePassages } = await import("../lib/search");
-        const passages = await retrievePassages(question, { scope });
+        const { retrieve } = await import("../lib/search");
+        const { passages, matches, timeframe } = await retrieve(question, { scope });
+
+        // The resolved period, so a question like "what happened last week"
+        // can be checked against the calendar rather than against a hunch.
+        if (timeframe) {
+            console.log(
+                `\nPeriod: ${timeframe.label} (${timeframe.start.toISOString().slice(0, 10)} to ${timeframe.end.toISOString().slice(0, 10)})${
+                    timeframe.outside ? " — nothing is dated in it" : ""
+                }`,
+            );
+            console.log(`${matches.length} document(s) listed`);
+        }
 
         if (passages.length === 0) {
             console.log("No passage matches those words.");
@@ -50,8 +63,8 @@ async function main() {
         for (const passage of passages) {
             console.log(
                 `\n${passage.score.toFixed(3)}  ${passage.documentTitle}${
-                    passage.heading ? ` — ${passage.heading}` : ""
-                }`,
+                    passage.date ? ` [${passage.date.toISOString().slice(0, 10)}]` : ""
+                }${passage.heading ? ` — ${passage.heading}` : ""}`,
             );
             console.log(`  ${passage.content.replace(/\s+/g, " ").slice(0, 200)}`);
         }
@@ -62,6 +75,15 @@ async function main() {
     const answer = await answerQuestion(question, { scope, force });
 
     console.log(`\n${answer.status.toUpperCase()}${answer.error ? `: ${answer.error}` : ""}\n`);
+
+    if (answer.timeframe) {
+        console.log(
+            `Period: ${answer.timeframe.label}${
+                answer.timeframe.outside ? " — nothing is dated in it" : ""
+            }\n`,
+        );
+    }
+
     if (answer.content) console.log(answer.content);
 
     if (answer.citations.length > 0) {

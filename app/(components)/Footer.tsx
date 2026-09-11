@@ -27,10 +27,11 @@ export default function Footer() {
 
       {/* GitHub Link */}
 
-      <div className={styles.githubLink}>
+      <div className={styles.links}>
         <a
           href="https://github.com/demarrid/jhusga"
           target="_blank"
+          className={styles.githubLink}
           rel="noopener noreferrer"
           aria-label="GitHub"
           style={{ display: "inline-flex" }}

@@ -8,8 +8,10 @@ import Checkbox from "@/app/(components)/Checkbox";
 import CitedProse from "@/app/(components)/CitedProse";
 import { MAX_QUESTION_CHARS, type SearchScope } from "@/config/search";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
+import { proseLine } from "@/lib/cite";
+import { formatDateShort } from "@/lib/dates";
 import { documentKindLabel } from "@/lib/kinds";
-import type { QuestionAnswer } from "@/lib/search";
+import type { MatchedDocument, QuestionAnswer } from "@/lib/search";
 
 import styles from "./NaturalLanguageSearch.module.css";
 
@@ -26,11 +28,16 @@ import styles from "./NaturalLanguageSearch.module.css";
  * shown when every quote in it was found verbatim in a stored document, with
  * each claim carrying the passage it rests on. When there is no checked answer
  * the reader still gets the list, rather than an apology.
+ *
+ * A question naming a period is answered by date rather than by word, so the
+ * list it returns is the period itself -- every document the archive holds for
+ * it, newest first -- and is worth reading whether or not prose was written
+ * about it. See lib/when.ts.
  */
 
 const EXAMPLES = [
+    "What happened last week?",
     "How many caucus senators can there be?",
-    "When was the first caucus position introduced?",
     "What does it take to amend the constitution?",
     "How is a funding bill passed?",
 ];
@@ -154,25 +161,10 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
 
             {answer.matches.length > 0 && (
                 <div className={styles.matches}>
-                    <h3>{answer.content ? "Read for this answer" : "Closest documents"}</h3>
+                    <h3>{matchesHeading(answer)}</h3>
                     <ul>
                         {answer.matches.map((match) => (
-                            <li key={match.id}>
-                                <Link href={`/documents/${match.id}`}>{match.title}</Link>
-                                <span className={styles.matchMetadata}>
-                                    {" — "}
-                                    {[
-                                        documentKindLabel(match.kind),
-                                        match.heading,
-                                        match.sessionNumber !== null &&
-                                        match.sessionNumber !== SESSION_NUMBER &&
-                                        `${sessionOrdinal(match.sessionNumber)} session`,
-                                    ]
-                                        .filter(Boolean)
-                                        .join(" · ")}
-                                </span>
-                                <p>{match.excerpt}</p>
-                            </li>
+                            <Match key={match.id} match={match} />
                         ))}
                     </ul>
                 </div>
@@ -180,13 +172,62 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
 
             {answer.status === "empty" && answer.matches.length === 0 && (
                 <p className={styles.notice}>
-                    {`Nothing in ${scopeLabel} matches those words.`}
+                    {answer.timeframe
+                        ? `${sentenceCase(scopeLabel)} holds nothing for ${answer.timeframe.label}.`
+                        : `Nothing in ${scopeLabel} matches those words.`}
                     {answer.scope === "current" &&
                         " Past sessions are not searched unless you ask for them."}
                 </p>
             )}
         </div>
     );
+}
+
+/**
+ * One document in the results.
+ *
+ * The restatement is shown in place of the passage that matched, because a
+ * reader choosing between results wants to know what each document does, not
+ * to read the middle of a sentence out of one they have not opened. The
+ * passage is the fallback for documents the archive has not summarised yet.
+ */
+function Match({ match }: { match: MatchedDocument }) {
+    const preview = match.summary ? proseLine(match.summary, 320) : match.excerpt;
+
+    return (
+        <li>
+            <Link href={`/documents/${match.id}`}>{match.title}</Link>
+            <span className={styles.matchMetadata}>
+                {" — "}
+                {[
+                    formatDateShort(match.date),
+                    documentKindLabel(match.kind),
+                    match.summary ? "" : match.heading,
+                    match.sessionNumber !== null &&
+                    match.sessionNumber !== SESSION_NUMBER &&
+                    `${sessionOrdinal(match.sessionNumber)} session`,
+                ]
+                    .filter(Boolean)
+                    .join(" · ")}
+            </span>
+            {preview && <p>{preview}</p>}
+        </li>
+    );
+}
+
+/** What the list under an answer is a list of. */
+function matchesHeading(answer: QuestionAnswer): string {
+    if (answer.timeframe) {
+        return answer.timeframe.outside
+            ? "The most recent documents"
+            : `Documents for ${answer.timeframe.label}`;
+    }
+
+    return answer.content ? "Read for this answer" : "Closest documents";
+}
+
+function sentenceCase(text: string): string {
+    return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**
@@ -198,6 +239,16 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
  * already says it.
  */
 function noAnswerReason(answer: QuestionAnswer, scopeLabel: string): string | null {
+    const { timeframe } = answer;
+
+    // A question about a period is not unanswered when there is no prose: the
+    // list below *is* the answer, and it is right by construction.
+    if (timeframe && answer.matches.length > 0 && !answer.content) {
+        return timeframe.outside
+            ? `${sentenceCase(scopeLabel)} holds nothing for ${timeframe.label}. The most recent documents are below.`
+            : `Every document in ${scopeLabel} for ${timeframe.label} is below, newest first.`;
+    }
+
     switch (answer.status) {
         case "empty":
             return answer.matches.length === 0

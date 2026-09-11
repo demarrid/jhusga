@@ -49,6 +49,7 @@ export async function askArchive(
         content: "",
         citations: [],
         matches: [],
+        timeframe: null,
         generatedAt: null,
         error: null,
     };

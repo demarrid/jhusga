@@ -42,6 +42,24 @@ export function citedIndexes(text: string): number[] {
     return order;
 }
 
+/**
+ * Generated prose as one line, for a listing.
+ *
+ * A restatement is a lead sentence and then bullets, which is right on the
+ * document's own page and wrong in a row of search results. Flattened here
+ * with the markers dropped: the chips they resolve to belong beside the
+ * claim, and there is no room for them in a preview.
+ */
+export function proseLine(content: string, max: number): string {
+    const lines = content
+        .replace(MARKER, "")
+        .split("\n")
+        .map((line) => line.trim().replace(/^[-*•]\s+/, ""))
+        .filter(Boolean);
+
+    return truncateAtWord(lines.join(" · "), max);
+}
+
 export function truncateAtWord(text: string, max: number): string {
     const collapsed = text.replace(/\s+/g, " ").trim();
     if (collapsed.length <= max) return collapsed;

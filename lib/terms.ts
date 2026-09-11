@@ -5,6 +5,12 @@
  * question is wrapped in ("how many ... can there be"), and not the vocabulary
  * every document in this archive shares. Left in, "sga" matches the whole
  * corpus and outweighs "caucus".
+ *
+ * "Happened" is in the same category, and matters more than it looks. A
+ * question about a period has its dates taken out before it gets here (see
+ * lib/when.ts), so "what happened last week" arrives as the single word
+ * "happened" -- which appears in passing in half the minutes in the archive
+ * and describes none of them.
  */
 
 const NOISE_WORDS = new Set([
@@ -16,6 +22,8 @@ const NOISE_WORDS = new Set([
     "about", "into", "over", "under", "and", "or", "but", "if", "than", "then",
     "that", "this", "these", "those", "it", "its", "as", "any", "all", "some",
     "get", "tell", "me", "you", "i", "we", "they", "please", "know", "like",
+    "happen", "happens", "happened", "happening", "going", "anything",
+    "everything", "something", "nothing", "else", "news", "recap", "update",
     "sga", "jhu", "hopkins", "johns", "university", "student", "students",
     "government", "association", "document", "documents",
 ]);

@@ -13,11 +13,14 @@
   padding-bottom: clamp(2rem, 4vw, 2rem);
 }
 
-.githubLink {
+.links {
   padding-bottom: 0.5rem;
   display: flex;
   justify-content: flex-end;
   align-items: center;
+}
+
+.githubLink {
   color: #c9c9c9;
   transition: color 160ms ease, transform 160ms ease;
 }

@@ -2,8 +2,10 @@ import Link from "next/link";
 
 import BlueJayAsciiVideo from "@/app/(components)/BlueJayAsciiVideo";
 import styles from "@/app/home.module.css";
+import { useWebGL } from "./utils";
 
 export default function Home() {
+  const hasWebGL = useWebGL();
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
@@ -20,8 +22,18 @@ export default function Home() {
             <span className={styles.arrow} aria-hidden="true">↗</span>
           </Link>
         </div>
-
-        <BlueJayAsciiVideo />
+        {hasWebGL ? (
+          <BlueJayAsciiVideo />
+        ) : (
+          <div className={styles.backgroundImageWrap}>
+            <img
+              src="/home_background.jpg"
+              alt="Gilman Background"
+              className={styles.backgroundDimmed}
+            />
+          </div>
+        )}
+  
       </section>
 
       <section
@@ -45,6 +57,49 @@ export default function Home() {
             Learn how the SGA works <span aria-hidden="true">→</span>
           </Link>
         </div>
+      </section>
+
+      <section
+        className={styles.quickLinks}
+        id="quick-links"
+        aria-labelledby="quick-links-heading"
+      >
+        <div className={`${styles.sectionLabel} ${styles.sectionLabelOnWhite}`}>
+          <span>02</span>
+          <h2 id="quick-links-heading">Quick Links</h2>
+        </div>
+
+        <ul className={styles.quickLinksList}>
+          <li>
+            <Link href="/documents">
+              <span className={styles.quickLinkName}>Documents</span>
+              <span className={styles.arrow} aria-hidden="true">↗</span>
+              <span className={styles.quickLinkNote}>
+                Legislation, meeting minutes, and the governing documents of the
+                SGA, searchable in full.
+              </span>
+            </Link>
+          </li>
+          <li>
+            <Link href="/contact#funding">
+              <span className={styles.quickLinkName}>Club Funding</span>
+              <span className={styles.arrow} aria-hidden="true">↗</span>
+              <span className={styles.quickLinkNote}>
+                How a Registered Student Organization (RSO) can request funding from SGA.
+              </span>
+            </Link>
+          </li>
+          <li>
+            <Link href="/discussion">
+              <span className={styles.quickLinkName}>Discussion</span>
+              <span className={styles.arrow} aria-hidden="true">↗</span>
+              <span className={styles.quickLinkNote}>
+                Bring issues to the Student Body and to the Senators who vote
+                on it.
+              </span>
+            </Link>
+          </li>
+        </ul>
       </section>
     </div>
   );

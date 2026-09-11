@@ -34,6 +34,21 @@
   animation: copy-in 700ms ease-out both;
 }
 
+.backgroundImageWrap {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  overflow: hidden;
+  background: #b9d9f5;
+  animation: video-in 1.1s 120ms ease-out both;
+}
+
+.backgroundDimmed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .title {
   display: flex;
   flex-direction: column;
@@ -182,6 +197,75 @@
   color: #ffffff;
 }
 
+.quickLinks {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.7fr) minmax(20rem, 1.5fr);
+  gap: clamp(3rem, 8vw, 9rem);
+  scroll-margin-top: 5.25rem;
+  padding: clamp(5rem, 10vw, 10rem) max(6vw, 1.5rem);
+}
+
+/* The same label, retuned for the white field it sits on. */
+.sectionLabelOnWhite {
+  border-top-color: rgba(0, 45, 114, 0.3);
+}
+
+.sectionLabelOnWhite span {
+  color: rgba(0, 45, 114, 0.55);
+}
+
+.quickLinksList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quickLinksList a {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.85rem 2rem;
+  padding: 1.75rem 0;
+  border-bottom: 1px solid rgba(0, 45, 114, 0.16);
+  text-decoration: none;
+  transition: padding-left 180ms ease, border-color 180ms ease;
+}
+
+.quickLinksList li:first-child a {
+  border-top: 1px solid rgba(0, 45, 114, 0.16);
+}
+
+.quickLinksList a:hover {
+  padding-left: 0.75rem;
+  border-bottom-color: #002d72;
+}
+
+.quickLinksList a:hover .arrow {
+  transform: translate(3px, -3px);
+}
+
+.quickLinkName {
+  color: #002d72;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: clamp(1.6rem, 2.4vw, 2.3rem);
+  font-weight: 410;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+
+.quickLinksList .arrow {
+  color: #002d72;
+  font-size: 1.05rem;
+}
+
+.quickLinkNote {
+  grid-column: 1 / -1;
+  max-width: 34rem;
+  color: #2e4159;
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
 @keyframes copy-in {
   from {
     opacity: 0;
@@ -218,7 +302,8 @@
     width: min(38rem, 82vw);
   }
 
-  .introduction {
+  .introduction,
+  .quickLinks {
     grid-template-columns: 1fr;
   }
 
@@ -245,7 +330,8 @@
     font-size: clamp(2.8rem, 11vw, 3.8rem);
   }
 
-  .introduction {
+  .introduction,
+  .quickLinks {
     scroll-margin-top: 7.7rem;
     padding-inline: 1.25rem;
   }
@@ -259,7 +345,8 @@
   }
 
   .arrow,
-  .introductionCopy a {
+  .introductionCopy a,
+  .quickLinksList a {
     transition: none;
   }
 }

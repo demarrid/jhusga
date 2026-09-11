@@ -21,6 +21,7 @@ import {
     academicYearStart,
     sessionFromAcademicYearStart,
 } from "@/config/session";
+import { meetingDate } from "@/lib/meetings";
 
 /**
  * How much of the body is a caption rather than discussion.
@@ -209,6 +210,33 @@ export function dateFromDocument(input: IdentityInput): Date | null {
     const first = numbered[0]!.getTime();
     if (numbered.every((date) => date.getTime() === first)) return numbered[0]!;
     return null;
+}
+
+/**
+ * The date to file a document under, or null if it names none.
+ *
+ * `dateFromDocument` is the document arguing about itself in its own body, and
+ * wins. A meeting does not: it states its date in its title and nowhere else,
+ * which is why that is read next. Without it most of the archive is undated,
+ * since minutes and agendas are most of what the archive holds -- and a reader
+ * asking what happened last week is asking about exactly those.
+ *
+ * Drive's createdTime is deliberately not a fallback here. It is the day
+ * somebody copied a template, and a caller that wants it should say so.
+ */
+export function documentDate(input: {
+    title: string;
+    content?: string;
+    driveCreatedTime?: Date | null;
+}): Date | null {
+    const stated = dateFromDocument(input);
+    if (stated) return stated;
+
+    const meeting = meetingDate(input.title, input.driveCreatedTime ?? null);
+    if (!meeting) return null;
+
+    const [year, month, day] = meeting.split("-").map(Number);
+    return calendarDate(year!, month!, day!);
 }
 
 /**

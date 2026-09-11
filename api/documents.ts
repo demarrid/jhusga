@@ -2,7 +2,8 @@
 
 import { SESSION_NUMBER } from "@/config/sga";
 import { sheetDelimiter } from "@/lib/csv";
-import { dateFromDocument } from "@/lib/identity";
+import { byNewestFirst } from "@/lib/dates";
+import { documentDate } from "@/lib/identity";
 import { heldNotice } from "@/lib/integrity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
@@ -28,6 +29,14 @@ export type DocumentListing = {
     /** The Drive filename, for the hover and for "what the author called it". */
     driveTitle: string;
     description: string;
+    /**
+     * The stored plain-language reading of the document, when there is one.
+     *
+     * Shown in place of the Drive description, which is usually empty and
+     * otherwise says whatever the officer who uploaded the file typed. See
+     * lib/summarize.ts for how it is written and checked.
+     */
+    summary: string;
     kind: DocumentKind;
     folderPath: string;
     /**
@@ -40,7 +49,7 @@ export type DocumentListing = {
     sessionNumber: number | null;
     driveCreatedTime: Date | null;
     driveModifiedTime: Date | null;
-    /** The date the document itself states, when the caption names one. */
+    /** The date the document itself states, in its body or in its title. */
     datedAt: Date | null;
     /** People this document names, for the listing. */
     contributors: { id: string; name: string; role: string }[];
@@ -143,6 +152,7 @@ export async function getDocuments(filters: {
             sessionNumber: true,
             driveCreatedTime: true,
             driveModifiedTime: true,
+            summary: { select: { content: true, status: true } },
             contributors: {
                 select: {
                     role: true,
@@ -151,25 +161,37 @@ export async function getDocuments(filters: {
                 orderBy: { hopkinsAffiliate: { name: "asc" } },
             },
         },
-        orderBy: [
-            { sessionNumber: "desc" },
-            { driveModifiedTime: "desc" },
-            { title: "asc" },
-        ],
+        // A tiebreak only. The order readers see is by date, and the date a
+        // document is filed under is read out of the document rather than
+        // stored, so it cannot be an ORDER BY -- see byNewestFirst below.
+        orderBy: [{ sessionNumber: "desc" }, { title: "asc" }],
     });
 
-    return documents.map((document) => ({
-        ...document,
-        title: document.displayTitle || document.title,
-        driveTitle: document.title,
-        kind: isDocumentKind(document.kind) ? document.kind : "unknown",
-        datedAt: dateFromDocument({ title: document.title }),
-        contributors: document.contributors.map((entry) => ({
-            id: entry.hopkinsAffiliate.id,
-            name: entry.hopkinsAffiliate.name,
-            role: entry.role,
-        })),
-    }));
+    return documents
+        .map((document) => ({
+            ...document,
+            title: document.displayTitle || document.title,
+            driveTitle: document.title,
+            kind: isDocumentKind(document.kind) ? document.kind : "unknown",
+            datedAt: documentDate({
+                title: document.title,
+                driveCreatedTime: document.driveCreatedTime,
+            }),
+            // A failed or empty summary is no summary. A stale one is the last
+            // reading of a document that has since changed, which is worth
+            // more in a list of results than nothing at all.
+            summary:
+                document.summary &&
+                    (document.summary.status === "fresh" || document.summary.status === "stale")
+                    ? document.summary.content
+                    : "",
+            contributors: document.contributors.map((entry) => ({
+                id: entry.hopkinsAffiliate.id,
+                name: entry.hopkinsAffiliate.name,
+                role: entry.role,
+            })),
+        }))
+        .sort(byNewestFirst);
 }
 
 /** People named anywhere in the archive, for the person filter. */
@@ -358,7 +380,7 @@ export type DocumentDetail = {
     lineageKey: string;
     driveCreatedTime: Date | null;
     driveModifiedTime: Date | null;
-    /** The date the document itself states, when the caption names one. */
+    /** The date the document itself states, in its body or in its title. */
     datedAt: Date | null;
     lastSyncedAt: Date | null;
     revisionCount: number;
@@ -563,9 +585,10 @@ export async function getDocument(
         lineageKey: document.lineageKey,
         driveCreatedTime: document.driveCreatedTime,
         driveModifiedTime: document.driveModifiedTime,
-        datedAt: dateFromDocument({
+        datedAt: documentDate({
             title: document.title,
             content: document.content,
+            driveCreatedTime: document.driveCreatedTime,
         }),
         lastSyncedAt: document.lastSyncedAt,
         revisionCount: document._count.revisions,
