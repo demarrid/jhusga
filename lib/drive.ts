@@ -21,6 +21,7 @@ import { sanitizeExport } from "@/lib/markdown";
 const DRIVE_FILES_ENDPOINT = "https://www.googleapis.com/drive/v3/files";
 
 export const FOLDER_MIME = "application/vnd.google-apps.folder";
+export const SHORTCUT_MIME = "application/vnd.google-apps.shortcut";
 export const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 export const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 export const GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation";
@@ -52,6 +53,15 @@ export type DriveFile = {
      * same as false and must not be treated as reassurance.
      */
     anyoneCanEdit: boolean | null;
+    /**
+     * What this file points at, when it is a shortcut rather than a file.
+     *
+     * A shortcut is how Drive files something in two places at once, and the
+     * SGA uses it for exactly that: each master folder holds the previous one,
+     * but the 112th holds the 111th as a shortcut. Left unresolved, an entire
+     * session is a single unreadable row.
+     */
+    shortcutTo: { id: string; mimeType: string } | null;
 };
 
 /** A file found by the walk, tagged with the folder trail that led to it. */
@@ -107,6 +117,7 @@ async function driveFetch(url: string, attempt = 0): Promise<Response> {
  */
 const FILE_FIELDS =
     "id, name, mimeType, createdTime, modifiedTime, webViewLink," +
+    " shortcutDetails(targetId, targetMimeType)," +
     " capabilities(canEdit, canModifyContent)," +
     " owners(displayName, emailAddress)," +
     " lastModifyingUser(displayName, emailAddress)";
@@ -120,6 +131,7 @@ type RawFile = {
     createdTime?: string;
     modifiedTime?: string;
     webViewLink?: string;
+    shortcutDetails?: { targetId?: string; targetMimeType?: string };
     capabilities?: { canEdit?: boolean; canModifyContent?: boolean };
     owners?: RawUser[];
     lastModifyingUser?: RawUser;
@@ -146,6 +158,13 @@ function toDriveFile(raw: RawFile): DriveFile | null {
         owner: toUser(raw.owners?.[0]),
         lastModifyingUser: toUser(raw.lastModifyingUser),
         anyoneCanEdit: anonymousCanEdit(raw.capabilities),
+        shortcutTo:
+            raw.shortcutDetails?.targetId && raw.shortcutDetails.targetMimeType
+                ? {
+                    id: raw.shortcutDetails.targetId,
+                    mimeType: raw.shortcutDetails.targetMimeType,
+                }
+                : null,
     };
 }
 
@@ -264,7 +283,14 @@ export function archiveSessionFor(folderName: string): number | null {
  * Breadth-first walk of the master folder, yielding non-folder files.
  *
  * Drive folders form a graph rather than a tree (a file can have several
- * parents), so visited IDs are tracked to avoid revisiting a subtree.
+ * parents, and a shortcut files one folder inside another), so visited IDs are
+ * tracked to avoid revisiting a subtree.
+ *
+ * Shortcuts are followed as though they were the thing they point at, because
+ * to everyone using the Drive they are: the 112th master folder holds the 111th
+ * as a shortcut, and until this followed them the 111th session did not exist
+ * as far as the archive was concerned. The shortcut's own name is what is
+ * followed into the folder path, since that is the name a reader clicked.
  */
 export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
     const found: WalkedFile[] = [];
@@ -290,17 +316,22 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
             const children = await listFolderChildren(folder.id);
 
             for (const child of children) {
-                if (child.mimeType === FOLDER_MIME) {
+                const target = child.shortcutTo;
+                const isFolder =
+                    child.mimeType === FOLDER_MIME || target?.mimeType === FOLDER_MIME;
+
+                if (isFolder) {
+                    const folderId = target?.id ?? child.id;
                     if (
                         isExcluded(child.name) ||
-                        visited.has(child.id) ||
+                        visited.has(folderId) ||
                         folder.depth + 1 > MAX_FOLDER_DEPTH
                     ) {
                         continue;
                     }
-                    visited.add(child.id);
+                    visited.add(folderId);
                     next.push({
-                        id: child.id,
+                        id: folderId,
                         path: folder.path ? `${folder.path}/${child.name}` : child.name,
                         depth: folder.depth + 1,
                         sessionNumber:
@@ -309,13 +340,20 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
                     continue;
                 }
 
+                // A shortcut carries none of its target's own metadata -- no
+                // modifiedTime to skip an unchanged export by, no owner, no
+                // sharing -- so the target is fetched and the shortcut
+                // discarded. It is the target that gets exported and stored.
+                const file = target ? await getFile(target.id) : child;
+                if (!file) continue;
+
                 if (found.length >= MAX_FILES_PER_SYNC) {
                     throw new Error(
                         `Walk exceeded MAX_FILES_PER_SYNC (${MAX_FILES_PER_SYNC}); check MASTER_FOLDER_ID is the intended folder`,
                     );
                 }
                 found.push({
-                    ...child,
+                    ...file,
                     folderPath: folder.path,
                     sessionNumber: folder.sessionNumber,
                 });

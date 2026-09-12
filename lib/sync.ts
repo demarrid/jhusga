@@ -912,6 +912,8 @@ export async function followLinks(
                         // "unknown", which the hold thresholds treat as
                         // ordinary -- only a confirmed `true` tightens them.
                         anyoneCanEdit: null,
+                        // A SharePoint link is the file, not a pointer to one.
+                        shortcutTo: null,
                         folderPath: "",
                         sessionNumber,
                     },
