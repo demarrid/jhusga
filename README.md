@@ -257,6 +257,12 @@ Copy `.env.example` to `.env` before any of these. The database is Postgres: the
 app connects through Supabase's transaction pooler, and migrations go through
 `DIRECT_URL` on the session pooler.
 
+Node 20.19 or later, and 22.12 or later on the 22 line, as `engines` in
+`package.json` says. That is Prisma 7's own floor and not a preference: the
+Prisma CLI `require`s an ES module, which earlier releases of Node refuse, so
+`prisma generate` and `npm run db:migrate` fail outright on 20.18 while the
+app's own code runs fine.
+
 ## Contributions
 
 ## Guideliens to Adhere To
