@@ -62,7 +62,11 @@ Some files in the master folder are shared as "anyone with the link can edit".
 That is usually an accident, and it means the text this site republishes can be
 rewritten by a stranger. The sync asks Drive, unauthenticated, whether it could
 edit each file, and stores the answer -- so the signal is what an anonymous
-outsider can actually do, not what the SGA meant to allow.
+outsider can actually do, not what the SGA meant to allow. The answer is
+rewritten on every run, including for files whose text has not changed:
+tightening a share to suggestions-only does not touch the file's modifiedTime,
+and the warning has to come down when the hole is closed or it stops meaning
+anything.
 
 Where a file is world-editable, `lib/integrity.ts` applies a much lower bar
 before it will publish a change: a revision that deletes most of a document, or

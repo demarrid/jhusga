@@ -567,6 +567,46 @@ async function exportIngestible(file: WalkedFile): Promise<string | null> {
 }
 
 /**
+ * What Drive says about the file, as opposed to what the file says.
+ *
+ * Every one of these changes without the text changing, and two of them are
+ * why this is written on the paths that skip the export as well as the ones
+ * that do not:
+ *
+ * - Sharing does not touch modifiedTime at all, so a file whose permissions
+ *   were tightened would otherwise be described as world-editable until
+ *   somebody happened to edit it -- the site warning readers off text that is
+ *   no longer open, which is the opposite of the warning's purpose.
+ * - A rename does touch modifiedTime, but leaves the export identical, so it
+ *   used to stop at the content-hash check and never reach the row. Names are
+ *   what the site derives the kind, the meeting and the display title from,
+ *   so a file renamed to say what it actually is stayed misfiled.
+ *
+ * `sessionNumber` is deliberately absent: for a linked-in file it is settled
+ * from the text by `linkedSession`, and rewriting it from the fallback here
+ * would undo that. `recordSessions` keeps it current instead.
+ */
+function driveMetadata(file: WalkedFile, discoveredVia: "walk" | "link") {
+    return {
+        source: driveViewLink(file),
+        mimeType: file.mimeType,
+        title: file.name,
+        kind: classifyDocument({ name: file.name, folderPath: file.folderPath }),
+        folderPath: file.folderPath,
+        discoveredVia,
+        lineageKey: lineageKeyFor(file.name, file.id),
+        driveCreatedTime: file.createdTime ? new Date(file.createdTime) : null,
+        driveModifiedTime: file.modifiedTime ? new Date(file.modifiedTime) : null,
+        lastSyncedAt: new Date(),
+        anyoneCanEdit: file.anyoneCanEdit,
+        driveOwnerName: file.owner?.displayName ?? null,
+        driveOwnerEmail: file.owner?.emailAddress ?? null,
+        driveLastEditorName: file.lastModifyingUser?.displayName ?? null,
+        driveLastEditorEmail: file.lastModifyingUser?.emailAddress ?? null,
+    };
+}
+
+/**
  * Store one Drive file, exporting it only if its text has actually changed.
  *
  * Shared by the folder walk and the link-follower, which differ only in how
@@ -592,8 +632,8 @@ async function ingestFile(
         },
     });
 
-    const driveModifiedTime = file.modifiedTime ? new Date(file.modifiedTime) : null;
-    const driveCreatedTime = file.createdTime ? new Date(file.createdTime) : null;
+    const metadata = driveMetadata(file, discoveredVia);
+    const { driveModifiedTime } = metadata;
 
     // Cheap path: Drive says the file has not been touched.
     const mtimeUnchanged =
@@ -605,10 +645,7 @@ async function ingestFile(
     if (mtimeUnchanged && !options.force) {
         await prisma.document.update({
             where: { id: existing.id },
-            // createdTime is written even on the cheap path so that adding it
-            // to the schema backfills on the next sync, rather than only for
-            // documents that happen to change.
-            data: { driveCreatedTime, lastSyncedAt: new Date() },
+            data: metadata,
         });
         summary.documentsUnchanged += 1;
         return true;
@@ -626,10 +663,7 @@ async function ingestFile(
         await prisma.document.update({
             where: { id: existing.id },
             data: {
-                driveCreatedTime,
-                driveModifiedTime,
-                lastSyncedAt: new Date(),
-                anyoneCanEdit: file.anyoneCanEdit,
+                ...metadata,
                 // The published text is what Drive is serving again, so
                 // whatever was held has been reverted at the source.
                 ...(existing.reviewState === "held"
@@ -651,12 +685,7 @@ async function ingestFile(
     if (existing && existing.rejectedContentHash === contentHash) {
         await prisma.document.update({
             where: { id: existing.id },
-            data: {
-                driveCreatedTime,
-                driveModifiedTime,
-                lastSyncedAt: new Date(),
-                anyoneCanEdit: file.anyoneCanEdit,
-            },
+            data: metadata,
         });
         summary.documentsUnchanged += 1;
         return true;
@@ -667,29 +696,10 @@ async function ingestFile(
             ? linkedSession({ title: file.name, content }, file.sessionNumber)
             : file.sessionNumber;
 
-    const kind = classifyDocument({ name: file.name, folderPath: file.folderPath });
-
-    // Metadata is always current: where the file lives, who last touched it,
-    // and whether the world can edit it are facts about Drive, and are true
-    // whether or not the new text is one the site is willing to publish.
-    const metadata = {
-        source: driveViewLink(file),
-        mimeType: file.mimeType,
-        title: file.name,
-        kind,
-        folderPath: file.folderPath,
-        discoveredVia,
-        sessionNumber,
-        lineageKey: lineageKeyFor(file.name, file.id),
-        driveCreatedTime,
-        driveModifiedTime,
-        lastSyncedAt: new Date(),
-        anyoneCanEdit: file.anyoneCanEdit,
-        driveOwnerName: file.owner?.displayName ?? null,
-        driveOwnerEmail: file.owner?.emailAddress ?? null,
-        driveLastEditorName: file.lastModifyingUser?.displayName ?? null,
-        driveLastEditorEmail: file.lastModifyingUser?.emailAddress ?? null,
-    };
+    // Metadata is always current, whether or not the new text is one the site
+    // is willing to publish. The session joins it only here, since settling it
+    // for a linked-in file needs the text this path has just fetched.
+    const stored = { ...metadata, sessionNumber };
 
     const published = {
         description: deriveDescription(content),
@@ -702,7 +712,7 @@ async function ingestFile(
     };
 
     const verdict = assessChange({
-        kind,
+        kind: metadata.kind,
         anyoneCanEdit: file.anyoneCanEdit,
         before: existing?.content ?? "",
         after: content,
@@ -712,8 +722,8 @@ async function ingestFile(
         where: { driveFileId: file.id },
         // A document being created has nothing to protect, so its first text
         // is published whatever the verdict says.
-        create: { driveFileId: file.id, ...metadata, ...published },
-        update: verdict.publish ? { ...metadata, ...published } : metadata,
+        create: { driveFileId: file.id, ...stored, ...published },
+        update: verdict.publish ? { ...stored, ...published } : stored,
     });
 
     // Stored either way. The revision history is append-only precisely so that
