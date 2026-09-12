@@ -12,7 +12,7 @@
  *
  * What that leaves is the search itself, which is why searches are fenced to a
  * calendar year. A routine run reads two years, six pages, sixty seconds; a
- * backfill reads every year since 2008 and stops when it runs out of budget,
+ * backfill reads every year since 2001 and stops when it runs out of budget,
  * and the next run picks up where it left off because everything it stored is
  * now something it skips.
  *
@@ -131,7 +131,7 @@ function publishedAt(article: NewsletterArticle): Date | null {
 /**
  * The years a run searches, in the order it searches them.
  *
- * A backfill goes forwards from 2008, so that a run cut short by its budget
+ * A backfill goes forwards from 2001, so that a run cut short by its budget
  * leaves the archive complete up to a date rather than patchy throughout, and
  * so the next run's resume point is a year rather than a guess. A routine run
  * goes backwards from now, because that is where anything new is.

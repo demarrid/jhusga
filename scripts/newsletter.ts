@@ -2,7 +2,7 @@
  * Ingest The Johns Hopkins News-Letter's coverage of the SGA.
  *
  *   npm run newsletter                  -- the last two years, as the cron does
- *   npm run newsletter -- --backfill    -- every year since 2008, until budget
+ *   npm run newsletter -- --backfill    -- every year since 2001, until budget
  *   npm run newsletter -- --year 2015   -- one year; repeatable
  *   npm run newsletter -- --dry         -- search only, fetch and store nothing
  *   npm run newsletter -- --refetch     -- re-read articles already held

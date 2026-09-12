@@ -15,7 +15,7 @@ import { ingestNewsletterCoverage } from "@/lib/coverage";
  * would give a job that reliably times out and a sync that stops reporting.
  *
  * So the run stops itself on a budget and says so, and the next night carries
- * on: an article already stored is skipped without a request. Reaching 2008 from
+ * on: an article already stored is skipped without a request. Reaching 2001 from
  * an empty database this way takes months, which is why `npm run newsletter --
  * --backfill` exists and is the intended way to do the first load.
  */

@@ -169,7 +169,7 @@ Everything above is the SGA's own paperwork. It has a gap that no amount of
 Drive-walking will close: the SGA keeps almost nothing before about 2019, and
 what it kept says only what it decided, never how that landed. The Johns Hopkins
 News-Letter has covered the same body since it was called Student Council, and
-its online archive reaches 2008.
+its online archive reaches back to 2001.
 
 So `lib/newsletter.ts` reads it. Each of three phrases -- "sga", "student
 government", "student council" -- is searched a calendar year at a time, and

@@ -10,7 +10,7 @@
  *
  * There is no API. The paper runs SNworks' Gryphon CMS, whose only machine
  * -readable surface is one RSS feed of recent content -- useless for reaching
- * 2008. So the search page is read, which is stable in the ways that matter:
+ * 2001. So the search page is read, which is stable in the ways that matter:
  * results are `<article class="clearfix">` blocks each holding one link, and
  * every article page carries a schema.org NewsArticle block.
  *
@@ -290,7 +290,7 @@ export type SearchResult = {
     listedOn: string | null;
 };
 
-/** "15" -> 2015. The listing prints two digits and the archive starts in 2008. */
+/** "15" -> 2015. The listing prints two digits and the archive starts in 2001. */
 function listingYear(twoDigit: string): number {
     return 2000 + Number(twoDigit);
 }
