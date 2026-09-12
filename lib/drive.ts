@@ -366,7 +366,18 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
     return found;
 }
 
-/** One Drive export, as text. */
+/**
+ * The reasons Drive gives for having no text to give.
+ *
+ * A file it will not convert (a deck of scanned images, a doc past the export
+ * size limit) is a fact about that file, not a failure of the sync -- and one
+ * of them in a folder of two hundred must not stop the walk, which is what it
+ * did until this was caught. The document is still recorded and still links to
+ * Drive; it just has no text, like the templates and stubs already do.
+ */
+const NOTHING_TO_EXPORT = /cannotExportFile|exportSizeLimitExceeded/;
+
+/** One Drive export, as text, or empty when Drive will not export the file. */
 async function exportFile(fileId: string, mimeType: string): Promise<string> {
     const params = new URLSearchParams({
         mimeType,
@@ -374,11 +385,18 @@ async function exportFile(fileId: string, mimeType: string): Promise<string> {
         key: apiKey(),
     });
 
-    const response = await driveFetch(
-        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
-    );
-
-    return response.text();
+    try {
+        const response = await driveFetch(
+            `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
+        );
+        return await response.text();
+    } catch (cause) {
+        // driveFetch puts Drive's own reason in the message; see above.
+        if (cause instanceof Error && NOTHING_TO_EXPORT.test(cause.message)) {
+            return "";
+        }
+        throw cause;
+    }
 }
 
 /** A markdown table row, which is where the export loses the author's breaks. */
@@ -434,17 +452,7 @@ export async function exportPresentationAsText(fileId: string): Promise<string> 
  * initiative tracksheet is the Senate being asked to look at that sheet.
  */
 export async function exportSpreadsheetAsCsv(fileId: string): Promise<string> {
-    const params = new URLSearchParams({
-        mimeType: "text/csv",
-        supportsAllDrives: "true",
-        key: apiKey(),
-    });
-
-    const response = await driveFetch(
-        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
-    );
-
-    return (await response.text()).replace(/^\uFEFF/, "").trim();
+    return (await exportFile(fileId, "text/csv")).replace(/^\uFEFF/, "").trim();
 }
 
 /** Stable link back to the original, for "open in Google Docs". */
