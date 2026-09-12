@@ -1,37 +1,79 @@
 .panel {
-  padding-top: 1.5rem;
+  padding-top: 0.25rem;
   color: #20374f;
 }
 
 .form {
   display: grid;
   grid-template-columns: minmax(14rem, 1fr) auto auto;
-  align-items: center;
+  align-items: start;
   gap: 0 1.25rem;
   margin-top: 2rem;
 }
 
+.questionField {
+  min-width: 0;
+}
+
+.questionInputWrap {
+  position: relative;
+  height: 3.6rem;
+  background: #ffffff;
+}
+
+.exampleCycle {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border: 1px solid transparent;
+}
+
+.exampleCycleTrack {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Slide animation speed (separate from how long each line is shown). */
+  transition: transform 520ms ease;
+  transform: translateY(calc(var(--example-index, 0) * -3.6rem));
+}
+
+.exampleCycleTrackInstant {
+  transition: none;
+}
+
+.exampleCycleTrack li {
+  display: flex;
+  align-items: center;
+  height: 3.6rem;
+  padding: 0 1.1rem;
+  color: #8292a2;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  line-height: 1.25;
+}
+
 .question {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
   min-width: 0;
   height: 3.6rem;
   padding: 0 1.1rem;
   border: 1px solid #8fa3b7;
   border-radius: 0;
   outline: none;
-  background: #ffffff;
+  background: transparent;
   color: #002d72;
   font-family: var(--font-source-serif-4), Georgia, serif;
   font-size: clamp(1rem, 1.6vw, 1.25rem);
 }
 
-.question::placeholder {
-  color: #8292a2;
-}
-
 .question:focus {
-  border-color: #002d72;
-  outline: 2px solid #68ace5;
-  outline-offset: 2px;
+  border-color: #8fa3b7;
+  outline: none;
 }
 
 .askButton {
@@ -60,7 +102,6 @@
 }
 
 .loadingTrack {
-  grid-column: 1 / -1;
   height: 3px;
   overflow: hidden;
   background: #dce8f3;
@@ -93,25 +134,8 @@
   white-space: nowrap;
 }
 
-.examples {
-  margin: 1.6rem 0 0;
-  color: #65798d;
-  font-size: 0.74rem;
-  line-height: 1.9;
-}
-
-.exampleButton {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #164f87;
-  text-decoration: underline;
-  text-decoration-color: #9dbbd5;
-  text-underline-offset: 0.2em;
-}
-
 .answerRegion {
-  margin-top: 1.5rem;
+  margin-top: 1.0rem;
 }
 
 .answer {
@@ -200,6 +224,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .askButton {
+    transition: none;
+  }
+
+  .exampleCycleTrack {
     transition: none;
   }
 

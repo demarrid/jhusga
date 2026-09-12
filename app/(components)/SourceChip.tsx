@@ -29,11 +29,10 @@ export default function SourceChip({ citation, mini }: { citation: ChipCitation,
         // Keep the tooltip outside the clipped circle so the custom panel can show.
         return (
             <span className={styles.miniChipWrap}>
-                <Link
-                    href={citation.href}
-                    className={`${styles.chip} ${styles.miniChip}`}
-                    aria-label={`Source: ${citation.documentTitle}`}
-                >
+                <Link href={citation.href} className={`${styles.chip} ${styles.miniChip}`}>
+                    <span className={styles.visuallyHidden}>
+                        {`Source: ${citation.documentTitle}`}
+                    </span>
                     <svg aria-hidden="true" fill="currentColor" viewBox="0 0 16 16">
                         <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588Z" />
                         <circle cx="8" cy="4.5" r="1" />

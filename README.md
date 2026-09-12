@@ -243,6 +243,7 @@ what makes `/documents/<id>/compare` able to diff them.
 ```sh
 npm run dev          # develop
 npm run sync         # sync Drive now; --dry-run to walk without writing
+npm run reprocess    # re-parse stored text (people, dates, links); no Drive walk
 npm run newsletter   # News-Letter coverage; -- --backfill for every year, --dry to search only
 npm run summarize    # restate the documents a sync left over; -- --force to redo
 npm run search       # -- --index to build the search index; -- "a question" to try it

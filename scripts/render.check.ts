@@ -1,6 +1,6 @@
 import { findQuote } from "../lib/anchor";
 import { toPlainText } from "../lib/markdown";
-import { renderDocument, type Block, type InlineRun } from "../lib/render";
+import { proseInlineRuns, renderDocument, type Block, type InlineRun } from "../lib/render";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -478,6 +478,15 @@ check(
     "tab-separated rows from the xlsx path split too",
     tabbed[0].kind === "table" && cellText(tabbed[0].rows[0].cells[1]) === "Treasurer",
     tabbed[0].kind === "table" ? tabbed[0].rows[0].cells.map(cellText) : null,
+);
+
+console.log("\nproseInlineRuns");
+const committee = proseInlineRuns("**Committee on Internal Affairs:** hears appeals. [1]");
+check(
+    "generated prose bold labels render without asterisks",
+    committee.some((run) => run.bold && run.text === "Committee on Internal Affairs:") &&
+        runsText(committee) === "Committee on Internal Affairs: hears appeals. [1]",
+    committee,
 );
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);

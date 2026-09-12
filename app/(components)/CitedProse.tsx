@@ -1,5 +1,8 @@
+import type { ReactNode } from "react";
+
 import SourceChip, { type ChipCitation } from "@/app/(components)/SourceChip";
 import { citedIndexes, splitCitedParts } from "@/lib/cite";
+import { proseInlineRuns, type InlineRun } from "@/lib/render";
 
 /**
  * Model-written prose with its footnotes resolved.
@@ -102,7 +105,7 @@ function renderBlocks(content: string, byIndex: Map<number, ProseCitation>, mini
 function renderCitedLine(text: string, byIndex: Map<number, ProseCitation>, miniChips: boolean) {
     return splitCitedParts(text).map((part, index) => {
         if (part.type === "text") {
-            return <span key={index}>{part.value}</span>;
+            return <span key={index}>{renderInlineMarkdown(part.value)}</span>;
         }
 
         const citation = byIndex.get(part.index);
@@ -112,4 +115,28 @@ function renderCitedLine(text: string, byIndex: Map<number, ProseCitation>, mini
 
         return <SourceChip key={`${citation.id}-${index}`} citation={citation} mini={miniChips} />;
     });
+}
+
+function renderInlineMarkdown(text: string): ReactNode {
+    return proseInlineRuns(text).map((run, index) => (
+        <MarkdownRun key={index} run={run} />
+    ));
+}
+
+function MarkdownRun({ run }: { run: InlineRun }) {
+    let node: ReactNode = run.text;
+
+    if (run.strike) node = <s>{node}</s>;
+    if (run.italic) node = <em>{node}</em>;
+    if (run.bold) node = <strong>{node}</strong>;
+
+    if (run.href) {
+        node = (
+            <a href={run.href} target="_blank" rel="noreferrer">
+                {node}
+            </a>
+        );
+    }
+
+    return node;
 }

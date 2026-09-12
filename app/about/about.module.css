@@ -119,6 +119,11 @@
   color: #377ebc;
 }
 
+.generatedProse :global(strong) {
+  color: #002d72;
+  font-weight: 650;
+}
+
 .lead {
   color: #153a68;
   font-family: var(--font-source-serif-4), Georgia, serif;

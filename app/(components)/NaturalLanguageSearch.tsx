@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type CSSProperties } from "react";
 
 import { askArchive } from "@/api/search";
 import Checkbox from "@/app/(components)/Checkbox";
@@ -37,16 +37,53 @@ import styles from "./NaturalLanguageSearch.module.css";
 
 const EXAMPLES = [
     "What happened last week?",
-    "How many caucus senators can there be?",
+    "How many Caucus Senators can there be?",
     "What does it take to amend the constitution?",
     "How is a funding bill passed?",
+    "What are the current initiatives?",
+    "Who is currently in Judiciary branch?",
+    "What meetings can I attend?",
+    "What is a Parlimentarian?",
+    "Why are the Bylaws so long?",
+    "How do I run for office?"
 ];
+
+/** Milliseconds each example stays visible before sliding to the next. */
+const EXAMPLE_CYCLE_MS = 2_800;
+
+/** First item repeated at the end so the carousel can snap back without reversing. */
+const EXAMPLE_LOOP = [...EXAMPLES, EXAMPLES[0]];
 
 export default function NaturalLanguageSearch() {
     const [question, setQuestion] = useState("");
     const [scope, setScope] = useState<SearchScope>("current");
     const [answer, setAnswer] = useState<QuestionAnswer | null>(null);
     const [pending, startTransition] = useTransition();
+    const [exampleIndex, setExampleIndex] = useState(0);
+    const [exampleSlide, setExampleSlide] = useState(true);
+
+    useEffect(() => {
+        if (question.length > 0) return;
+
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reducedMotion) return;
+
+        const timer = window.setInterval(() => {
+            setExampleIndex((index) => index + 1);
+        }, EXAMPLE_CYCLE_MS);
+
+        return () => window.clearInterval(timer);
+    }, [question]);
+
+    function finishExampleLoop() {
+        if (exampleIndex !== EXAMPLES.length) return;
+
+        setExampleSlide(false);
+        setExampleIndex(0);
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => setExampleSlide(true));
+        });
+    }
 
     function ask(asked: string, withScope: SearchScope) {
         if (asked.trim().length < 3) return;
@@ -64,68 +101,65 @@ export default function NaturalLanguageSearch() {
                     ask(question, scope);
                 }}
             >
-                <div>
-                    <input
-                        type="text"
-                        value={question}
-                        maxLength={MAX_QUESTION_CHARS}
-                        placeholder="How many caucus senators can there be?"
-                        aria-label="Ask a question about the SGA"
-                        className={styles.question}
-                        onChange={(event) => setQuestion(event.target.value)}
-                    />
+                <div className={styles.questionField}>
+                    <div className={styles.questionInputWrap}>
+                        {question.length === 0 && (
+                            <div className={styles.exampleCycle} aria-hidden="true">
+                                <ul
+                                    className={
+                                        exampleSlide
+                                            ? styles.exampleCycleTrack
+                                            : `${styles.exampleCycleTrack} ${styles.exampleCycleTrackInstant}`
+                                    }
+                                    style={{ "--example-index": exampleIndex } as CSSProperties}
+                                    onTransitionEnd={finishExampleLoop}
+                                >
+                                    {EXAMPLE_LOOP.map((example, index) => (
+                                        <li key={`${example}-${index}`}>{example}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        <input
+                            type="text"
+                            value={question}
+                            maxLength={MAX_QUESTION_CHARS}
+                            placeholder=""
+                            aria-label="Ask a question about the SGA"
+                            className={styles.question}
+                            onChange={(event) => setQuestion(event.target.value)}
+                        />
+                    </div>
                     <div
                         className={`${styles.loadingTrack} ${pending ? styles.loading : ""}`}
                         aria-hidden="true"
                     >
+                        <span />
                     </div>
-                    <button
-                        type="submit"
-                        disabled={pending || question.trim().length < 3}
-                        className={styles.askButton}
+                </div>
+                <button
+                    type="submit"
+                    disabled={pending || question.trim().length < 3}
+                    className={styles.askButton}
+                >
+                    {pending ? "Reading…" : "Ask"}
+                </button>
+                <div className={styles.scopeToggle}>
+                    <Checkbox
+                        checked={scope === "all"}
+                        onChange={(checked) => {
+                            const next: SearchScope = checked ? "all" : "current";
+                            setScope(next);
+                            // Re-asking immediately is the point of the toggle:
+                            // it is how a reader moves a question from "what
+                            // are the rules now" to "when did that change".
+                            if (answer) ask(question, next);
+                        }}
                     >
-                        {pending ? "Reading…" : "Ask"}
-                    </button>
-
-                    <div className={styles.scopeToggle}>
-                        <Checkbox
-                            checked={scope === "all"}
-                            onChange={(checked) => {
-                                const next: SearchScope = checked ? "all" : "current";
-                                setScope(next);
-                                // Re-asking immediately is the point of the toggle:
-                                // it is how a reader moves a question from "what
-                                // are the rules now" to "when did that change".
-                                if (answer) ask(question, next);
-                            }}
-                        >
-                            Include past sessions
-                        </Checkbox>
-                    </div>
-                    <span />
+                        Include past sessions
+                    </Checkbox>
                 </div>
             </form>
-
-            {!answer && !pending && (
-                <p className={styles.examples}>
-                    {"For example: "}
-                    {EXAMPLES.map((example, index) => (
-                        <span key={example}>
-                            {index > 0 && " · "}
-                            <button
-                                type="button"
-                                className={styles.exampleButton}
-                                onClick={() => {
-                                    setQuestion(example);
-                                    ask(example, scope);
-                                }}
-                            >
-                                {example}
-                            </button>
-                        </span>
-                    ))}
-                </p>
-            )}
 
             <div className={styles.answerRegion} aria-live="polite" aria-busy={pending}>
                 {answer && !pending && <Answer answer={answer} />}

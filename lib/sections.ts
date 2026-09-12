@@ -151,11 +151,6 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
         "Programming Councils",
         "What are the Class Programming Councils, who sits on each one, and what are they responsible for?",
     ),
-    about(
-        "programming.officers",
-        "Programming Council officers",
-        "What are the duties of the Chair, Treasurer, and Secretary of a Class Programming Council?",
-    ),
 ];
 
 export function sectionDefinition(key: string): SectionDefinition | undefined {

@@ -17,6 +17,11 @@
   letter-spacing: 0.08em;
   text-decoration: none;
   text-transform: uppercase;
+  transition: color 0.2s ease-in-out;
+}
+
+.backLink:hover {
+  color: #ffffff;
 }
 
 .masthead h1 {

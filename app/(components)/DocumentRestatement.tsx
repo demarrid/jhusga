@@ -81,11 +81,6 @@ function QuoteChip({
     return (
         <a
             href={citation.orphaned ? undefined : citation.href}
-            title={
-                citation.orphaned
-                    ? "This passage has changed since it was cited."
-                    : quote
-            }
             className={styles.citation}
         >
             <span className={styles.citationMark}>

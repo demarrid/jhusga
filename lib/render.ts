@@ -65,6 +65,11 @@ export function runsText(runs: InlineRun[]): string {
     return runs.map((run) => run.text).join("");
 }
 
+/** Inline markdown in generated prose: bold, italic, links, without document anchors. */
+export function proseInlineRuns(text: string): InlineRun[] {
+    return inlineRuns(text, [{ start: 0, end: text.length }], [], new Set());
+}
+
 /** A half-open slice of the original document. */
 type Range = { start: number; end: number };
 

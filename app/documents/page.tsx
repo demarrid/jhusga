@@ -232,9 +232,12 @@ function DocumentCard({ document, index }: { document: DocumentListing; index: n
               <Link
                 key={id}
                 href={`/documents?mode=find&person=${id}`}
-                title={entry.roles.map(contributorRoleLabel).join(", ")}
+                className={styles.contributorChip}
               >
                 {entry.name}
+                <span className={styles.contributorTooltip}>
+                  {entry.roles.map(contributorRoleLabel).join(", ")}
+                </span>
               </Link>
             ))}
           </div>

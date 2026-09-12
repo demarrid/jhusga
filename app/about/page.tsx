@@ -183,9 +183,6 @@ export default async function About() {
           <div className={styles.generatedProse}>
             <GeneratedProse section={at("about.programming.overview")} />
           </div>
-          <div className={styles.positions}>
-            <Position title="Council officers" section={at("about.programming.officers")} />
-          </div>
         </div>
       </section>
     </main>

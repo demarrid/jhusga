@@ -44,7 +44,7 @@ export default function ArchiveSearch(props: ArchiveSearchProps) {
     <section className={styles.panel} aria-labelledby="archive-search-heading">
       <header className={styles.header}>
         <div>
-          <span>Search the public record</span>
+          <span>Public Record</span>
           <h2 id="archive-search-heading">Search the archive</h2>
         </div>
 
