@@ -86,6 +86,15 @@ model Document {
     driveModifiedTime DateTime?
     lastSyncedAt      DateTime?
 
+    // The date the document states about itself: the day a bill was read or
+    // enacted, the day a meeting met, the byline under a report's title.
+    // Derived by documentDate in lib/identity.ts, and stored rather than
+    // computed on read because the listing and the search both file documents
+    // by it, and neither can load every document's text to work it out.
+    // Null when the document says nothing about when it happened, which is
+    // when Drive's timestamps stand in; see listedDate in lib/dates.ts.
+    datedAt DateTime?
+
     // Who Drive says owns and last touched the file. This is provenance, not
     // authorship: SGA files are frequently owned by whichever personal account
     // happened to create them, so it is recorded but never presented as "the
@@ -133,6 +142,7 @@ model Document {
 
     @@index([kind])
     @@index([driveModifiedTime])
+    @@index([datedAt])
     @@index([sessionNumber])
     @@index([lineageKey, sessionNumber])
     @@index([driveOwnerEmail])

@@ -23,10 +23,12 @@ The pipeline that enforces this runs once a day:
    session and not.
 2. **Follow links** (`lib/sync.ts`, `lib/links.ts`). Agendas mostly list Drive
    and SharePoint URLs. Those targets are ingested if they can be read.
-   Linked-in files that name a session (`S.B.26-27`) are tagged from that
-   caption, not from Drive createdTime or the oldest agenda that pointed at
-   them. SharePoint files need Graph credentials when the share is not public
-   (see `.env.example`).
+   A linked-in file is dated and placed by what it says about itself
+   (`lib/identity.ts`): the caption first (`S.B.26-27`, `S-B.114.09.08.2026-1`),
+   then the date it states. The folder of whichever agenda linked it is the last
+   resort, so a report on the 2018/2019 referendum stays the 106th's work rather
+   than becoming the 113th's for having been cited. SharePoint files need Graph
+   credentials when the share is not public (see `.env.example`).
 3. **Sync** (`lib/sync.ts`). Compares each export's hash against the stored
    copy. Unchanged documents are skipped; changed ones get a new
    `DocumentRevision` and their citations are re-anchored.
@@ -139,6 +141,23 @@ each remember the range of the original text they came from, so a roster reads
 as a table while a citation still indexes into the export exactly as Drive
 produced it. Rewriting the stored text into a markdown table would have been
 easier and would have moved every offset in the document.
+
+### How a document is dated
+
+Drive's `createdTime` is the day somebody copied a template, so it is the answer
+of last resort. `lib/identity.ts` reads the date the document states about
+itself, in this order: the clause it was written to be quoted on ("presented for
+first reading this 8th day of September in the year 2026", "enacted this 22nd
+day of April"), the date in its own caption (`S-B.114.09.08.2026-1`), the date in
+a meeting's filename, and finally the byline under its title. Where a bill
+carries several clauses the furthest it got wins, so an enacted bill is filed
+under the day it was enacted and a bill that only ever got introduced under the
+day it was introduced.
+
+That date is stored on the document (`datedAt`, written by `recordDates` in
+`lib/sync.ts`) rather than worked out on read, because the listing and the
+date-aware search order by it and neither can afford to load every document's
+text to find out.
 
 ### Layout
 

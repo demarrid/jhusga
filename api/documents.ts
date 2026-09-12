@@ -3,7 +3,6 @@
 import { SESSION_NUMBER } from "@/config/sga";
 import { sheetDelimiter } from "@/lib/csv";
 import { byNewestFirst } from "@/lib/dates";
-import { documentDate } from "@/lib/identity";
 import { heldNotice } from "@/lib/integrity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
@@ -152,6 +151,7 @@ export async function getDocuments(filters: {
             sessionNumber: true,
             driveCreatedTime: true,
             driveModifiedTime: true,
+            datedAt: true,
             summary: { select: { content: true, status: true } },
             contributors: {
                 select: {
@@ -173,10 +173,6 @@ export async function getDocuments(filters: {
             title: document.displayTitle || document.title,
             driveTitle: document.title,
             kind: isDocumentKind(document.kind) ? document.kind : "unknown",
-            datedAt: documentDate({
-                title: document.title,
-                driveCreatedTime: document.driveCreatedTime,
-            }),
             // A failed or empty summary is no summary. A stale one is the last
             // reading of a document that has since changed, which is worth
             // more in a list of results than nothing at all.
@@ -585,11 +581,7 @@ export async function getDocument(
         lineageKey: document.lineageKey,
         driveCreatedTime: document.driveCreatedTime,
         driveModifiedTime: document.driveModifiedTime,
-        datedAt: documentDate({
-            title: document.title,
-            content: document.content,
-            driveCreatedTime: document.driveCreatedTime,
-        }),
+        datedAt: document.datedAt,
         lastSyncedAt: document.lastSyncedAt,
         revisionCount: document._count.revisions,
         // A spreadsheet is rendered as a table rather than as the raw export.

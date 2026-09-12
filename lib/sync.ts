@@ -16,7 +16,7 @@ import {
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
 import { isDirectorySheetName, recordDirectory } from "@/lib/directory";
-import { linkedSession } from "@/lib/identity";
+import { documentDate, linkedSession } from "@/lib/identity";
 import {
     GOOGLE_DOC_MIME,
     GOOGLE_SHEET_MIME,
@@ -68,6 +68,8 @@ export type SyncSummary = {
     documentsArchived: number;
     /** Documents reached by following a link rather than by the folder walk. */
     documentsLinkedIn: number;
+    /** Documents that state a date of their own, rather than leaving Drive's. */
+    documentsDated: number;
     annotationsOrphaned: number;
     sectionsInvalidated: number;
     /** People linked to documents by the contributor parser. */
@@ -273,6 +275,42 @@ export async function recordTitles(): Promise<number> {
 }
 
 /**
+ * Re-derive the date every document states about itself.
+ *
+ * A whole-corpus pass for the same reason the meeting keys are: the rules for
+ * reading a date out of a bill's enacting clause or a report's byline improve,
+ * and every document ingested before they did should get the benefit without
+ * waiting for its text to change.
+ */
+export async function recordDates(): Promise<number> {
+    const documents = await prisma.document.findMany({
+        select: {
+            id: true,
+            title: true,
+            content: true,
+            driveCreatedTime: true,
+            datedAt: true,
+        },
+    });
+
+    let dated = 0;
+
+    for (const document of documents) {
+        const datedAt = documentDate(document);
+        if (datedAt !== null) dated += 1;
+
+        if (datedAt?.getTime() === document.datedAt?.getTime()) continue;
+
+        await prisma.document.update({
+            where: { id: document.id },
+            data: { datedAt },
+        });
+    }
+
+    return dated;
+}
+
+/**
  * Re-derive every document's kind from its filename and folder.
  *
  * Improving classifyDocument should take effect without a Drive walk, the
@@ -310,9 +348,12 @@ export async function recordKinds(): Promise<number> {
  *
  * A linked file inherits a session from the earliest agenda that pointed at
  * it, which is right for a bill that is still being cited years later -- and
- * wrong for a Google Doc that was copied from last session and rewritten.
- * The caption wins: "S.B.26-27" is the 114th, even if a 112th agenda still
- * links the same file id. Files the walk found keep their folder's session.
+ * wrong for a Google Doc that was copied from last session and rewritten. It
+ * is also wrong for anything old enough that the agenda linking it was citing
+ * history: a report on the 2018/2019 referendum is the 106th's, not the 113th's.
+ * So the caption wins ("S.B.26-27" is the 114th even where a 112th agenda still
+ * links the file id), and failing a caption the date the document states does.
+ * Files the walk found keep their folder's session.
  */
 export async function recordSessions(): Promise<number> {
     const documents = await prisma.document.findMany({
@@ -992,6 +1033,7 @@ export async function syncMasterFolder(
         documentsHeld: 0,
         documentsArchived: 0,
         documentsLinkedIn: 0,
+        documentsDated: 0,
         annotationsOrphaned: 0,
         sectionsInvalidated: 0,
         contributorsLinked: 0,
@@ -1040,6 +1082,7 @@ export async function syncMasterFolder(
         // Titles depend on the meeting keys the pass above just wrote.
         await recordTitles();
         await recordKinds();
+        summary.documentsDated = await recordDates();
         summary.referencesLinked = await rebuildReferences();
         summary.driveAccountsLinked = await recordDriveAccounts();
 

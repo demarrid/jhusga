@@ -1,7 +1,8 @@
 /**
  * Re-derive everything that is computed from already-stored document text:
- * descriptions, contributor rows, meeting pairings, the cross-document link
- * graph, Drive account matches, and leftover image markup in `content`.
+ * descriptions, contributor rows, the date each document states, meeting
+ * pairings, the cross-document link graph, Drive account matches, and leftover
+ * image markup in `content`.
  *
  *   npm run reprocess
  *
@@ -21,6 +22,7 @@ async function main() {
     const {
         recordContributors,
         reanchorDocument,
+        recordDates,
         recordMeetings,
         recordTitles,
         recordKinds,
@@ -98,6 +100,7 @@ async function main() {
     const meetings = await recordMeetings();
     const renamed = await recordTitles();
     const reclassified = await recordKinds();
+    const dated = await recordDates();
     const references = await rebuildReferences();
     const driveAccounts = await recordDriveAccounts();
 
@@ -120,6 +123,7 @@ async function main() {
         `${renamed} documents shown under a standardised name; ` +
         `${reclassified} documents reclassified; ` +
         `${reassigned} linked documents reassigned to the session they name; ` +
+        `${dated} documents filed under a date they state themselves; ` +
         `${references} cross-document references; ${driveAccounts} Drive accounts matched`,
     );
 

@@ -4,8 +4,7 @@ import { MAX_QUESTION_CHARS, type SearchScope } from "@/config/search";
 import { SESSION_NUMBER } from "@/config/sga";
 import { generateJson } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
-import { formatDate } from "@/lib/dates";
-import { documentDate } from "@/lib/identity";
+import { formatDate, listedDate } from "@/lib/dates";
 import { splitIntoPassages } from "@/lib/passages";
 import { prisma } from "@/lib/prisma";
 import { questionTerms, tsQueryFor } from "@/lib/terms";
@@ -194,6 +193,7 @@ type CandidateRow = {
     kind: string;
     sessionNumber: number | null;
     contentHash: string;
+    datedAt: Date | null;
     driveCreatedTime: Date | null;
     driveModifiedTime: Date | null;
     rank: number;
@@ -291,6 +291,7 @@ async function rankedPassages(
             d."kind",
             d."sessionNumber",
             d."contentHash",
+            d."datedAt",
             d."driveCreatedTime",
             d."driveModifiedTime",
             ts_rank_cd(
@@ -320,21 +321,17 @@ function toPassage(row: CandidateRow, date?: Date | null): RetrievedPassage {
         heading: row.heading,
         content: row.content,
         score: Number(row.rank) * kindWeight(row.kind),
-        date:
-            date ??
-            documentDate({ title: row.title, driveCreatedTime: row.driveCreatedTime }) ??
-            row.driveCreatedTime ??
-            row.driveModifiedTime,
+        date: date ?? listedDate(row),
     };
 }
 
 /**
  * Every document the archive can date, newest first.
  *
- * The date is derived from a document's own text and title (lib/identity.ts)
- * rather than stored, so this cannot be a WHERE clause. It is one projection
- * of seven small columns over the session being searched -- a few hundred rows
- * -- and it runs only for a question that named a period.
+ * Read rather than derived: the date a document states about itself is settled
+ * at ingest (`recordDates` in lib/sync.ts), so a question about a period is
+ * answered from the same dates the listing shows rather than from a second
+ * reading of every title.
  */
 async function datedDocuments(scope: SearchScope): Promise<DatedDocument[]> {
     const rows = await prisma.document.findMany({
@@ -349,6 +346,7 @@ async function datedDocuments(scope: SearchScope): Promise<DatedDocument[]> {
             kind: true,
             sessionNumber: true,
             contentHash: true,
+            datedAt: true,
             driveCreatedTime: true,
             driveModifiedTime: true,
         },
@@ -363,10 +361,7 @@ async function datedDocuments(scope: SearchScope): Promise<DatedDocument[]> {
             contentHash: row.contentHash,
             // Drive is the fallback rather than the answer: see listedDate in
             // lib/dates.ts, which the document listing files documents by.
-            date:
-                documentDate({ title: row.title, driveCreatedTime: row.driveCreatedTime }) ??
-                row.driveCreatedTime ??
-                row.driveModifiedTime,
+            date: listedDate(row),
         }))
         .filter((row): row is DatedDocument => row.date !== null)
         .sort((left, right) => right.date.getTime() - left.date.getTime());
@@ -391,6 +386,7 @@ async function openingPassages(
             d."kind",
             d."sessionNumber",
             d."contentHash",
+            d."datedAt",
             d."driveCreatedTime",
             d."driveModifiedTime",
             0 AS rank
