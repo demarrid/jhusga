@@ -1,7 +1,7 @@
 /**
  * What the archive understands by a period.
  *
- *   npm run when:check
+ *   npm run check -- when
  *
  * The ranges in lib/when.ts are the whole reason "what happened last week"
  * returns anything, and they are pure functions of a question and a clock, so
@@ -39,9 +39,35 @@ const CASES: { question: string; label: string | null; start?: string; end?: str
     { question: "what does it take to amend the constitution", label: null },
 ];
 
-/** Baltimore's calendar day for an instant, which is what the ranges are in. */
+/**
+ * The fields of Baltimore's calendar day, which is what the ranges are in.
+ *
+ * Numeric fields and not a formatted date, because the order the fields are
+ * written in is locale data and locale data changes. This suite used to render
+ * a day as `toLocaleDateString("en-CA")`, which reads like an ISO date and is
+ * not one: en-CA's numeric date is year-first in CLDR 48 (Node 22, "2026-09-05")
+ * and month-first in CLDR 42 (Node 20, "9/5/2026"), so half the assertions
+ * below failed on a Node whose Intl was working perfectly. The fields
+ * themselves are the same everywhere, so the order is chosen here instead.
+ *
+ * Formatted independently of lib/when.ts rather than through its clockParts,
+ * so that a zone bug in the code under test cannot cancel itself out by
+ * writing both sides of the comparison.
+ */
+const DAY_FIELDS = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+});
+
+/** Baltimore's calendar day for an instant, as `2026-09-05`. */
 function day(date: Date): string {
-    return date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const parts = DAY_FIELDS.formatToParts(date);
+    const read = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((part) => part.type === type)?.value ?? "??";
+
+    return `${read("year")}-${read("month")}-${read("day")}`;
 }
 
 let failures = 0;
