@@ -37,6 +37,10 @@ The pipeline that enforces this runs once a day:
    appear verbatim in the source before the answer is stored; quotes that do not
    are discarded. Only current-session documents are eligible, so repealed
    language is never described as current law.
+   The same step restates each document on its own (`lib/summarize.ts`) for the
+   summary shown beside it, under the same verification and a per-run budget,
+   so a new document is summarised by the run that ingests it rather than
+   whenever somebody remembers to ask for one.
 5. **Index** (`lib/passages.ts`, `lib/search.ts`). Splits each document at its
    own headings into passages and indexes them for full-text search, which is
    what lets a question find the clause that answers it rather than the file

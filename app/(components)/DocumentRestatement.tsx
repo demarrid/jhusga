@@ -17,12 +17,15 @@ export default function DocumentRestatement({
 }: {
     restatement: Restatement | null;
 }) {
+    // "Empty" is a decision and not a gap: the document was read and found to
+    // be a template or a stub, and saying "not yet" about it would promise a
+    // summary that is never coming.
     if (!restatement || !restatement.content) {
         return (
             <p className={styles.muted}>
-                No plain-language summary yet. 
-                {/* Run <code>npm run summarize</code> to
-                write one from this document. */}
+                {restatement?.status === "empty"
+                    ? "This document is a template or a stub, so there is nothing to restate."
+                    : "No plain-language summary yet. The nightly sync writes one."}
             </p>
         );
     }

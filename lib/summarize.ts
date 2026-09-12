@@ -34,6 +34,17 @@ import type { SectionStatus } from "@/lib/sections";
 const MAX_DOCUMENT_CHARS = 90_000;
 
 /**
+ * How many documents one pipeline run will restate.
+ *
+ * A summary is one model call, and a run of the pipeline has minutes rather
+ * than hours (the cron route's maxDuration), so a backlog is worked through
+ * over several runs. Newest session first, so the documents a reader is most
+ * likely to open are the ones that get done. `npm run summarize` is the way to
+ * clear the rest in one sitting.
+ */
+export const SUMMARY_RUN_BUDGET = 25;
+
+/**
  * Bumped when the prompt changes, so cached summaries regenerate instead of
  * serving prose written to older instructions.
  */
@@ -355,7 +366,10 @@ export async function summarizeStaleDocuments(
 ): Promise<SummarizeResult[]> {
     const documents = await prisma.document.findMany({
         where: {
-            NOT: { content: "" },
+            // Documents that exported to nothing are here too, though they cost
+            // no model call: `isSummarisable` turns each away once and records
+            // why, which is what lets the page say there is nothing to restate
+            // rather than promising a summary that is never coming.
             ...(options.session === undefined ? {} : { sessionNumber: options.session }),
             ...(options.force
                 ? {}

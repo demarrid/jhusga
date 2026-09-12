@@ -1,7 +1,7 @@
 /**
  * Manual ingest, for local runs and one-off backfills.
  *
- *   npm run sync            -- re-read Drive, regenerate changed sections
+ *   npm run sync            -- re-read Drive, regenerate what went stale
  *   npm run sync -- --dry   -- list what the walk finds, write nothing
  *   npm run sync -- --force -- re-export and regenerate everything
  */
@@ -65,6 +65,23 @@ async function main() {
         }
     } else {
         console.log("sections: nothing changed, skipped generation");
+    }
+
+    // The same budgeted pass the cron route runs, so a manual sync leaves the
+    // database in the state a nightly one would. Anything left over is what
+    // `npm run summarize` is for.
+    const { SUMMARY_RUN_BUDGET, summarizeStaleDocuments } = await import(
+        "../lib/summarize"
+    );
+    const summaries = await summarizeStaleDocuments({
+        limit: SUMMARY_RUN_BUDGET,
+        onResult: (result) =>
+            console.log(`summary: ${result.status.padEnd(7)} ${result.title}`),
+    });
+    if (summaries.length === SUMMARY_RUN_BUDGET) {
+        console.log(
+            `\nStopped after ${SUMMARY_RUN_BUDGET} summaries. Run \`npm run summarize\` for the rest.`,
+        );
     }
 }
 
