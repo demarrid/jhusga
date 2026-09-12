@@ -265,6 +265,14 @@ app's own code runs fine.
 
 ## Contributions
 
+thanks to hari for visual design (i added some things)
+
+thanks to opus 5 for burning a hole in my wallet
+
+thanks to cursor for aggressively trying to switch to grok
+
+thanks to archives for existing
+
 ## Guideliens to Adhere To
 
 Automatic removal of Director of Communications if website maintenance fails on 4 instances.
