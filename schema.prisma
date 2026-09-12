@@ -56,7 +56,20 @@ model Document {
     // tracker a committee report points at. A linked document has no folder
     // path, because it does not live in the master folder at all, so this is
     // also what tells an empty folderPath apart from the folder root.
+    // "newsletter" for an article the archive found by searching The Johns
+    // Hopkins News-Letter, which the SGA neither wrote nor filed.
     discoveredVia String @default("walk")
+
+    // Why a secondary source is in an SGA archive at all: the search phrases
+    // that were found in the document's own text, comma-separated ("sga",
+    // "student government, student council"). Empty for everything the SGA
+    // wrote, which is here because the SGA filed it and needs no excuse.
+    //
+    // Stored rather than recomputed because it is the audit trail for a
+    // judgement the ingest made: the paper's search engine offered the article,
+    // and this is what the archive verified for itself before keeping it. See
+    // matchedPhrases in lib/newsletter.ts.
+    matchedPhrases String @default("")
 
     // Which SGA session this document belongs to. Files at the root of the
     // master folder are the current session; anything under a nested
@@ -515,6 +528,32 @@ model SyncRun {
     finishedAt DateTime?
 
     @@index([startedAt])
+}
+
+// A News-Letter article the archive fetched, read, and decided not to keep.
+//
+// The paper's search matches loose words across a whole page rather than the
+// phrase asked for, so most of what it offers is a piece that never uses that
+// phrase -- in a sample of a year's candidates, twenty-six out of thirty. That
+// is only knowable after fetching the article, and without writing it down every
+// run would fetch every one of them again: a nightly job spending a hundred
+// requests on a stranger's server to store nothing.
+//
+// Keyed the same way Document.driveFileId is, so this table and that column
+// together are "every article the archive has already made up its mind about".
+//
+// A miss is a judgement under the phrase list in config/newsletter.ts, not a
+// fact about the article. Widening that list means these rows are stale: delete
+// them, or run with --refetch, which ignores them.
+model NewsletterMiss {
+    /** "newsletter:2025/10/<slug>", as Document.driveFileId would hold it. */
+    fileId String @id
+
+    // The headline, so somebody deciding whether the phrase rules are too
+    // strict can read the list instead of re-fetching it.
+    headline String @default("")
+
+    checkedAt DateTime @default(now())
 }
 
 // ---------------------------------------------------------------------------

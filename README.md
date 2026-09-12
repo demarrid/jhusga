@@ -163,19 +163,73 @@ That date is stored on the document (`datedAt`, written by `recordDates` in
 date-aware search order by it and neither can afford to load every document's
 text to find out.
 
+### The other source: what the newspaper wrote
+
+Everything above is the SGA's own paperwork. It has a gap that no amount of
+Drive-walking will close: the SGA keeps almost nothing before about 2019, and
+what it kept says only what it decided, never how that landed. The Johns Hopkins
+News-Letter has covered the same body since it was called Student Council, and
+its online archive reaches 2008.
+
+So `lib/newsletter.ts` reads it. Each of three phrases -- "sga", "student
+government", "student council" -- is searched a calendar year at a time, and
+`lib/coverage.ts` stores what comes back as a document of kind
+`newsletter.article`, dated by the paper's own byline and filed to the session
+that date falls in.
+
+Two things about that search decide the shape of the code. It caps a query at
+1000 hits and reports the cap as though it were a count, so a query spanning the
+whole archive cannot be enumerated and every search is fenced to one year. And it
+matches loose stemmed words across an entire page, including the navigation that
+says "Student Government" on every article the paper has ever published -- so
+what it offers is a candidate list and nothing more. Two thirds of what it offers
+for one year turns out to use none of the three phrases. The archive re-checks
+every article against its own fetched text, keeps only what passes, and writes
+the phrases that passed to `matchedPhrases`, which the document page prints. An
+article the archive read and refused goes in `NewsletterMiss` so that the next
+run does not spend a request rediscovering it.
+
+**An article is a secondary source and the site never presents it as an SGA
+record.** It cannot source a claim about how the SGA works (`AUTHORITATIVE_KINDS`
+excludes it), it is not diffed against other sessions, its headline is shown
+exactly as printed rather than rewritten into the SGA's house style, and it is
+never paired with a meeting -- "SGA discusses transportation services" reads as
+minutes of that meeting to every rule in `lib/meetings.ts`,
+which is why `SECONDARY_KINDS` in `lib/kinds.ts` exists and why those rules
+refuse it outright. It does get the plain-language summary every document gets,
+under the same verification, but written to its own prompt in
+`lib/summary-prompt.ts`: an SGA record is restated as fact, and an article is
+attributed to the reporting that carried it ("the News-Letter reported that the
+Senate approved ..."), because stated as fact a reporter's sentence becomes the
+archive's own claim about what the SGA did. The document page says in as many
+words that the paper published it, the SGA did not write or approve it, and which
+phrase is why it is here.
+
+`robots.txt` asks for a ten-second crawl delay and `config/newsletter.ts`
+honours it, which is the one fact that shapes operating this: a full backfill is
+hours of wall clock, so runs are budgeted and resumable rather than exhaustive.
+An article already stored is never fetched again, so a settled year costs six
+search requests. The nightly job is its own cron route (`app/api/cron/newsletter/`)
+rather than a step inside the Drive sync, because a job bounded by somebody
+else's crawl delay cannot share a five-minute function with one that has to
+finish. The first load is `npm run newsletter -- --backfill`.
+
 ### Layout
 
 | Path | What lives there |
 | --- | --- |
 | `config/sga.ts` | **The yearly change surface.** Master folder ID, session number, folder exclusions, walk limits. |
+| `config/newsletter.ts` | The other source: phrases searched for, crawl delay, per-run budget, earliest year. |
 | `schema.prisma` | Documents, revisions, annotations, generated sections, citations, sync runs, affiliates. |
 | `lib/` | The pipeline: `drive`, `sync`, `generate`, `ai`, `anchor`, `kinds`, `lineage`, `diff`, `sections`, `passages`, `search`, `integrity`. |
+| `lib/` (the paper) | `newsletter` (reads jhunewsletter.com, no database) and `coverage` (stores what it read). |
 | `lib/` (forum) | `login`, `ratelimit`, `moderate`, `resend`, `prune` -- the only modules that touch identity, and the reason each keeps so little. |
 | `config/` | Everything meant to be edited: `sga`, `search`, `office-hours`, `forum` (categories, limits), `integrity` (hold thresholds). |
 | `api/` | Server actions the pages read: `documents`, `sections`, `archive`, `search`, `community`, `auth`, `forum`. |
 | `app/(components)/` | `SourceChip`, `DocumentViewer`, `DocumentDiff`, `CitedProse`, `NaturalLanguageSearch`, `SignIn`, `NewPostForm`, `ReplyForm`, `ModerationControls`. |
 | `app/api/cron/sync/` | The daily job, guarded by `CRON_SECRET`. Scheduled in `vercel.json`. |
-| `scripts/` | `sync` (manual run, supports `--dry-run`), `review`, `prune`, `seed.demo`, and the `*.check.ts` suites. |
+| `app/api/cron/newsletter/` | The daily News-Letter pass, same guard. Separate because it is budgeted, not finite. |
+| `scripts/` | `sync` (manual run, supports `--dry-run`), `newsletter`, `review`, `prune`, `seed.demo`, and the `*.check.ts` suites. |
 
 ### Historical documents
 
@@ -189,6 +243,8 @@ what makes `/documents/<id>/compare` able to diff them.
 ```sh
 npm run dev          # develop
 npm run sync         # sync Drive now; --dry-run to walk without writing
+npm run newsletter   # News-Letter coverage; -- --backfill for every year, --dry to search only
+npm run summarize    # restate the documents a sync left over; -- --force to redo
 npm run search       # -- --index to build the search index; -- "a question" to try it
 npm run review       # changes the sync held back; -- --show/--approve/--reject <id>
 npm run prune        # drop expired sessions, sign-in codes, and rate buckets

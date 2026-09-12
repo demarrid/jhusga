@@ -9,7 +9,7 @@ import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { formatDate } from "@/lib/dates";
-import { documentKindLabel, isComparableKind } from "@/lib/kinds";
+import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
 
 import styles from "../document-detail.module.css";
 
@@ -75,6 +75,23 @@ export default async function DocumentPage({
                 </p>
             )}
 
+            {/*
+              * The most important sentence on the page for these documents.
+              * Everything around it -- the session, the date, the reading pane,
+              * the search box that found it -- is the furniture the archive uses
+              * for the SGA's own records, and a reader who arrived from a search
+              * result has no other way to know that this one is a newspaper
+              * writing about the SGA rather than the SGA writing about itself.
+              */}
+            {isSecondaryKind(document.kind) && (
+                <p className={styles.fileNote}>
+                    {`Reporting about the SGA, not a record of it: The Johns Hopkins
+                    News-Letter published this and the SGA did not write it, file it,
+                    or approve it. The archive holds it because the article itself
+                    uses the ${phraseList(document.matchedPhrases)}.`}
+                </p>
+            )}
+
             <div className={styles.actions}>
                 <a href={document.source} target="_blank" rel="noreferrer">
                     {originalLabel(document.source)} ↗
@@ -88,7 +105,13 @@ export default async function DocumentPage({
           </header>
 
           <div className={styles.noticeStack}>
-            {!document.isCurrentSession && (
+            {/*
+              * Not shown for an article. "It may have been amended or replaced
+              * since" is true of legislation and false of journalism: a piece
+              * from the 96th session is not a superseded draft of a later one,
+              * it is what the paper reported that week and still says.
+              */}
+            {!document.isCurrentSession && !isSecondaryKind(document.kind) && (
                 <p className={styles.notice}>
                     This document is from a previous session and is kept for the
                     record. It may have been amended or replaced since.
@@ -186,5 +209,32 @@ export default async function DocumentPage({
 function originalLabel(source: string): string {
     if (/sharepoint\.com/i.test(source)) return "Open the original in SharePoint";
     if (/(?:docs|drive)\.google\.com/i.test(source)) return "Open the original in Google Docs";
+    // "Read" rather than "open", and named: the publisher is the point.
+    if (/jhunewsletter\.com/i.test(source)) return "Read this article in The News-Letter";
     return "Open the original";
+}
+
+/**
+ * "sga, student government" -> "phrases “sga” and “student government”".
+ *
+ * Written out rather than printed as a list, because the sentence it sits in is
+ * the archive explaining itself to a reader and "matchedPhrases: sga" is not an
+ * explanation.
+ */
+function phraseList(phrases: string): string {
+    const quoted = phrases
+        .split(",")
+        .map((phrase) => phrase.trim())
+        .filter(Boolean)
+        .map((phrase) => `\u201c${phrase}\u201d`);
+
+    if (quoted.length === 0) return "phrases the archive searches for";
+
+    const noun = quoted.length === 1 ? "phrase" : "phrases";
+    const joined =
+        quoted.length === 1
+            ? quoted[0]
+            : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
+
+    return `${noun} ${joined}`;
 }

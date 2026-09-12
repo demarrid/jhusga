@@ -21,6 +21,8 @@
  * around; a wrong pair asserts that a meeting decided something it did not.
  */
 
+import { isSecondaryKind } from "@/lib/kinds";
+
 export const MEETING_ROLES = ["agenda", "minutes"] as const;
 
 export type MeetingRole = (typeof MEETING_ROLES)[number];
@@ -390,6 +392,11 @@ export type MeetingInput = {
     sessionNumber: number | null;
     /** When Drive says the file was made; supplies the year of a "9/3" title. */
     driveCreatedTime?: Date | null;
+    /**
+     * The document's kind, where the caller knows it. Only read to rule a
+     * secondary source out; see the guard in `meetingFor`.
+     */
+    kind?: string;
 };
 
 /**
@@ -400,6 +407,14 @@ export type MeetingInput = {
  */
 export function meetingFor(input: MeetingInput): Meeting {
     const title = input.title.trim();
+
+    // A News-Letter headline is written to say what happened at a meeting, so
+    // it reads as a meeting document to every rule below: "SGA discusses
+    // transportation services" names the body, "Senate minutes released late"
+    // names the half, and either would be keyed into a session's numbered
+    // series and paired with the SGA's own agenda for it. The paper reported on
+    // the meeting; it did not hold one.
+    if (isSecondaryKind(input.kind)) return NO_MEETING;
 
     if (!title || NOT_A_MEETING.test(title)) return NO_MEETING;
     if (EXTERNAL_MEETING.test(title)) return NO_MEETING;
@@ -513,6 +528,7 @@ export type MeetingLog = {
  * document, two headings, but not two meetings.
  */
 export function meetingLog(input: MeetingInput & { content: string }): MeetingLog | null {
+    if (isSecondaryKind(input.kind)) return null;
     if (meetingFor(input).key) return null;
 
     const title = input.title.trim();

@@ -366,8 +366,17 @@ export type DocumentDetail = {
     description: string;
     kind: DocumentKind;
     folderPath: string;
-    /** "walk" if filed in the master folder, "link" if reached from a link. */
+    /**
+     * "walk" if filed in the master folder, "link" if reached from a link,
+     * "newsletter" for an article the archive found in the student paper.
+     */
     discoveredVia: string;
+    /**
+     * For a secondary source, the phrases found in its own text -- which is the
+     * whole reason it is in an SGA archive, and so is said out loud rather than
+     * left for somebody to infer. Empty for anything the SGA wrote.
+     */
+    matchedPhrases: string;
     source: string;
     content: string;
     sessionNumber: number | null;
@@ -574,6 +583,7 @@ export async function getDocument(
         kind: isDocumentKind(document.kind) ? document.kind : "unknown",
         folderPath: document.folderPath,
         discoveredVia: document.discoveredVia,
+        matchedPhrases: document.matchedPhrases,
         source: document.source,
         content: document.content,
         sessionNumber: document.sessionNumber,

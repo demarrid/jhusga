@@ -30,6 +30,7 @@
  */
 
 import { formatDateNumeric } from "@/lib/dates";
+import { isSecondaryKind } from "@/lib/kinds";
 import { meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
 import { sessionOrdinal } from "@/config/session";
 
@@ -194,6 +195,11 @@ export type TitleInput = {
     title: string;
     folderPath: string;
     sessionNumber: number | null;
+    /**
+     * The document's kind, where the caller knows it. Only read to rule a
+     * secondary source out; see the guard in `canonicalTitle`.
+     */
+    kind?: string;
     /**
      * When Drive says the file was made. Used as the meeting's date when the
      * filename carries none, which is most of them: the SGA writes the agenda
@@ -393,6 +399,14 @@ export function canonicalTitle(
     input: TitleInput,
     dates?: Map<string, Date>,
 ): string | null {
+    // Every rule below rewrites a filename into the name the SGA would have
+    // given the document. A News-Letter headline is not a filename and has no
+    // such name: "A fresh start for Student Council" is what the paper called
+    // its own piece, and restyling it as "JHU SGA Constitution (96th Session)"
+    // would put an opinion column forward under the name of the document it was
+    // arguing about. A headline is shown exactly as printed.
+    if (isSecondaryKind(input.kind)) return null;
+
     return meetingTitle(input, dates) ?? logTitle(input) ?? standingTitle(input);
 }
 
@@ -407,7 +421,16 @@ export function canonicalTitle(
  */
 export function standardTitles(documents: TitleInput[]): Map<string, string> {
     const cleaned = new Map(
-        documents.map((document) => [document.id, cleanTitle(document.title) || document.title]),
+        documents.map((document) => [
+            document.id,
+            // A headline was set in type by a copy desk, so there is no
+            // shouting to undo and nothing to collapse. Un-shouting it turns
+            // the acronyms a headline does use ("SGA passes CLERPA reform")
+            // into words nobody wrote.
+            isSecondaryKind(document.kind)
+                ? document.title
+                : cleanTitle(document.title) || document.title,
+        ]),
     );
 
     const dates = meetingDates(documents);

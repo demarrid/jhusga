@@ -22,6 +22,7 @@ export const DOCUMENT_KINDS = [
     "attendance",
     "directory",
     "tracker",
+    "newsletter.article",
     "unknown",
 ] as const;
 
@@ -31,13 +32,49 @@ export function isDocumentKind(value: string): value is DocumentKind {
     return (DOCUMENT_KINDS as readonly string[]).includes(value);
 }
 
+/**
+ * Kinds the rule below would misname.
+ *
+ * "Newsletter / Article" reads as a newsletter the SGA sends out, which is the
+ * one thing this kind is not. The paper spells its own name with the hyphen.
+ */
+const KIND_LABELS: Partial<Record<DocumentKind, string>> = {
+    "newsletter.article": "News-Letter article",
+};
+
 /** "bill.bylaws_amendment" -> "Bill / Bylaws amendment". */
 export function documentKindLabel(kind: string): string {
+    if (isDocumentKind(kind) && KIND_LABELS[kind]) return KIND_LABELS[kind];
+
     return kind
         .split(".")
         .map((part) => part.replace(/_/g, " "))
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" / ");
+}
+
+/**
+ * Kinds that are *about* the SGA rather than *by* it.
+ *
+ * Everything else in the archive is a document somebody with a seat wrote,
+ * filed, or put in front of the Senate, and the whole pipeline is built on that
+ * assumption: a document can be cited as evidence of what the SGA did, its
+ * title can be rewritten into the SGA's house style, its text can be diffed
+ * against last session's copy of itself, and a change to it is a change the SGA
+ * made and might need reviewing.
+ *
+ * None of that holds for a News-Letter article. It is a published, immutable
+ * secondary source written by people the SGA has no authority over, and reading
+ * it as an SGA record would let the archive attribute a reporter's
+ * characterisation to the body it was reporting on. So the passes that assume
+ * authorship refuse these kinds outright rather than being taught to handle
+ * them: see `meetingFor`, `canonicalTitle`, and the corpus passes in
+ * lib/sync.ts.
+ */
+export const SECONDARY_KINDS: DocumentKind[] = ["newsletter.article"];
+
+export function isSecondaryKind(kind: string | null | undefined): boolean {
+    return (SECONDARY_KINDS as readonly string[]).includes(kind ?? "");
 }
 
 /**

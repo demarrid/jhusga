@@ -12,6 +12,7 @@
     "prebuild": "npm run generate:theme && prisma generate",
     "postinstall": "prisma generate",
     "sync": "tsx scripts/sync.ts",
+    "newsletter": "tsx scripts/newsletter.ts",
     "generate": "tsx scripts/generate.ts",
     "summarize": "tsx scripts/summarize.ts",
     "search": "tsx scripts/search.ts",

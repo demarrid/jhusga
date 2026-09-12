@@ -5,6 +5,7 @@ import { findQuote } from "@/lib/anchor";
 import { documentKindLabel } from "@/lib/kinds";
 import { prisma } from "@/lib/prisma";
 import type { SectionStatus } from "@/lib/sections";
+import { summaryPromptVersion, summarySystemPrompt } from "@/lib/summary-prompt";
 
 /**
  * A plain-language reading of one document.
@@ -19,6 +20,11 @@ import type { SectionStatus } from "@/lib/sections";
  * and every claim in it carries a marker linking to the passage it came from.
  * The neutrality is the point: the summary tells you what the document does,
  * and the citation lets you check that against what the author actually wrote.
+ *
+ * A News-Letter article gets one too, in the one register that has to differ.
+ * It is reporting about the SGA rather than a record by it, so its summary is
+ * written as the paper's account and not as the archive's own; the two sets of
+ * instructions are in lib/summary-prompt.ts.
  *
  * The verification gate from lib/generate.ts applies unchanged -- a quote that
  * is not in the document is dropped, and a summary with no surviving quotes is
@@ -44,47 +50,6 @@ const MAX_DOCUMENT_CHARS = 90_000;
  */
 export const SUMMARY_RUN_BUDGET = 25;
 
-/**
- * Bumped when the prompt changes, so cached summaries regenerate instead of
- * serving prose written to older instructions.
- */
-const PROMPT_VERSION = "document-summary-v2";
-
-const SYSTEM_PROMPT = `You restate a single Johns Hopkins University Student Government Association document for a reader who has not read it.
-
-Purpose:
-- The reader wants to know what this document is and what it does, in under thirty seconds.
-- Strip the author's voice. Two documents that do the same thing must read the same way here, however differently they were written.
-
-Voice:
-- Plain, concrete, matter of fact. Sixth-form reading level.
-- State what the document says as fact. Never write "the document says", "according to", "this appears to", or "it seems".
-- Never praise, criticise, or characterise anyone's conduct.
-- No markdown headings, no preamble, no closing summary.
-
-Shape:
-- One short lead sentence saying what the document is.
-- Then 3 to 6 bullets, one line each, starting with "- ".
-- Minutes: what was decided, what was voted on and the outcome, what was deferred. Attendance is not a bullet.
-- Agendas: when and where the meeting is, and the substantive items scheduled for it -- bills to be read, guests, expected votes, who is reporting on what.
-- Bills and resolutions: what it would change, who introduced it, and any amount of money.
-- Governing documents: what body it governs and the rules a reader is most likely to need.
-- Leave out standing procedural items (calling to order, approving the agenda, adjourning).
-
-Citations:
-- Every bullet that states a fact ends with one or more markers like [1] or [1][2].
-- The number is the 1-based index of the supporting quote in the "citations" array.
-- Every citation must be used at least once, and every marker must have a citation.
-- Each "quote" is copied EXACTLY, character for character, from the document. Do not paraphrase, tidy, shorten with ellipses, or fix typos.
-- Quote a full sentence or clause, not a few words.
-
-Grounding:
-- Use only this document. Never use outside knowledge.
-- Set "insufficientContent" to true, and leave "content" empty, only when the document is an unfilled template (placeholder text such as "XXX", "Senator #1", or a blank date) or a stub with no real content. A short but genuine document still gets a summary.
-
-Reply with a single JSON object and nothing else:
-{"content": string, "insufficientContent": boolean, "citations": [{"quote": string}]}`;
-
 type ModelResponse = {
     content?: string;
     insufficientContent?: boolean;
@@ -105,11 +70,13 @@ export type SummarizeResult = {
 /**
  * Fingerprint of everything that affects the output. Keyed on the document's
  * content hash, so re-running over the whole archive costs nothing for the
- * documents that have not changed.
+ * documents that have not changed, and on the version of the prompt the kind is
+ * actually read under, so a revision to one prompt leaves the other's cache
+ * alone.
  */
 function promptFingerprint(contentHash: string, kind: string): string {
     return createHash("sha256")
-        .update(PROMPT_VERSION)
+        .update(summaryPromptVersion(kind))
         .update(`\u0000${kind}\u0000${contentHash}`)
         .digest("hex");
 }
@@ -225,7 +192,7 @@ export async function summarizeDocument(
     let model: string;
     try {
         const generated = await generateJson<ModelResponse>({
-            system: SYSTEM_PROMPT,
+            system: summarySystemPrompt(document.kind),
             user: buildUserPrompt(document),
         });
         response = generated.value;
@@ -366,10 +333,19 @@ export async function summarizeStaleDocuments(
 ): Promise<SummarizeResult[]> {
     const documents = await prisma.document.findMany({
         where: {
-            // Documents that exported to nothing are here too, though they cost
-            // no model call: `isSummarisable` turns each away once and records
-            // why, which is what lets the page say there is nothing to restate
-            // rather than promising a summary that is never coming.
+            // Every kind, secondary sources included. Documents that exported
+            // to nothing are here too, though they cost no model call:
+            // `isSummarisable` turns each away once and records why, which is
+            // what lets the page say there is nothing to restate rather than
+            // promising a summary that is never coming.
+            //
+            // An article is read under the prompt for a secondary source and
+            // never the one for an SGA record, so what a reader gets beside a
+            // piece of reporting is an account of what the paper reported and
+            // not a second version of the minutes. That distinction lives in
+            // `summarySystemPrompt`, which is where it belongs: excluding
+            // articles here protected nothing it protects, and only left every
+            // article's sidebar promising a summary nothing would ever write.
             ...(options.session === undefined ? {} : { sessionNumber: options.session }),
             ...(options.force
                 ? {}

@@ -34,7 +34,7 @@ import {
     getSharePointFile,
     isSharePointFileId,
 } from "@/lib/sharepoint";
-import { classifyDocument } from "@/lib/kinds";
+import { SECONDARY_KINDS, classifyDocument } from "@/lib/kinds";
 import { lineageKeyFor } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
 import { prisma } from "@/lib/prisma";
@@ -199,6 +199,9 @@ export async function recordMeetings(): Promise<{ keyed: number; paired: number 
             driveCreatedTime: true,
             meetingKey: true,
             meetingRole: true,
+            // Read only so `meetingFor` can refuse a News-Letter headline,
+            // which otherwise reads as minutes of the meeting it reports on.
+            kind: true,
         },
     });
 
@@ -250,6 +253,9 @@ export async function recordTitles(): Promise<number> {
             // A committee that types every meeting of the year into one file
             // can only be recognised from the text; see lib/titles.ts.
             content: true,
+            // Read only so `canonicalTitle` can refuse a headline, which is
+            // already the name its author gave it.
+            kind: true,
         },
     });
 
@@ -284,6 +290,10 @@ export async function recordTitles(): Promise<number> {
  */
 export async function recordDates(): Promise<number> {
     const documents = await prisma.document.findMany({
+        // A News-Letter article is dated by the paper's own byline at ingest.
+        // Re-reading it here would date the article by whatever day its
+        // reporter mentioned in the second paragraph.
+        where: { kind: { notIn: SECONDARY_KINDS } },
         select: {
             id: true,
             title: true,
@@ -320,6 +330,10 @@ export async function recordDates(): Promise<number> {
  */
 export async function recordKinds(): Promise<number> {
     const documents = await prisma.document.findMany({
+        // `classifyDocument` reads a Drive filename and a folder trail, and an
+        // article has neither, so every pass would reclassify it as "unknown"
+        // and undo the one thing that keeps it out of the SGA's own record.
+        where: { kind: { notIn: SECONDARY_KINDS } },
         select: { id: true, title: true, folderPath: true, kind: true },
     });
 

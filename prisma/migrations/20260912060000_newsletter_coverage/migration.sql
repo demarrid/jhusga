@@ -1,0 +1,12 @@
+-- The archive's second source: articles about the SGA from The Johns Hopkins
+-- News-Letter, kept as documents of kind "newsletter.article".
+--
+-- Only one column is needed. An article's identity is its URL path, which goes
+-- in the existing driveFileId as "newsletter:2025/11/<slug>" the same way a
+-- Microsoft share goes in as "sharepoint:<token>"; its publication date goes in
+-- datedAt; and its session is derived from that date.
+--
+-- What has nowhere to go is why a secondary source is in an SGA archive: the
+-- phrases the ingest found in the article's own text. That is a judgement the
+-- pipeline made rather than a fact the source stated, so it is recorded.
+ALTER TABLE "Document" ADD COLUMN "matchedPhrases" TEXT NOT NULL DEFAULT '';

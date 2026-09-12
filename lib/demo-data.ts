@@ -87,6 +87,9 @@ export function demoDocument(documentId: string) {
     return {
         ...toListing(document),
         content: document.content,
+        // The demo fixtures are all SGA documents, which need no excuse to be
+        // in an SGA archive; see matchedPhrases on DocumentDetail.
+        matchedPhrases: "",
         isCurrentSession: document.sessionNumber === SESSION_NUMBER,
         lineageKey: document.lineageKey,
         lastSyncedAt: date(document.driveModifiedTime),
