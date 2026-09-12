@@ -17,6 +17,7 @@ import { toPlainText } from "@/lib/markdown";
 export const CONTRIBUTOR_ROLES = [
     "introducer",
     "sponsor",
+    "reporting",
     "present",
     "staff",
     "guest",
@@ -40,6 +41,8 @@ export function contributorRoleLabel(role: string): string {
             return "Introduced";
         case "sponsor":
             return "Sponsored";
+        case "reporting":
+            return "Reported";
         case "present":
             return "Present";
         case "staff":
@@ -105,6 +108,23 @@ const PLACEHOLDER_WORDS = new Set([
     "insert",
     "student",
     "author",
+    // What an agenda writes where a person would go when nobody is reporting.
+    // "Nothing To Report" is three Title Case words and no one at all.
+    "nothing",
+    "report",
+    "reports",
+    "update",
+    "updates",
+    "present",
+    "absent",
+    "excused",
+    "unexcused",
+    "everyone",
+    "adjourned",
+    // An agenda links to the bill templates from inside its own report
+    // section, and "Template Bills" is two Title Case words.
+    "template",
+    "templates",
 ]);
 
 /**
@@ -303,20 +323,23 @@ function recordPerson(
     candidate: string,
     role: ContributorRole,
     evidence: string,
-): void {
+    /** An office the line gave separately, e.g. the label before a colon. */
+    office?: string,
+): boolean {
     const parsed = parsePersonToken(candidate);
-    if (!parsed) return;
+    if (!parsed) return false;
 
     const key = `${nameKey(parsed.name)}::${role}`;
-    if (found.has(key)) return;
+    if (found.has(key)) return true;
 
     found.set(key, {
         name: parsed.name,
         role,
-        office: parsed.office,
+        office: parsed.office ?? (office ? tidyOffice(office) : null),
         note: parsed.note,
         evidence: evidence.slice(0, 300),
     });
+    return true;
 }
 
 /** Pull every "Label: names" segment out of a line that may contain several. */
@@ -369,7 +392,9 @@ function harvestLabeledText(
     found: Map<string, ExtractedContributor>,
     text: string,
     evidence: string,
-): void {
+): number {
+    let recorded = 0;
+
     for (const segment of labeledSegments(text)) {
         let carried = "";
         for (const candidate of splitPeople(segment.names, segment.firstNames)) {
@@ -378,7 +403,7 @@ function harvestLabeledText(
             // only an office is held and stuck on the next name.
             const token = carried ? `${carried} and ${candidate}` : candidate;
             if (parsePersonToken(token)) {
-                recordPerson(found, token, segment.role, evidence);
+                if (recordPerson(found, token, segment.role, evidence)) recorded += 1;
                 carried = "";
                 continue;
             }
@@ -389,6 +414,59 @@ function harvestLabeledText(
             carried = "";
         }
     }
+
+    return recorded;
+}
+
+/**
+ * A label introducing the people who report to a meeting: "Cabinet Reports:",
+ * "Advisor Report:", "Senator Reports Initiatives Updates:".
+ *
+ * The colon is required, and nothing may follow it. Minutes are full of
+ * sentences about people reporting -- "Jason reports Jay Games this weekend" --
+ * and a heading is the one shape that means a list of people is coming.
+ */
+const REPORTS_LABEL = /^[^:]{0,60}\breports?\b[^:]{0,40}:$/i;
+
+/**
+ * A section heading, which is where a run of report items ends.
+ *
+ * The exports write a heading as a whole line of bold, sometimes numbered:
+ * "6.  **Non-Legislative Business**". Read as a report item that would be a
+ * person called Non-Legislative Business.
+ */
+const HEADING_LINE = /^\s*(?:\d+[.)]\s*)*\*\*[^*]+\*\*[ \t]*$/;
+
+/** "i.", "ii)", "a." -- the sub-item numbering markdown does not strip. */
+const ENUMERATOR = /^\(?(?:[ivxlcdm]+|[a-z]|\d+)[.)]\s*/i;
+
+/** "Student Body President: Jason Yu" -- an office, a colon, and its holder. */
+const OFFICE_HOLDER = /^([^:]{2,60}?)\s*:\s*(.{3,60})$/;
+
+/**
+ * A person listed under a report heading, if the line is one.
+ *
+ * Two shapes, both of which the agenda template uses: an office and who holds
+ * it ("iv. Treasurer: Amy Xu"), and a senator named on their own ("ii. Kai
+ * Martin"). Returns false for anything else, which is what closes the run --
+ * a report list that has stopped being a list of people has ended, and the
+ * next Title Case line is a heading rather than somebody's name.
+ */
+function harvestReportItem(
+    found: Map<string, ExtractedContributor>,
+    line: string,
+): boolean {
+    const item = line.replace(ENUMERATOR, "").trim();
+    if (!item) return false;
+
+    const titled = OFFICE_HOLDER.exec(item);
+    if (titled) {
+        const [, office, candidate] = titled;
+        if (!looksLikeOffice(office!)) return false;
+        return recordPerson(found, candidate!, "reporting", line, office!);
+    }
+
+    return recordPerson(found, item, "reporting", line);
 }
 
 function harvestAttendanceTable(
@@ -429,12 +507,17 @@ function harvestAttendanceTable(
 }
 
 /**
- * Read every person named by a labelled line or attendance table.
+ * Read every person named by a labelled line, an attendance table, or a report
+ * heading.
  *
  * Returns at most one entry per (name, role) pair.
  */
 export function extractContributors(markdown: string): ExtractedContributor[] {
     const found = new Map<string, ExtractedContributor>();
+
+    // Whether the lines currently being read are items under a report heading,
+    // where a bare name is a person rather than a phrase that looks like one.
+    let underReports = false;
 
     for (const rawLine of markdown.split(/\r?\n/)) {
         if (rawLine.includes("|")) {
@@ -442,9 +525,21 @@ export function extractContributors(markdown: string): ExtractedContributor[] {
             continue;
         }
 
+        if (HEADING_LINE.test(rawLine)) underReports = false;
+
         const line = toPlainText(rawLine);
         if (!line || line.length > 500) continue;
-        harvestLabeledText(found, line, line);
+
+        if (REPORTS_LABEL.test(line)) {
+            underReports = true;
+            continue;
+        }
+
+        // A labelled line means what its label says, in a report section as
+        // much as anywhere else: the advisor under "Advisor Report:" is staff.
+        if (harvestLabeledText(found, line, line) > 0) continue;
+
+        if (underReports) underReports = harvestReportItem(found, line);
     }
 
     return [...found.values()];

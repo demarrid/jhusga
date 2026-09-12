@@ -239,6 +239,104 @@ check(
     extractContributors(notPeople),
 );
 
+// The report sections of the GBM agenda template, as Drive exports them:
+// sub-items numbered in roman, offices before the colon, senators on their own.
+const agenda = [
+    "5.  **Reports**",
+    "   ---",
+    "",
+    "1. Cabinet Reports:",
+    "",
+    "   i. Student Body President: Jason Yu",
+    "",
+    "   iv. Treasurer: Amy Xu",
+    "",
+    "   v. Chair of Programming: Grace Guan",
+    "",
+    "   vii. President of the Senate: Jazzlyn Fernandez",
+    "",
+    "- [2026-2027 SGA Initiative Tracksheet](https://docs.google.com/spreadsheets/d/1DU/edit)",
+    "2. Advisor Report:",
+    "",
+    "   i. SGA Advisor: Tekeya Peterson",
+    "",
+    "3. Senator Reports Initiatives Updates:",
+    "",
+    "   i. Oluwanifemi Ajayi",
+    "",
+    "   ii. Kai Martin",
+    "",
+    "6.  **Non-Legislative Business**",
+    "   ---",
+    "",
+    "1. Confirmation of the CSE: Grace Yang",
+].join("\n");
+
+const reporters = extractContributors(agenda);
+const reporter = (name: string) => reporters.find((p) => p.name === name);
+
+check(
+    "an officer named before the colon is the person, not the office",
+    reporter("Amy Xu")?.role === "reporting" &&
+    reporter("Amy Xu")?.office === "Treasurer",
+    reporter("Amy Xu"),
+);
+check(
+    "a compound office is kept as the office it is",
+    reporter("Grace Guan")?.office === "Chair of Programming",
+    reporter("Grace Guan"),
+);
+check(
+    "every officer the agenda schedules is named",
+    ["Jason Yu", "Grace Guan", "Jazzlyn Fernandez"].every(
+        (name) => reporter(name)?.role === "reporting",
+    ),
+    reporters,
+);
+check(
+    "a senator listed on their own is a person",
+    reporter("Kai Martin")?.role === "reporting" &&
+    reporter("Oluwanifemi Ajayi")?.role === "reporting",
+    reporters,
+);
+check(
+    "the advisor stays staff rather than becoming a reporter",
+    reporter("Tekeya Peterson")?.role === "staff",
+    reporter("Tekeya Peterson"),
+);
+check(
+    // Two Title Case words under a report heading, and nobody at all.
+    "the heading that ends the reports is not a person",
+    !reporters.some((p) => /Business|Legislative/.test(p.name)),
+    reporters,
+);
+check(
+    "a linked tracksheet is not a person",
+    !reporters.some((p) => /Tracksheet|Initiative/.test(p.name)),
+    reporters,
+);
+check(
+    "a report section does not run on past its own items",
+    !reporters.some((p) => p.name === "Grace Yang"),
+    reporters,
+);
+check(
+    "a sentence about somebody reporting is not a report list",
+    extractContributors(
+        "Jason reports Jay Games this weekend!\nBig Show Tickets\nSpring Fair Planning",
+    ).length === 0,
+    extractContributors(
+        "Jason reports Jay Games this weekend!\nBig Show Tickets\nSpring Fair Planning",
+    ),
+);
+check(
+    "nobody is called Nothing To Report",
+    !extractContributors("Senator Reports:\n   i. Nothing To Report").some((p) =>
+        /Nothing/i.test(p.name),
+    ),
+    extractContributors("Senator Reports:\n   i. Nothing To Report"),
+);
+
 // A title in front of a name must not fork one person into two.
 const titled = extractContributors(
     "Present: Chair Angela Xiong, Vice Chair Alan Perez, Senators Daarian Rouhani",
