@@ -148,6 +148,23 @@ check(
     canon("CE June 15 2026 (CSC Summer Meeting 1)", CE, 114, on("2026-06-15")),
 );
 check(
+    // Filed under Internal Affairs by the senator who took them, which had it
+    // published as that committee's minutes -- a meeting it was not.
+    "minutes of a Senate meeting kept in a committee folder are named for the Senate",
+    canon(
+        "Demarri's Senate GBM Minutes - 9/8",
+        "Senate/Committees/Internal Affairs/Senate Minutes",
+        114,
+        on("2026-09-08"),
+    ) === "Senate General Body Meeting — Minutes (09/08/26)",
+    canon(
+        "Demarri's Senate GBM Minutes - 9/8",
+        "Senate/Committees/Internal Affairs/Senate Minutes",
+        114,
+        on("2026-09-08"),
+    ),
+);
+check(
     "a meeting Drive cannot date still gets the house style",
     canon("Senate GBM #23", GBM_AGENDAS, 113, null) ===
     "Senate General Body Meeting #23 — Agenda",

@@ -13,6 +13,10 @@
  * not: the same series is variously "Senate GBM #13", "Senate Meeting #17",
  * "112th SGA Senate Meeting 7" and "MINUTES #1".
  *
+ * Which body met is the exception, and goes the other way where the filename
+ * says: a member filing their own minutes keeps them with their own paperwork
+ * rather than with the meeting's. See `bodyFromTitle`.
+ *
  * Deliberately conservative. A missing pair is a dead end the reader can route
  * around; a wrong pair asserts that a meeting decided something it did not.
  */
@@ -142,18 +146,67 @@ function committeeFrom(folderPath: string): string | null {
  */
 const SUMMER = /\bsummer\b|\bsum\b/i;
 
+/**
+ * Bodies in the order they have to be tested, since a title naming two of them
+ * names the more specific one: "Exec x Senate liaison minutes" is the Board's.
+ */
+const BODY_WORDS: [RegExp, string][] = [
+    [/judicial|judiciary/, "judicial"],
+    [/\bexec(?:utive)?\b|\bexective\b/, "executive"],
+    [/\bsenate\b|general body|\bgbm\b/, "senate"],
+];
+
+/**
+ * A word that says the file is about a meeting at all, so that "Senate Bill
+ * Draft" in a committee folder is not read as minutes of the Senate.
+ */
+const NAMES_A_MEETING = /\bmeetings?\b|\bminutes\b|\bmins\b|\bagenda\b|\bgbm\b|general body/i;
+
+/** "Internal Affairs Committee Meeting Minutes" -- the folder says which. */
+const NAMES_A_COMMITTEE = /\bcommi?t+ee\b/i;
+
+/**
+ * The body a filename names a meeting of, or null when it names none.
+ *
+ * This is the one thing that beats the folder. Members file their own copies
+ * where their own paperwork lives -- a senator sitting on Internal Affairs
+ * keeps their minutes of a Senate GBM in the Internal Affairs folder -- and
+ * those are still the Senate's minutes. A filename that names a committee is
+ * no help, since committees are told apart by folder rather than by the
+ * abbreviations titles use for them, so it defers as before.
+ */
+function bodyFromTitle(title: string, folderPath: string): string | null {
+    if (!NAMES_A_MEETING.test(title) || NAMES_A_COMMITTEE.test(title)) return null;
+
+    const name = title.toLowerCase();
+
+    for (const [pattern, body] of BODY_WORDS) {
+        if (!pattern.test(name)) continue;
+        // The folder gets a say in *which* executive series, because the
+        // 113th files its summer minutes under a folder that says summer and
+        // titles them as if there were only one series.
+        return body === "executive" && SUMMER.test(`${folderPath}/${title}`.toLowerCase())
+            ? "executive:summer"
+            : body;
+    }
+
+    return null;
+}
+
 /** senate | executive | judicial | committee:<name>, or null when unclear. */
 function bodyFor(title: string, folderPath: string): string | null {
+    const titled = bodyFromTitle(title, folderPath);
+    if (titled) return titled;
+
     const committee = committeeFrom(folderPath);
     if (committee) return `committee:${committee}`;
 
     const haystack = `${folderPath}/${title}`.toLowerCase();
 
-    if (/judicial|judiciary/.test(haystack)) return "judicial";
-    if (/\bexec(?:utive)?\b|\bexective\b/.test(haystack)) {
-        return SUMMER.test(haystack) ? "executive:summer" : "executive";
+    for (const [pattern, body] of BODY_WORDS) {
+        if (!pattern.test(haystack)) continue;
+        return body === "executive" && SUMMER.test(haystack) ? "executive:summer" : body;
     }
-    if (/\bsenate\b|general body|\bgbm\b/.test(haystack)) return "senate";
 
     return null;
 }

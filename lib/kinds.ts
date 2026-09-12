@@ -75,6 +75,20 @@ export function isComparableKind(kind: string): boolean {
 }
 
 /**
+ * Whose meeting a string says it was, or null if it says nothing.
+ *
+ * Ordered most specific first, so a committee -- which is a committee of the
+ * Senate, and whose minutes routinely mention it -- is not read as the Senate.
+ */
+function minutesKind(text: string): DocumentKind | null {
+    if (/exec/.test(text)) return "minutes.executive";
+    if (/judicial/.test(text)) return "minutes.judicial";
+    if (/committee|commitee/.test(text)) return "minutes.committee";
+    if (/senate|general sga|general body|\bgbm\b/.test(text)) return "minutes.senate";
+    return null;
+}
+
+/**
  * Best-effort classification from a document's Drive folder path and title.
  *
  * Deliberately conservative: anything unrecognised stays "unknown" rather than
@@ -111,11 +125,11 @@ export function classifyDocument(input: {
     if (/tracksheet|initiative tracker/.test(haystack)) return "tracker";
 
     if (/minutes|agenda/.test(name) || (/meeting/.test(name) && /committees\//i.test(path))) {
-        if (/exec/.test(haystack)) return "minutes.executive";
-        if (/judicial/.test(haystack)) return "minutes.judicial";
-        if (/committee|commitee|committees\//.test(haystack)) return "minutes.committee";
-        if (/senate|general sga/.test(haystack)) return "minutes.senate";
-        return "unknown";
+        // The filename first: a senator's own minutes of a Senate meeting,
+        // filed in the folder of the committee they sit on, are the Senate's
+        // minutes and not that committee's. Only a filename saying nothing
+        // about which body met falls back to where the file is kept.
+        return minutesKind(name) ?? minutesKind(haystack) ?? "unknown";
     }
 
     if (/guiding document/.test(path)) return "guiding.other";

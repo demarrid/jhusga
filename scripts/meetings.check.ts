@@ -182,6 +182,37 @@ check(
     at("CEC Initiatives Working Doc", CE).key === "",
     at("CEC Initiatives Working Doc", CE),
 );
+
+// A senator files their own minutes of a Senate GBM under the committee they
+// sit on, because that is where they keep their paperwork. The filename is the
+// only thing in the archive that says which body actually met.
+const ownMinutes = at(
+    "Demarri's Senate GBM Minutes - 9/8",
+    `${IA}/Senate Minutes`,
+    114,
+    new Date("2026-09-08T00:00:00Z"),
+);
+check(
+    "a filename naming the Senate beats the committee folder it sits in",
+    ownMinutes.key === "114:senate:2026-09-08" && ownMinutes.role === "minutes",
+    ownMinutes,
+);
+check(
+    // The filename that says "committee" is no help, since committees are told
+    // apart by folder, so those must still defer to it.
+    "a committee's own minutes are unaffected",
+    at("Internal Affairs Committee Meeting Minutes 09.06.2026", IA, 114).key ===
+    "114:committee:internal affairs:2026-09-06",
+    at("Internal Affairs Committee Meeting Minutes 09.06.2026", IA, 114),
+);
+check(
+    // Only a filename saying a meeting happened can move a document out of the
+    // folder's body, or every committee paper with "Senate" in its name goes.
+    "a committee paper that merely mentions the Senate stays with the committee",
+    at("Senate Liaison Notes 09.06.2026", IA, 114).key ===
+    "114:committee:internal affairs:2026-09-06",
+    at("Senate Liaison Notes 09.06.2026", IA, 114),
+);
 check(
     "a misspelled month is still a date",
     at("CE Meeting Minutes - 22 Feburary 2026", CE).key ===
