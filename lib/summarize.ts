@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
+
 import { generateJson } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { documentKindLabel } from "@/lib/kinds";
@@ -44,11 +46,61 @@ const MAX_DOCUMENT_CHARS = 90_000;
  *
  * A summary is one model call, and a run of the pipeline has minutes rather
  * than hours (the cron route's maxDuration), so a backlog is worked through
- * over several runs. Newest session first, so the documents a reader is most
- * likely to open are the ones that get done. `npm run summarize` is the way to
- * clear the rest in one sitting.
+ * over several runs. Newest first, so the documents a reader is most likely to
+ * open are the ones that get done; see SUMMARY_QUEUE_ORDER. `npm run
+ * summarize` is the way to clear the rest in one sitting.
  */
 export const SUMMARY_RUN_BUDGET = 25;
+
+/**
+ * The order the queue works through, and therefore what a budgeted run does.
+ *
+ * Because SUMMARY_RUN_BUDGET always applies to the front of this list, the
+ * order is not a presentational preference. It decides what is summarised
+ * tonight and what waits, which for a large enough backlog means weeks.
+ *
+ * 1. `sessionNumber`, newest first, because the current session is the one a
+ *    reader is looking at and every earlier one is archive. Nulls last: a
+ *    document the archive could not place in any session is not current
+ *    material, and Postgres would otherwise put it first.
+ * 2. `datedAt`, newest first -- the date the document states about itself
+ *    (`documentDate` in lib/identity.ts). It is the one date both sources have
+ *    and mean the same thing by: the day a bill was read, the byline over an
+ *    article. It is also what the listing orders by (`listedDate` in
+ *    lib/dates.ts), so the queue works in the order the site presents, which
+ *    is the order documents actually get opened in.
+ * 3. `driveModifiedTime`, newest first, to separate the documents that state
+ *    no date of their own -- a roster or a tracker is a living file rather
+ *    than a dated event, so the useful question about it is when it last
+ *    changed.
+ *
+ * Ordering on `driveModifiedTime` before `datedAt` is what went wrong. Only
+ * Drive documents carry Drive timestamps; a News-Letter article's is null,
+ * Postgres sorts NULLS FIRST under DESC, and so every article in a session sat
+ * ahead of every SGA document in it. With the backfill still adding articles
+ * and twenty-five summaries a night, a document filed this week waited behind
+ * newspaper stories from 2001.
+ *
+ * `lastSyncedAt` is deliberately not a key. The sync rewrites it every run for
+ * every Drive document, so it carries no information about the document beyond
+ * "this one came from Drive" -- ordering by it would restore the same
+ * one-source-before-the-other bias in a form harder to see.
+ *
+ * The last two keys are what make the order total, and that matters as much as
+ * the rest. Every key above them is nullable or shared, so documents tie, and
+ * tied rows come back in whatever order Postgres finds convenient -- which may
+ * differ between runs. A per-run budget over an unstable order can skip the
+ * same document indefinitely: it need only drift past position twenty-five
+ * each night. `createdAt` puts what the archive learned tonight ahead of what
+ * it learned last month, and `id`, being unique, cannot tie.
+ */
+export const SUMMARY_QUEUE_ORDER: Prisma.DocumentOrderByWithRelationInput[] = [
+    { sessionNumber: { sort: "desc", nulls: "last" } },
+    { datedAt: { sort: "desc", nulls: "last" } },
+    { driveModifiedTime: { sort: "desc", nulls: "last" } },
+    { createdAt: "desc" },
+    { id: "asc" },
+];
 
 type ModelResponse = {
     content?: string;
@@ -318,8 +370,8 @@ export async function summarizeDocument(
 /**
  * Summarise documents that have no current summary.
  *
- * Ordered newest-session-first so a run that is interrupted (or budgeted) has
- * done the documents a reader is most likely to open.
+ * Worked through in SUMMARY_QUEUE_ORDER, so a run that is interrupted (or
+ * budgeted) has done the documents a reader is most likely to open.
  */
 export async function summarizeStaleDocuments(
     options: {
@@ -357,7 +409,7 @@ export async function summarizeStaleDocuments(
                 }),
         },
         select: { id: true, title: true },
-        orderBy: [{ sessionNumber: "desc" }, { driveModifiedTime: "desc" }],
+        orderBy: SUMMARY_QUEUE_ORDER,
     });
 
     const results: SummarizeResult[] = [];
