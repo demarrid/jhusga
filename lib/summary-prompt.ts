@@ -1,10 +1,10 @@
 /**
  * What the model is told when it restates one document.
  *
- * Split out of lib/summarize.ts, which cannot be imported without a database:
- * the pipeline there opens a Prisma client the moment it loads, and the wording
- * these prompts use is the one thing about a summary worth asserting with no
- * environment at all. scripts/newsletter.check.ts reads this module directly.
+ * Split out of lib/summarize.ts so the wording can be asserted on its own:
+ * scripts/newsletter.check.ts reads this module directly, and the wording is
+ * the one thing about a summary that can be checked with no model call, no
+ * database and no environment at all.
  *
  * There are two prompts because the archive holds two kinds of thing. Almost
  * every document in it is the SGA's own record, and restating one in the site's
