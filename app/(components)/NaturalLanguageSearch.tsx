@@ -64,44 +64,44 @@ export default function NaturalLanguageSearch() {
                     ask(question, scope);
                 }}
             >
-                <input
-                    type="text"
-                    value={question}
-                    maxLength={MAX_QUESTION_CHARS}
-                    placeholder="How many caucus senators can there be?"
-                    aria-label="Ask a question about the SGA"
-                    className={styles.question}
-                    onChange={(event) => setQuestion(event.target.value)}
-                />
-
-                <button
-                    type="submit"
-                    disabled={pending || question.trim().length < 3}
-                    className={styles.askButton}
-                >
-                    {pending ? "Reading…" : "Ask"}
-                </button>
-
-                <div className={styles.scopeToggle}>
-                    <Checkbox
-                        checked={scope === "all"}
-                        onChange={(checked) => {
-                            const next: SearchScope = checked ? "all" : "current";
-                            setScope(next);
-                            // Re-asking immediately is the point of the toggle:
-                            // it is how a reader moves a question from "what
-                            // are the rules now" to "when did that change".
-                            if (answer) ask(question, next);
-                        }}
+                <div>
+                    <input
+                        type="text"
+                        value={question}
+                        maxLength={MAX_QUESTION_CHARS}
+                        placeholder="How many caucus senators can there be?"
+                        aria-label="Ask a question about the SGA"
+                        className={styles.question}
+                        onChange={(event) => setQuestion(event.target.value)}
+                    />
+                    <div
+                        className={`${styles.loadingTrack} ${pending ? styles.loading : ""}`}
+                        aria-hidden="true"
                     >
-                        Include past sessions
-                    </Checkbox>
-                </div>
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={pending || question.trim().length < 3}
+                        className={styles.askButton}
+                    >
+                        {pending ? "Reading…" : "Ask"}
+                    </button>
 
-                <div
-                    className={`${styles.loadingTrack} ${pending ? styles.loading : ""}`}
-                    aria-hidden="true"
-                >
+                    <div className={styles.scopeToggle}>
+                        <Checkbox
+                            checked={scope === "all"}
+                            onChange={(checked) => {
+                                const next: SearchScope = checked ? "all" : "current";
+                                setScope(next);
+                                // Re-asking immediately is the point of the toggle:
+                                // it is how a reader moves a question from "what
+                                // are the rules now" to "when did that change".
+                                if (answer) ask(question, next);
+                            }}
+                        >
+                            Include past sessions
+                        </Checkbox>
+                    </div>
                     <span />
                 </div>
             </form>
