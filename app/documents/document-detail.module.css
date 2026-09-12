@@ -138,7 +138,7 @@
 
 .sidebarSection {
   padding: 1.25rem 0;
-  border-bottom: 1px solid #b6c5d3;
+  /* border-bottom: 1px solid #b6c5d3; */
 }
 
 .sidebarSection:first-child {
@@ -170,11 +170,21 @@
 
 .sidebar a,
 .readerLink {
-  color: #164f87;
+  color: rgb(71, 131, 184);
+
   text-decoration-color: #79addb;
   text-underline-offset: 0.2em;
+  transition: color 0.2s ease-in-out;
 }
 
+.sidebar a:hover,
+.readerLink:hover {
+  color: #164f87;
+
+  text-decoration-color: #79addb;
+  text-underline-offset: 0.2em;
+
+}
 .asideMeta {
   color: #6a7c8f;
   font-size: 0.72rem;

@@ -316,8 +316,10 @@ check(
     reporters,
 );
 check(
+    // She is read, but as somebody the CSE confirmed, not as a reporter the
+    // section above ran on into.
     "a report section does not run on past its own items",
-    !reporters.some((p) => p.name === "Grace Yang"),
+    !reporters.some((p) => p.name === "Grace Yang" && p.role === "reporting"),
     reporters,
 );
 check(
@@ -435,6 +437,214 @@ check(
     "a Here: first-name roll is split into people",
     extractContributors("Here: Kai Veda Mahima").length === 3,
     extractContributors("Here: Kai Veda Mahima"),
+);
+
+// The same meeting as the agenda above, written up afterwards. The minutes
+// template drops the colon after a report heading, writes a dash where the
+// agenda writes a colon, and files what each person said underneath them.
+const senateMinutes = [
+    "5. ## **Reports (5 min)**",
+    "",
+    "   1. Cabinet Reports (4 mins)",
+    "      1. Student Body President \\- *Jason*",
+    "      2. Student Body Vice President \\- *Sumi*",
+    "         1. How was Agora cafe?",
+    "         2. Secret buddy",
+    "      3. Secretary \\- Nora",
+    "   2. Advisor Report (2 min)",
+    "   3. Senator reports",
+    "      1. Oluwanifemi",
+    "         1. Increase black visibility and retention of black students",
+    "      2. Kai",
+    "         1. Working on finance and event grants",
+    "      3. Mamadou",
+    "6. **Non-Legislative Business (30 min)**",
+    "   1. Confirmation of the CSE",
+    "      1. Motion to vote, passed",
+].join("\n");
+
+const minuted = extractContributors(senateMinutes);
+const reported = (name: string) =>
+    minuted.find((p) => p.name === name && p.role === "reporting");
+
+check(
+    "a report heading without a colon still opens a report section",
+    reported("Oluwanifemi") !== undefined,
+    minuted,
+);
+check(
+    "an office and its holder are read across a dash as well as a colon",
+    reported("Jason")?.office === "Student Body President",
+    reported("Jason"),
+);
+check(
+    "what a reporter said underneath their name does not end the reports",
+    ["Oluwanifemi", "Kai", "Mamadou"].every((name) => reported(name) !== undefined),
+    minuted,
+);
+check(
+    "a reporter's own bullet is not read as another reporter",
+    !minuted.some((p) => /Agora|Secret|Increase|Working/.test(p.name)),
+    minuted,
+);
+check(
+    "the heading that ends the reports is still not a person",
+    !minuted.some((p) => /Business|Confirmation|Motion/.test(p.name)),
+    minuted,
+);
+
+// What the minutes are mostly made of, and the only record that most of the
+// people at the meeting were there.
+const caucus = [
+    "3. Moderated caucus",
+    "   1. Peter: no impeachment trial and replace with a meeting with the Advisor",
+    "   2. Kai: do absences need to be supplemented with a reason (Yes)",
+    "   3. Sienna: is leaving early an absence or something else",
+    "4. Cole: Motion to move to IA, passed (no abstentions, no opposed)",
+    "5. Venue: Levering (free) or the Rec Center",
+    "6. Timeline: no specific date was mentioned",
+    "7. Two changes were made in IA: the cap moved from $500 to $1000",
+    "8. Total Budget: $19,000",
+].join("\n");
+
+const spoke = extractContributors(caucus);
+const speaker = (name: string) => spoke.find((p) => p.name === name);
+
+check(
+    // Not "present". Being in the room is the weaker of the two things the
+    // line witnesses, and the only one the old role could say.
+    "somebody named as speaking is recorded as having spoken",
+    ["Peter", "Kai", "Sienna", "Cole"].every(
+        (name) => speaker(name)?.role === "interlocutor",
+    ),
+    spoke,
+);
+check(
+    "a remark is only believed once the archive recognises the speaker",
+    spoke.every((p) => p.onlyIfKnown),
+    spoke,
+);
+check(
+    "a name read off the roll is believed outright",
+    extractContributors("Present: Kai Martin").every((p) => !p.onlyIfKnown),
+);
+check(
+    "being on the roll and taking the floor are two separate claims",
+    (() => {
+        const both = extractContributors("Present: Kai\n1. Kai: seconded the motion");
+        return (
+            both.length === 2 &&
+            both.some((p) => p.role === "present" && !p.onlyIfKnown) &&
+            both.some((p) => p.role === "interlocutor" && p.onlyIfKnown)
+        );
+    })(),
+    extractContributors("Present: Kai\n1. Kai: seconded the motion"),
+);
+check(
+    "a sentence introducing a list of people is not one of them",
+    !spoke.some((p) => /Two changes/.test(p.name)),
+    spoke,
+);
+check(
+    "a figure the line is filed under is not a remark",
+    !spoke.some((p) => /Budget/.test(p.name)),
+    spoke,
+);
+check(
+    // These are dropped later, by the resolver, for being nobody the archive
+    // holds a full name for -- the parser has no way to know. What it must not
+    // do is claim them outright.
+    "a document field that reads like a speaker is never claimed outright",
+    ["Venue", "Timeline"].every((name) => speaker(name)?.onlyIfKnown !== false),
+    spoke,
+);
+check(
+    "a header field outside a list is not read as a speaker at all",
+    extractContributors("Venue: Levering (free) or the Rec Center").length === 0,
+);
+
+check(
+    "an office and a surname are two things, not a two-word name",
+    (() => {
+        const named = extractContributors("Present: VP Morris, Chair Xiong, Dean Chow");
+        return (
+            named.length === 3 &&
+            named.every((p) => p.office !== null) &&
+            named.some((p) => p.name === "Morris" && p.office === "VP")
+        );
+    })(),
+    extractContributors("Present: VP Morris, Chair Xiong, Dean Chow"),
+);
+check(
+    "an ordinary two-word name keeps both of its words",
+    extractContributors("Present: Mary Smith").some((p) => p.name === "Mary Smith"),
+);
+
+// The two lines in the minutes that say the most about a person, and that a
+// parser reading only rolls and remarks throws away.
+const business = [
+    "6. **Non-Legislative Business (30 min)**",
+    "   1. Confirmation of Senate Parliamentarian: Shreemann Patel, confirmed with majority vote",
+    "   2. Senator of the month:",
+    "      1. Nominees: Jackson and Peter, Winner: Peter (21 votes; 56.76%) Jackson (14 votes, 37.84%)",
+].join("\n");
+
+const business_ = extractContributors(business);
+const confirmee = business_.find((p) => p.name === "Shreemann Patel");
+
+check(
+    "somebody the Senate votes into a seat is recorded as confirmed",
+    confirmee?.role === "confirmed" && !confirmee.onlyIfKnown,
+    business_,
+);
+check(
+    "the seat they were confirmed to comes with them",
+    confirmee?.office === "Senate Parliamentarian",
+    confirmee,
+);
+check(
+    "the rest of the sentence is not a second person",
+    !business_.some((p) => /confirmed|majority|vote/i.test(p.name)),
+    business_,
+);
+check(
+    "both names on a Senator of the Month ballot are read",
+    ["Jackson", "Peter"].every((name) =>
+        business_.some((p) => p.name === name && p.role === "nominee"),
+    ),
+    business_,
+);
+check(
+    "a vote tally is not mistaken for a candidate",
+    !business_.some((p) => /Winner|votes|\d/.test(p.name)),
+    business_,
+);
+
+check(
+    "a report heading that carries on in Title Case is still a heading",
+    (() => {
+        const senators = extractContributors(
+            [
+                "   3. Senator Reports Initiatives Updates",
+                "      1. Veda Kommineni",
+                "         1. Got picnic blankets for rent at the beach",
+                "      2. Jackson Morris",
+                "      3. Shreemann Patel",
+            ].join("\n"),
+        );
+        return ["Veda Kommineni", "Jackson Morris", "Shreemann Patel"].every((name) =>
+            senators.some((p) => p.name === name && p.role === "reporting"),
+        );
+    })(),
+    extractContributors(
+        "   3. Senator Reports Initiatives Updates\n      1. Veda Kommineni",
+    ),
+);
+check(
+    "a heading that carries on in a sentence is still a sentence",
+    extractContributors(
+        "Jason reports Jay Games this weekend\nBig Show Tickets\nSpring Fair Planning",
+    ).length === 0,
 );
 
 console.log("\nshort-form resolution");

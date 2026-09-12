@@ -7,7 +7,7 @@ import DocumentViewer from "@/app/(components)/DocumentViewer";
 import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
-import { contributorRoleLabel } from "@/lib/contributors";
+import { contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
 import { formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
 
@@ -172,14 +172,13 @@ export default async function DocumentPage({
                             <section className={styles.sidebarSection}>
                                 <h3>People named</h3>
                                 <ul>
-                                    {document.contributors.map((contributor) => (
-                                        <li key={`${contributor.id}-${contributor.role}`}>
-                                            <Link href={`/documents?mode=find&person=${contributor.id}`}>
-                                                {contributor.name}
+                                    {byPerson(document.contributors).map((person) => (
+                                        <li key={person.id}>
+                                            <Link href={`/documents?mode=find&person=${person.id}`}>
+                                                {person.name}
                                             </Link>
                                             <span className={styles.asideMeta}>
-                                                {` — ${contributorRoleLabel(contributor.role)}`}
-                                                {contributor.note && ` (${contributor.note})`}
+                                                {` — ${person.roles}`}
                                             </span>
                                         </li>
                                     ))}
@@ -204,6 +203,47 @@ export default async function DocumentPage({
             </div>
         </main>
     );
+}
+
+/**
+ * One line per person, rather than one per thing they did.
+ *
+ * A single set of minutes can name the same senator four times over -- Jackson
+ * Morris reports, takes the floor, cosponsors a bill and is nominated for
+ * Senator of the Month in the same evening -- and four consecutive entries
+ * under one heading read as four people to anyone skimming. The roles are
+ * kept, listed in the order lib/contributors.ts declares them.
+ */
+function byPerson(
+    contributors: { id: string; name: string; role: string; note: string | null }[],
+): { id: string; name: string; roles: string }[] {
+    const people = new Map<
+        string,
+        { id: string; name: string; held: { role: string; note: string | null }[] }
+    >();
+
+    for (const contributor of contributors) {
+        const person =
+            people.get(contributor.id) ??
+            { id: contributor.id, name: contributor.name, held: [] };
+        person.held.push({ role: contributor.role, note: contributor.note });
+        people.set(contributor.id, person);
+    }
+
+    return [...people.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((person) => ({
+            id: person.id,
+            name: person.name,
+            roles: person.held
+                .sort((a, b) => contributorRoleOrder(a.role) - contributorRoleOrder(b.role))
+                .map(
+                    (entry) =>
+                        contributorRoleLabel(entry.role) +
+                        (entry.note ? ` (${entry.note})` : ""),
+                )
+                .join(", "),
+        }));
 }
 
 function originalLabel(source: string): string {

@@ -131,6 +131,68 @@ export function diminutiveCandidates(
     });
 }
 
+/**
+ * Shortest a name may be before one letter out of place can be called a slip.
+ *
+ * Five, because the roster already holds four-letter names a single edit apart
+ * -- Ryan and Ryann are two people who both serve -- and below that almost
+ * every given name is one letter from another one.
+ */
+const MIN_TYPO_LENGTH = 5;
+
+/** Whether one insertion, deletion, or substitution turns `a` into `b`. */
+function withinOneEdit(a: string, b: string): boolean {
+    if (a === b) return false;
+
+    const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+    if (long.length - short.length > 1) return false;
+
+    let seen = 0;
+    let edited = false;
+
+    for (let at = 0; at < long.length; at += 1) {
+        if (short[seen] === long[at]) {
+            seen += 1;
+            continue;
+        }
+        if (edited) return false;
+        edited = true;
+        // A substitution consumes a character from both; an insertion only
+        // consumes one from the longer.
+        if (short.length === long.length) seen += 1;
+    }
+
+    return true;
+}
+
+/**
+ * Regulars whose name holds this word with a single letter wrong.
+ *
+ * These documents are typed in a hurry during a meeting and the archive is
+ * full of the result -- Demari for Demarri, Srigori for Srigouri, Vishnue for
+ * Vishnu, Caityln for Caitlyn. Each one was becoming a second person standing
+ * beside the senator they are, and the person filter offered both.
+ *
+ * The last thing tried, after everyone actually named this has been ruled out,
+ * and only ever when exactly one person is that close: two senators a letter
+ * apart is a coin flip, and the archive has to be able to say it does not
+ * know. Recorded as a deduction, so it expires the moment the roster grows
+ * someone who really is spelled this way.
+ */
+export function misspellingCandidates(
+    short: string,
+    regulars: RegularPerson[],
+): RegularPerson[] {
+    const key = nameKey(short);
+    if (key.length < MIN_TYPO_LENGTH) return [];
+
+    return regulars.filter((person) =>
+        nameTokens(person.name).some(
+            (token) => token.length >= MIN_TYPO_LENGTH && withinOneEdit(key, token),
+        ),
+    );
+}
+
 export async function loadRegulars(): Promise<RegularPerson[]> {
     if (regularsCache) return regularsCache;
 
@@ -197,8 +259,13 @@ export function namedInFull(text: string, person: RegularPerson): boolean {
 export type Narrowing = {
     person: RegularPerson;
     /** Why this candidate was chosen, for the alias source and for logs. */
-    reason: "named_in_full" | "serving_in_body" | "serving_now";
+    reason: "holds_the_office" | "named_in_full" | "serving_in_body" | "serving_now";
 };
+
+/** Office names compared the way nameKey compares people. */
+function officeKey(office: string): string {
+    return office.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+}
 
 /**
  * Narrow several people who answer to one short name down to one, using what
@@ -208,10 +275,30 @@ export type Narrowing = {
 export function narrowByDocument(
     candidates: RegularPerson[],
     context: NameContext,
+    /** An office the line named alongside them, e.g. "Chair of Programming". */
+    office?: string | null,
 ): Narrowing | null {
     if (candidates.length === 0) return null;
 
     const only = <T>(rows: T[]): T | null => (rows.length === 1 ? rows[0]! : null);
+
+    // The line said which seat they hold, and one of the candidates holds it.
+    // Stronger than anything below, because it is about this mention rather
+    // than about the document: "Chair of Programming - Grace" is the Chair of
+    // Programming whoever else in the room is also called Grace -- and these
+    // minutes go on to introduce a Grace Yang who is not her.
+    //
+    // Only for the session now sitting, for the same reason as the tests
+    // below: who holds which seat is not known for any other.
+    if (office && context.isCurrentSession) {
+        const wanted = officeKey(office);
+        const holder = only(
+            candidates.filter((person) =>
+                person.positions.some((held) => officeKey(held) === wanted),
+            ),
+        );
+        if (holder) return { person: holder, reason: "holds_the_office" };
+    }
 
     if (context.text) {
         const written = only(
@@ -332,7 +419,13 @@ export async function mergeAffiliate(
 }
 
 /** Alias sources that were a deduction, and can therefore be out of date. */
-const DERIVED_SOURCES = ["unique_given", "unique_surname", "diminutive", "model"];
+const DERIVED_SOURCES = [
+    "unique_given",
+    "unique_surname",
+    "diminutive",
+    "misspelling",
+    "model",
+];
 
 /**
  * Drop aliases the archive has outgrown.
@@ -360,12 +453,17 @@ export async function pruneStaleAliases(): Promise<number> {
 
         if (candidates.length === 0) {
             // No full name contains this word, so it is a clipped one ("Nora",
-            // "Kemi"), and it expires the same way: only while one person's
-            // given name still clips to it. A nickname nothing clips to
-            // ("Jazz") is a name of its own and cannot be contradicted.
-            const clipped = diminutiveCandidates(alias.alias, regulars);
-            if (clipped.length === 0) continue;
-            if (clipped.length === 1 && clipped[0]!.id === alias.hopkinsAffiliateId) {
+            // "Kemi") or a mistyped one ("Demari"), and both expire the same
+            // way: only while exactly one person's name still answers to it.
+            // A nickname nothing answers to ("Jazz") is a name of its own and
+            // cannot be contradicted.
+            const answering = [
+                ...diminutiveCandidates(alias.alias, regulars),
+                ...misspellingCandidates(alias.alias, regulars),
+            ];
+            const distinct = [...new Map(answering.map((p) => [p.id, p])).values()];
+            if (distinct.length === 0) continue;
+            if (distinct.length === 1 && distinct[0]!.id === alias.hopkinsAffiliateId) {
                 continue;
             }
             stale.push(alias.id);
@@ -382,6 +480,258 @@ export async function pruneStaleAliases(): Promise<number> {
     }
 
     return stale.length;
+}
+
+/** Whether two adjacent letters were swapped: Rasamsetty for Rasmasetty. */
+function transposed(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+
+    const differ: number[] = [];
+    for (let at = 0; at < a.length; at += 1) {
+        if (a[at] === b[at]) continue;
+        differ.push(at);
+        if (differ.length > 2) return false;
+    }
+
+    const [first, second] = differ;
+    return (
+        differ.length === 2 &&
+        second === first! + 1 &&
+        a[first!] === b[second!] &&
+        a[second!] === b[first!]
+    );
+}
+
+/**
+ * Whether one name is the other mistyped: a letter doubled, dropped, swapped
+ * with its neighbour, or struck wrong in the middle of a word.
+ *
+ * A substitution at the *start* of a word does not count, because that is
+ * where two different names differ rather than where one name is typed badly.
+ * Grace Yang and Grace Wang both sat in the 114th; so did Kiana and Diana.
+ */
+export function looksMistyped(a: string, b: string): boolean {
+    if (a === b) return false;
+    if (a.length !== b.length) return withinOneEdit(a, b);
+    if (transposed(a, b)) return true;
+
+    let struck = -1;
+    for (let at = 0; at < a.length; at += 1) {
+        if (a[at] === b[at]) continue;
+        if (struck !== -1) return false;
+        struck = at;
+    }
+
+    return struck > 0 && a[struck - 1] !== " ";
+}
+
+export type PersonMerge = {
+    keptId: string;
+    keptName: string;
+    /** Names folded onto it, each now an alias rather than a row of its own. */
+    foldedNames: string[];
+    /** Documents behind the kept spelling, which is why it was the one kept. */
+    documents: number;
+};
+
+/**
+ * Fold rows that are one typo apart onto the spelling the archive uses most.
+ *
+ * Distinct from the short-form rule above, which never creates a row it was
+ * unsure of. These are rows that already exist, both written out in full:
+ * Shreemann and Shreeman Patel, Katherine and Katherin Zhu, Caraline and
+ * Caroline Sommer. Each pair is one senator appearing twice in the person
+ * filter, splitting their own record between two entries.
+ *
+ * Whole names are compared, not words, because a word is far too little to go
+ * on -- Andrew Gao and Andrei Espelien differ by a letter and are two people
+ * who served together, as do Brandon Benjamin and Branden Ngo. For the same
+ * reason a row with no surname is left alone entirely: Ryan and Ryann are two
+ * senators, and a bare given name has nothing to corroborate it.
+ *
+ * Refused outright when both rows carry an email or a login, because an
+ * address is the one identity here that was verified rather than read, and two
+ * of them are two people however alike the names look.
+ */
+export async function mergePeopleOneTypoApart(): Promise<PersonMerge[]> {
+    const people = await prisma.hopkinsAffiliate.findMany({
+        select: {
+            id: true,
+            name: true,
+            nameKey: true,
+            email: true,
+            userId: true,
+            description: true,
+            _count: { select: { contributions: true } },
+        },
+    });
+
+    // Everyone reachable from everyone else by single typos, so that a name
+    // written three ways settles into one row rather than two.
+    const group = new Map<string, string>();
+    const findRoot = (id: string): string => {
+        let root = id;
+        while (group.get(root) !== root) root = group.get(root)!;
+        return root;
+    };
+    for (const person of people) group.set(person.id, person.id);
+
+    for (let i = 0; i < people.length; i += 1) {
+        for (let j = i + 1; j < people.length; j += 1) {
+            const left = people[i]!;
+            const right = people[j]!;
+            if (!left.nameKey.includes(" ") || !right.nameKey.includes(" ")) continue;
+            if (!looksMistyped(left.nameKey, right.nameKey)) continue;
+            if (left.email && right.email && left.email !== right.email) continue;
+            if (left.userId && right.userId) continue;
+            group.set(findRoot(left.id), findRoot(right.id));
+        }
+    }
+
+    const clusters = new Map<string, typeof people>();
+    for (const person of people) {
+        const root = findRoot(person.id);
+        clusters.set(root, [...(clusters.get(root) ?? []), person]);
+    }
+
+    const merged: PersonMerge[] = [];
+
+    for (const cluster of clusters.values()) {
+        if (cluster.length < 2) continue;
+
+        const ranked = [...cluster].sort(
+            (a, b) =>
+                b._count.contributions - a._count.contributions ||
+                b.name.length - a.name.length,
+        );
+
+        // The spelling the archive uses most, but only if every other spelling
+        // is a single typo of *it*. Caraline Sommer sits one typo from both
+        // Caroline Sommer and Caraline Sommers while those two are two apart,
+        // so the centre of the cluster is not always the busiest name in it.
+        const kept = ranked.find((candidate) =>
+            cluster.every(
+                (other) =>
+                    other.id === candidate.id ||
+                    looksMistyped(candidate.nameKey, other.nameKey),
+            ),
+        );
+        if (!kept) continue;
+
+        const folded = cluster.filter((person) => person.id !== kept.id);
+
+        for (const loser of folded) {
+            await prisma.$transaction(async (tx) => {
+                const held = await tx.documentContributor.findMany({
+                    where: { hopkinsAffiliateId: loser.id },
+                    select: { id: true, documentId: true, role: true },
+                });
+                for (const row of held) {
+                    const clash = await tx.documentContributor.findUnique({
+                        where: {
+                            documentId_hopkinsAffiliateId_role: {
+                                documentId: row.documentId,
+                                hopkinsAffiliateId: kept.id,
+                                role: row.role,
+                            },
+                        },
+                        select: { id: true },
+                    });
+                    if (clash) {
+                        await tx.documentContributor.delete({ where: { id: row.id } });
+                    } else {
+                        await tx.documentContributor.update({
+                            where: { id: row.id },
+                            data: { hopkinsAffiliateId: kept.id },
+                        });
+                    }
+                }
+
+                const seats = await tx.hopkinsRelationship.findMany({
+                    where: { hopkinsAffiliateId: loser.id },
+                    select: { id: true, hopkinsCategoryId: true, startedAt: true },
+                });
+                for (const seat of seats) {
+                    // findFirst rather than the compound key, which a null
+                    // startedAt -- a seat with no recorded term -- cannot use.
+                    const clash = await tx.hopkinsRelationship.findFirst({
+                        where: {
+                            hopkinsAffiliateId: kept.id,
+                            hopkinsCategoryId: seat.hopkinsCategoryId,
+                            startedAt: seat.startedAt,
+                        },
+                        select: { id: true },
+                    });
+                    if (clash) {
+                        await tx.hopkinsRelationship.delete({ where: { id: seat.id } });
+                    } else {
+                        await tx.hopkinsRelationship.update({
+                            where: { id: seat.id },
+                            data: { hopkinsAffiliateId: kept.id },
+                        });
+                    }
+                }
+
+                for (const move of [
+                    tx.hopkinsAlias.updateMany({
+                        where: { hopkinsAffiliateId: loser.id },
+                        data: { hopkinsAffiliateId: kept.id },
+                    }),
+                    tx.forumSession.updateMany({
+                        where: { hopkinsAffiliateId: loser.id },
+                        data: { hopkinsAffiliateId: kept.id },
+                    }),
+                    tx.forumPost.updateMany({
+                        where: { authorAffiliateId: loser.id },
+                        data: { authorAffiliateId: kept.id },
+                    }),
+                    tx.forumReply.updateMany({
+                        where: { authorAffiliateId: loser.id },
+                        data: { authorAffiliateId: kept.id },
+                    }),
+                ]) {
+                    await move;
+                }
+
+                await tx.hopkinsAffiliate.delete({ where: { id: loser.id } });
+
+                // Whatever the kept row was missing and the folded one had.
+                // Only once the folded row is gone: an email is unique across
+                // the table, so the two cannot both hold it even in passing.
+                await tx.hopkinsAffiliate.update({
+                    where: { id: kept.id },
+                    data: {
+                        email: kept.email ?? loser.email,
+                        userId: kept.userId ?? loser.userId,
+                        description: kept.description || loser.description,
+                    },
+                });
+
+                // So the spelling resolves here next time rather than digging
+                // the row back out of the next document that uses it.
+                await tx.hopkinsAlias.upsert({
+                    where: { aliasKey: loser.nameKey },
+                    create: {
+                        alias: loser.name,
+                        aliasKey: loser.nameKey,
+                        hopkinsAffiliateId: kept.id,
+                        source: "merge",
+                    },
+                    update: { hopkinsAffiliateId: kept.id, source: "merge" },
+                });
+            });
+        }
+
+        merged.push({
+            keptId: kept.id,
+            keptName: kept.name,
+            foldedNames: folded.map((person) => person.name),
+            documents: kept._count.contributions,
+        });
+    }
+
+    if (merged.length > 0) resetNameResolverCache();
+    return merged;
 }
 
 async function askModelToPick(
@@ -451,17 +801,36 @@ type Pending = {
     name: string;
     evidence: string;
     exactId: string | null;
+    onlyIfKnown: boolean;
     pool: RegularPerson[];
+};
+
+/** A name as some document wrote it, and the line it was written on. */
+export type NameMention = {
+    name: string;
+    evidence: string;
+    /**
+     * Do not create anybody for this name: answer with null instead.
+     *
+     * For names read from a shape loose enough that an unrecognised one is far
+     * more likely to be a heading than a person -- the word in front of the
+     * colon on a line of minutes. See harvestSpeaker in lib/contributors.ts.
+     */
+    onlyIfKnown?: boolean;
+    /** An office the same line gave them, which can settle a shared name. */
+    office?: string | null;
 };
 
 /**
  * Resolve many written names at once so a minutes roll costs at most one
  * model call, not one per nickname.
+ *
+ * Null only ever comes back for a mention that asked for it.
  */
 export async function resolveAffiliates(
-    mentions: { name: string; evidence: string }[],
+    mentions: NameMention[],
     context: NameContext = {},
-): Promise<string[]> {
+): Promise<(string | null)[]> {
     const regulars = await loadRegulars();
     const ids: (string | null)[] = mentions.map(() => null);
     const pending: Pending[] = [];
@@ -497,6 +866,12 @@ export async function resolveAffiliates(
                 given.length + surname.length === 0
                     ? diminutiveCandidates(mention.name, regulars)
                     : [];
+            // Later still than shape: a name is only a misspelling once
+            // nobody is named it and nothing clips to it.
+            const misspelled =
+                given.length + surname.length + clipped.length === 0
+                    ? misspellingCandidates(mention.name, regulars)
+                    : [];
 
             let resolved: { id: string; source: string } | null = null;
 
@@ -514,6 +889,10 @@ export async function resolveAffiliates(
                 // Nobody is named this, so a clipped given name is the
                 // remaining reading -- and exactly one name clips to it.
                 resolved = { id: clipped[0].id, source: "diminutive" };
+            } else if (misspelled.length === 1) {
+                // Nobody is named this and nothing clips to it, so a slip of
+                // the keyboard is what is left -- and one name is a letter off.
+                resolved = { id: misspelled[0].id, source: "misspelling" };
             }
 
             if (resolved) {
@@ -525,7 +904,15 @@ export async function resolveAffiliates(
                 continue;
             }
 
-            const candidates = [...given, ...surname, ...clipped];
+            const candidates = [...given, ...surname, ...clipped, ...misspelled];
+
+            // Nobody is named this and nothing clips to it, so there is no one
+            // for the model to pick and nothing to be gained by asking: the
+            // caller wanted a person the archive already knows, and this is
+            // not one. Answering here is also what stops every "Venue:" and
+            // "Timeline:" in the archive from costing a model call.
+            if (candidates.length === 0 && mention.onlyIfKnown) continue;
+
             const pool =
                 candidates.length > 0
                     ? [...new Map(candidates.map((person) => [person.id, person])).values()]
@@ -536,7 +923,7 @@ export async function resolveAffiliates(
             // "Amy" is Amy Xu here and Amy Li in the minutes of two sessions
             // ago, and one global mapping cannot be right in both.
             if (candidates.length > 1) {
-                const narrowed = narrowByDocument(pool, context);
+                const narrowed = narrowByDocument(pool, context, mention.office);
                 if (narrowed) {
                     ids[index] = narrowed.person.id;
                     continue;
@@ -548,6 +935,7 @@ export async function resolveAffiliates(
                 name: mention.name,
                 evidence: mention.evidence,
                 exactId: exact?.id ?? null,
+                onlyIfKnown: Boolean(mention.onlyIfKnown),
                 pool,
             });
             continue;
@@ -557,6 +945,8 @@ export async function resolveAffiliates(
             ids[index] = exact.id;
             continue;
         }
+
+        if (mention.onlyIfKnown) continue;
 
         const created = await prisma.hopkinsAffiliate.create({
             data: { name: mention.name, nameKey: key },
@@ -584,7 +974,8 @@ export async function resolveAffiliates(
                 // so would a fragment two given names both clip to.
                 const globallyUnique =
                     tokenCandidates(item.name, regulars).length === 0 &&
-                    diminutiveCandidates(item.name, regulars).length <= 1;
+                    diminutiveCandidates(item.name, regulars).length <= 1 &&
+                    misspellingCandidates(item.name, regulars).length <= 1;
                 if (globallyUnique) {
                     await rememberAlias(item.name, id, "model");
                     if (item.exactId && item.exactId !== id) {
@@ -595,10 +986,15 @@ export async function resolveAffiliates(
                 continue;
             }
 
-            if (item.exactId) {
+            // A short form that is its own row -- an "Amy" the archive has
+            // never managed to attach to an Amy -- is not somebody it knows,
+            // so it cannot corroborate a name read off a remark.
+            if (item.exactId && !item.onlyIfKnown) {
                 ids[item.index] = item.exactId;
                 continue;
             }
+
+            if (item.onlyIfKnown) continue;
 
             const created = await prisma.hopkinsAffiliate.create({
                 data: { name: item.name, nameKey: nameKey(item.name) },
@@ -609,7 +1005,7 @@ export async function resolveAffiliates(
     }
 
     return ids.map((id, index) => {
-        if (id) return id;
+        if (id || mentions[index]?.onlyIfKnown) return id;
         throw new Error(`Failed to resolve "${mentions[index]?.name}"`);
     });
 }
@@ -619,5 +1015,7 @@ export async function resolveAffiliate(
     evidence = "",
 ): Promise<string> {
     const [id] = await resolveAffiliates([{ name, evidence }]);
-    return id;
+    // Never null: resolveAffiliates only declines for a mention that asked it
+    // to, and this one does not.
+    return id!;
 }

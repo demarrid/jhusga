@@ -46,6 +46,25 @@ export default function DoubleStickyHolder({
             return value;
         }
 
+        /**
+         * Whether the sidebar is pinned at this moment -- not merely whether
+         * the page has scrolled past the point where it pins.
+         *
+         * A sticky element only holds its stick point while the column it sits
+         * in lasts. At the foot of a page it runs out and leaves the top of the
+         * window with everything else, which puts its top *above* the stick
+         * point rather than below it. Asking only whether the top had got past
+         * the stick point read that as still pinned, so the contents went on
+         * being shifted after the frame holding them had begun to leave: the
+         * visible region grew as the sidebar rose, the floor the offset is
+         * clamped to rose with it, and the last line of the sidebar slid back
+         * out of reach exactly as fast as a reader scrolled down after it.
+         */
+        function isPinned(sidebar: HTMLElement) {
+            const top = sidebar.getBoundingClientRect().top;
+            return Math.abs(top - stickTopPx(sidebar)) <= 2;
+        }
+
         function update() {
             frameRef.current = null;
             const selfEl = selfRef.current;
@@ -72,16 +91,13 @@ export default function DoubleStickyHolder({
             const childHeight = innerEl.offsetHeight;
             const pageHeight = document.documentElement.scrollHeight;
             const selfTop = selfEl.getBoundingClientRect().top;
-            const pinnedAt = stickTopPx(sidebar);
 
-            const hasScrolledPastStickPoint =
-                sidebar.getBoundingClientRect().top <= pinnedAt + 2;
             const visibleRegion = windowHeight - selfTop - bottomGap;
             const overflowsViewport =
                 childHeight > visibleRegion &&
                 childHeight < pageHeight - bottomGap * 2;
 
-            if (!hasScrolledPastStickPoint || !overflowsViewport) {
+            if (!isPinned(sidebar) || !overflowsViewport) {
                 // Delta is still consumed above so there is no catch-up jump
                 // the moment scrolling hands off to this component.
                 return;
@@ -112,6 +128,11 @@ export default function DoubleStickyHolder({
             const innerEl = innerRef.current;
             const selfEl = selfRef.current;
             if (!innerEl || !selfEl) return;
+
+            // Same reason as in update(): the geometry this corrects against
+            // only means anything while the sidebar is holding its place.
+            const sidebarEl = selfEl.parentElement;
+            if (!sidebarEl || !isPinned(sidebarEl)) return;
 
             const visibleRegion =
                 window.innerHeight - selfEl.getBoundingClientRect().top - bottomGap;

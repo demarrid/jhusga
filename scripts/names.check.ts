@@ -9,6 +9,8 @@ import { bodyForDocument, bodyForOffice } from "../lib/bodies";
 import {
     diminutiveCandidates,
     givenNameCandidates,
+    looksMistyped,
+    misspellingCandidates,
     namedInFull,
     narrowByDocument,
     surnameCandidates,
@@ -170,6 +172,56 @@ check(
     AMY_XU.id,
 );
 
+console.log("\nthe office the line names");
+
+// The minutes write "Chair of Programming - Grace" and then introduce a Grace
+// Yang who is not her, which is enough to make the written full name the wrong
+// thing to go on.
+const GRACE_YANG_NAMED = "Chair of Programming - Grace\nGrace Yang: sophomore, in CSE";
+
+check(
+    "'Grace' next to an office is the Grace who holds it",
+    narrowByDocument(
+        [GRACE_GUAN, GRACE_WANG, GRACE_YANG],
+        { text: GRACE_YANG_NAMED, body: "senate", ...CURRENT },
+        "Chair of Programming",
+    )?.person.id === GRACE_GUAN.id,
+    narrowByDocument(
+        [GRACE_GUAN, GRACE_WANG, GRACE_YANG],
+        { text: GRACE_YANG_NAMED, body: "senate", ...CURRENT },
+        "Chair of Programming",
+    ),
+);
+check(
+    "the office outranks somebody else's full name in the same document",
+    narrowByDocument(
+        [GRACE_GUAN, GRACE_YANG],
+        { text: GRACE_YANG_NAMED, ...CURRENT },
+        "Chair of Programming",
+    )?.reason === "holds_the_office",
+);
+check(
+    "an office two of them hold settles nothing",
+    narrowByDocument(
+        [GRACE_WANG, GRACE_YANG],
+        { text: SUM_EXEC, ...CURRENT },
+        "KSAS Senator",
+    ) === null,
+);
+check(
+    "an office nobody here holds falls through to the rest",
+    narrowByDocument([AMY_XU, AMY_LI], { text: SUM_EXEC, ...CURRENT }, "Parliamentarian")
+        ?.person.id === AMY_XU.id,
+);
+check(
+    "an archived document is not read against today's officers either",
+    narrowByDocument(
+        [GRACE_GUAN, GRACE_WANG],
+        { text: SUM_EXEC, isCurrentSession: false },
+        "Chair of Programming",
+    ) === null,
+);
+
 console.log("\nrestraint");
 
 check(
@@ -247,6 +299,106 @@ check(
         HONORA,
         person("Eleonora Fabbri", 4),
     ]).length === 2,
+);
+
+console.log("\nmistyped names");
+
+// Minutes are typed during the meeting and the archive is full of the result.
+const MISTYPED = [
+    person("Demarri Dosunmu", 12, ["WSE Senator"]),
+    person("Srigouri Oruganty", 9),
+    person("Andrew Gao", 3),
+    person("Andrei Espelien", 2, ["Performing and Visual Arts Senator"]),
+    person("Ryan Chou", 6),
+    person("Ryann Bell", 1),
+];
+
+check(
+    "a name one letter out is the person it is one letter out from",
+    misspellingCandidates("Demari", MISTYPED).map((p) => p.name).join() ===
+    "Demarri Dosunmu",
+    misspellingCandidates("Demari", MISTYPED),
+);
+check(
+    "a surname counts as much as a given name",
+    misspellingCandidates("Dosunmo", MISTYPED).map((p) => p.name).join() ===
+    "Demarri Dosunmu",
+);
+check(
+    "two letters out is not a slip the archive will guess at",
+    misspellingCandidates("Damari", MISTYPED).length === 0,
+    misspellingCandidates("Damari", MISTYPED),
+);
+check(
+    "a name spelled correctly is not a misspelling of itself",
+    misspellingCandidates("Demarri", MISTYPED).length === 0,
+);
+check(
+    // Both of them serve. Picking either is a coin flip dressed up as a
+    // deduction, which is the whole thing this file is against.
+    "two people a letter apart leave it unresolved",
+    misspellingCandidates("Andrer", MISTYPED).length === 2,
+    misspellingCandidates("Andrer", MISTYPED),
+);
+check(
+    "four letters is too few to deduce a slip from",
+    misspellingCandidates("Ryan", MISTYPED).length === 0,
+    misspellingCandidates("Ryan", MISTYPED),
+);
+check(
+    "an insertion, a deletion and a substitution all count as one edit",
+    ["Srigour", "Srigourii", "Srigouru"].every(
+        (written) => misspellingCandidates(written, MISTYPED).length === 1,
+    ),
+    ["Srigour", "Srigourii", "Srigouru"].map(
+        (written) => misspellingCandidates(written, MISTYPED).length,
+    ),
+);
+check(
+    "a word that is nobody at all stays nobody",
+    ["Timeline", "Venue", "Nominees"].every(
+        (word) => misspellingCandidates(word, MISTYPED).length === 0,
+    ),
+);
+
+console.log("\ntwo rows that are one person");
+
+// Whole names, the way mergePeopleOneTypoApart compares them.
+check(
+    "a doubled letter is a slip",
+    looksMistyped("shreemann patel", "shreeman patel") &&
+    looksMistyped("tarini basireddy", "tarini basirreddy") &&
+    looksMistyped("ava flores", "ava florres"),
+);
+check(
+    "so is a dropped one, at either end or in the middle",
+    looksMistyped("siddharth dhadi", "siddarth dhadi") &&
+    looksMistyped("katherine zhu", "katherin zhu") &&
+    looksMistyped("molly kuzma", "molly kuzmay"),
+);
+check(
+    "so are two neighbours struck the wrong way round",
+    looksMistyped("anisha rasamsetty", "anisha rasmasetty") &&
+    looksMistyped("kirsten amematsro", "kirsten amemastro"),
+);
+check(
+    "so is a letter struck wrong inside a word",
+    looksMistyped("caraline sommer", "caroline sommer"),
+);
+check(
+    // The case that made this stricter than the rule for short forms: both
+    // Graces sat in the 114th and folding them would have erased one.
+    "a letter struck wrong at the start of a word is a different name",
+    !looksMistyped("grace yang", "grace wang") &&
+    !looksMistyped("kiana lin", "diana lin"),
+);
+check(
+    "two letters out is nothing the archive will act on",
+    !looksMistyped("demarri dosunmu", "damari dosunmu"),
+);
+check(
+    "a name is not a misspelling of itself",
+    !looksMistyped("grace guan", "grace guan"),
 );
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);

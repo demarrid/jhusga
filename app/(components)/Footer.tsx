@@ -1,27 +1,27 @@
 import Image from "next/image";
-import Link from "next/link";
 
 import { getSessionString } from "../utils";
+import ScrollTopLink from "./ScrollTopLink";
 import styles from "./Footer.module.css";
 
 export default function Footer() {
   return (
     <footer className={styles.footer}>
       <div className={styles.topline}>
-        <Link className={styles.identity} href="/">
+        <ScrollTopLink className={styles.identity} href="/">
           <Image src="/logo.png" alt="" width={58} height={58} />
           <span>
             The {getSessionString()}
             <strong>Student Government Association</strong>
             at Johns Hopkins University
           </span>
-        </Link>
+        </ScrollTopLink>
 
         <nav className={styles.navigation} aria-label="Footer navigation">
-          <Link href="/about">About</Link>
-          <Link href="/documents">Documents</Link>
-          <Link href="/contact">Contact</Link>
-          <Link href="/discussion">Discussion</Link>
+          <ScrollTopLink href="/about">About</ScrollTopLink>
+          <ScrollTopLink href="/documents">Documents</ScrollTopLink>
+          <ScrollTopLink href="/contact">Contact</ScrollTopLink>
+          <ScrollTopLink href="/discussion">Discussion</ScrollTopLink>
         </nav>
       </div>
 

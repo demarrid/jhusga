@@ -31,7 +31,8 @@ async function main() {
         recordDriveAccounts,
     } = await import("../lib/sync");
     const { recordDirectory } = await import("../lib/directory");
-    const { pruneStaleAliases, resetNameResolverCache } = await import("../lib/names");
+    const { mergePeopleOneTypoApart, pruneStaleAliases, resetNameResolverCache } =
+        await import("../lib/names");
     const { SESSION_NUMBER } = await import("../config/session");
 
     const documents = await prisma.document.findMany({
@@ -45,6 +46,17 @@ async function main() {
     // An alias recorded when the archive knew fewer people can now point at
     // the wrong one, so it goes before anything reads it.
     const prunedAliases = await pruneStaleAliases();
+
+    // One person written two ways is two rows in the person filter, each
+    // holding half of their own record. Folded before anything counts them,
+    // and the folded spelling is left behind as an alias so the next document
+    // that uses it lands on the row that survived rather than digging the
+    // other one back out.
+    const merges = await mergePeopleOneTypoApart();
+    for (const merge of merges) {
+        console.log(`folding onto ${merge.keptName}: ${merge.foldedNames.join(", ")}`);
+    }
+    const folded = merges.reduce((count, merge) => count + merge.foldedNames.length, 0);
 
     // Who holds which seat is established first, because reading "Amy" in a
     // set of minutes depends on knowing that Amy Xu is the sitting Treasurer.
@@ -117,6 +129,7 @@ async function main() {
         `${documents.length} documents; ${contentsCleaned} cleaned of leftover images; ` +
         `${descriptionsChanged} descriptions rewritten; ${contributors} contributions; ` +
         `${prunedAliases} outgrown aliases dropped; ` +
+        `${folded} misspelled duplicates folded onto the person they are; ` +
         `${orphaned.count} unreferenced people removed; ` +
         `${directory.members} directory members (${directory.emails} emails, ${directory.offices} offices); ` +
         `${meetings.keyed} meeting documents (${meetings.paired} agenda/minutes pairs); ` +

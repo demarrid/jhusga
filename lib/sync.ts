@@ -522,7 +522,12 @@ export async function recordContributors(
     });
 
     const affiliateIds = await resolveAffiliates(
-        parsed.map((person) => ({ name: person.name, evidence: person.evidence })),
+        parsed.map((person) => ({
+            name: person.name,
+            evidence: person.evidence,
+            onlyIfKnown: person.onlyIfKnown,
+            office: person.office,
+        })),
         {
             text: content,
             body: document ? bodyForDocument(document) : null,
@@ -533,7 +538,11 @@ export async function recordContributors(
     let linked = 0;
 
     for (const [index, person] of parsed.entries()) {
-        const hopkinsAffiliateId = affiliateIds[index]!;
+        const hopkinsAffiliateId = affiliateIds[index];
+
+        // A name read off a remark that turned out to be nobody the archive
+        // knows was a heading, not a person. See harvestSpeaker.
+        if (!hopkinsAffiliateId) continue;
 
         await prisma.documentContributor.upsert({
             where: {

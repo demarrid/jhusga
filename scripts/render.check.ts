@@ -1,6 +1,6 @@
 import { findQuote } from "../lib/anchor";
 import { toPlainText } from "../lib/markdown";
-import { proseInlineRuns, renderDocument, type Block, type InlineRun } from "../lib/render";
+import { proseInlineRuns, renderDocument, runsText, type Block, type InlineRun } from "../lib/render";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {

@@ -17,7 +17,10 @@ import { toPlainText } from "@/lib/markdown";
 export const CONTRIBUTOR_ROLES = [
     "introducer",
     "sponsor",
+    "confirmed",
+    "nominee",
     "reporting",
+    "interlocutor",
     "present",
     "staff",
     "guest",
@@ -34,6 +37,22 @@ export function isContributorRole(value: string): value is ContributorRole {
     return (CONTRIBUTOR_ROLES as readonly string[]).includes(value);
 }
 
+/**
+ * Where a role sorts when one person holds several on the same document.
+ *
+ * CONTRIBUTOR_ROLES is written in the order a reader wants them: what somebody
+ * did to the document, then what the body did about them, then how they took
+ * part in the meeting, then whether they were there at all, and last what
+ * Drive says about the file. Being confirmed to a seat is the thing worth
+ * leading with, and having spoken the thing worth trailing.
+ *
+ * A role this file has never heard of sorts to the end rather than the front.
+ */
+export function contributorRoleOrder(role: string): number {
+    const index = (CONTRIBUTOR_ROLES as readonly string[]).indexOf(role);
+    return index === -1 ? CONTRIBUTOR_ROLES.length : index;
+}
+
 /** Human label for a role, for listings and filters. */
 export function contributorRoleLabel(role: string): string {
     switch (role) {
@@ -43,6 +62,15 @@ export function contributorRoleLabel(role: string): string {
             return "Sponsored";
         case "reporting":
             return "Reported";
+        // What the minutes actually witness: they took the floor. Saying
+        // "Present" of someone the minutes only ever show speaking claims the
+        // weaker fact and leaves the stronger one unsaid.
+        case "interlocutor":
+            return "Interlocutor";
+        case "confirmed":
+            return "Confirmed";
+        case "nominee":
+            return "Nominated";
         case "present":
             return "Present";
         case "staff":
@@ -77,6 +105,9 @@ const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolea
     { pattern: /^(?:absent\s+)?excused$/i, role: "excused" },
     { pattern: /^(?:unexcused|absent(?:\s+unexcused)?|absentees?)$/i, role: "absent" },
     { pattern: /^late$/i, role: "late" },
+    // The Senate elects a Senator of the Month, and the line that records it
+    // is the only place some senators are named all meeting.
+    { pattern: /^nominees?$/i, role: "nominee" },
     { pattern: /^here$/i, role: "present", firstNames: true },
 ];
 
@@ -192,6 +223,15 @@ function peelLeadingOffice(working: string): {
     if (honorific) working = working.replace(HONORIFIC, "").trim();
 
     const parts = working.split(/\s+/).filter(Boolean);
+
+    // An office and a surname, which is how the minutes name everyone who is
+    // not a senator: "VP Morris", "Chair Xiong", "Dean Chow". Taken before the
+    // loop below, which reads two words as a given name and a surname and so
+    // would seat a person called Chair Xiong beside the Angela Xiong she is.
+    if (parts.length === 2 && looksLikeOffice(parts[0]!) && isPlausibleName(parts[1]!)) {
+        return { name: parts[1]!, office: tidyOffice(parts[0]!) };
+    }
+
     for (const length of [2, 3, 4, 1]) {
         if (parts.length < length) continue;
         const name = parts.slice(-length).join(" ");
@@ -223,6 +263,12 @@ export type ExtractedContributor = {
     note: string | null;
     /** The line this came from. */
     evidence: string;
+    /**
+     * Read from a shape loose enough that the name is only worth believing if
+     * the archive already holds the person; see harvestSpeaker below. The
+     * caller drops these rather than creating anybody for them.
+     */
+    onlyIfKnown: boolean;
 };
 
 /**
@@ -325,6 +371,7 @@ function recordPerson(
     evidence: string,
     /** An office the line gave separately, e.g. the label before a colon. */
     office?: string,
+    onlyIfKnown = false,
 ): boolean {
     const parsed = parsePersonToken(candidate);
     if (!parsed) return false;
@@ -338,6 +385,7 @@ function recordPerson(
         office: parsed.office ?? (office ? tidyOffice(office) : null),
         note: parsed.note,
         evidence: evidence.slice(0, 300),
+        onlyIfKnown,
     });
     return true;
 }
@@ -429,6 +477,19 @@ function harvestLabeledText(
 const REPORTS_LABEL = /^[^:]{0,60}\breports?\b[^:]{0,40}:$/i;
 
 /**
+ * The same heading with the colon left off, which is how the minutes write it:
+ * "Senator reports", "Cabinet Reports (4 mins)", "Advisor Report (2 min)".
+ *
+ * What may follow the word is the meeting's own time estimate in brackets and
+ * more of the heading -- "Senator Reports Initiatives Updates" -- but only in
+ * Title Case. That is what does the colon's job in its absence: a heading goes
+ * on in capitals and "Jason reports Jay Games this weekend" goes on in a
+ * sentence.
+ */
+const REPORTS_HEADING =
+    /^(?:[A-Za-z'-]+ ){0,5}[Rr]eports?(?:\s+[A-Z][A-Za-z']*){0,3}\s*(?:\([^)]{0,30}\))?$/;
+
+/**
  * A section heading, which is where a run of report items ends.
  *
  * The exports write a heading as a whole line of bold, sometimes numbered:
@@ -440,8 +501,14 @@ const HEADING_LINE = /^\s*(?:\d+[.)]\s*)*\*\*[^*]+\*\*[ \t]*$/;
 /** "i.", "ii)", "a." -- the sub-item numbering markdown does not strip. */
 const ENUMERATOR = /^\(?(?:[ivxlcdm]+|[a-z]|\d+)[.)]\s*/i;
 
-/** "Student Body President: Jason Yu" -- an office, a colon, and its holder. */
-const OFFICE_HOLDER = /^([^:]{2,60}?)\s*:\s*(.{3,60})$/;
+/**
+ * "Student Body President: Jason Yu" -- an office, a separator, and its holder.
+ *
+ * The agenda template writes a colon and the minutes write a dash, so both
+ * count. The dash has to be spaced on each side, or "Garduno-Castaneda" would
+ * be somebody called Castaneda holding an office called Garduno.
+ */
+const OFFICE_HOLDER = /^([^:]{2,60}?)\s*(?::|\s[-\u2013\u2014]\s)\s*(.{3,60})$/;
 
 /**
  * A person listed under a report heading, if the line is one.
@@ -467,6 +534,93 @@ function harvestReportItem(
     }
 
     return recordPerson(found, item, "reporting", line);
+}
+
+/**
+ * "Confirmation of Senate Parliamentarian: Shreemann Patel, confirmed with
+ * majority vote" -- the Senate seating somebody.
+ *
+ * Only the colon form. "Confirmation of Chief Advisor - Vice President Jackson
+ * Morris, President Ryan Chou" is the same words with a dash and does not mean
+ * the same thing: those two are the officers bringing the confirmation, not
+ * the people being confirmed, and there is nothing in the line to tell them
+ * apart from someone who was.
+ */
+const CONFIRMATION = /^confirmations?\s+of\s+(.{2,50}?)\s*:\s*(.{3,150})$/i;
+
+/**
+ * Somebody the Senate voted into a seat.
+ *
+ * Read as its own shape rather than left to the rules below, because it is the
+ * record of how a person came to hold an office -- a stronger thing to be able
+ * to say about them than that they were in the room that evening, and the
+ * office it names is theirs from then on.
+ */
+function harvestConfirmation(
+    found: Map<string, ExtractedContributor>,
+    line: string,
+): boolean {
+    const seated = CONFIRMATION.exec(line.replace(ENUMERATOR, "").trim());
+    if (!seated) return false;
+
+    const office = seated[1]!.replace(/^the\s+/i, "");
+    let recorded = 0;
+
+    for (const candidate of splitPeople(seated[2]!)) {
+        if (recordPerson(found, candidate, "confirmed", line, office)) recorded += 1;
+    }
+
+    return recorded > 0;
+}
+
+/**
+ * A list marker of any shape. Minutes are one long nested list, and being an
+ * item in it is much of what separates a remark somebody made at the meeting
+ * from a field in the document's own header.
+ */
+const LIST_ITEM = /^[ \t]*(?:[-*+\u2022]|\(?(?:[ivxlcdm]+|[a-z]|\d+)[.)])\s+/i;
+
+/** "Kai: do absences need to be supplemented with a reason (Yes)". */
+const SPEAKER_LINE = /^([^:]{2,40}?)\s*:\s*(\S.*)$/;
+
+/**
+ * Somebody named as speaking, which in a set of minutes is often the only
+ * record that they were in the room at all.
+ *
+ * The Senate's minutes leave the attendance roll blank -- "Present" with
+ * nothing after it -- and then name a dozen people down the page as they say
+ * things. A parser that reads only labelled lists comes back from a full
+ * meeting with two excused absences and nobody present.
+ *
+ * The shape is far too loose to be trusted on its own: "Venue: Levering
+ * (Free)", "Timeline: no specific date was mentioned" and "Article I: Bill of
+ * Rights" are the same handful of tokens as a senator making a point, and
+ * across this archive there are five hundred distinct words in front of that
+ * colon. So what is found here is marked `onlyIfKnown` and is thrown away
+ * unless the name turns out to be somebody the archive already holds a full
+ * name for. That is what lets this be generous about the shape and still not
+ * seat a senator called Timeline.
+ */
+function harvestSpeaker(
+    found: Map<string, ExtractedContributor>,
+    rawLine: string,
+    line: string,
+): void {
+    if (!LIST_ITEM.test(rawLine)) return;
+
+    const said = SPEAKER_LINE.exec(line.replace(ENUMERATOR, "").trim());
+    if (!said) return;
+
+    const [, speaker, remark] = said;
+
+    // A heading introducing people is not one of them: "Cabinet Reports:" and
+    // "Opposed: Jackson, damari" both run longer than anybody is named.
+    if (speaker!.split(/\s+/).length > 3) return;
+
+    // What was said, rather than a figure or a link the line is filed under.
+    if (!/[a-z]/.test(remark!)) return;
+
+    recordPerson(found, speaker!, "interlocutor", line, undefined, true);
 }
 
 function harvestAttendanceTable(
@@ -506,18 +660,29 @@ function harvestAttendanceTable(
     }
 }
 
+/** How deep a line is nested, which is how a list says what belongs to what. */
+function indentOf(rawLine: string): number {
+    return (/^[ \t]*/.exec(rawLine)?.[0] ?? "").replace(/\t/g, "    ").length;
+}
+
 /**
- * Read every person named by a labelled line, an attendance table, or a report
- * heading.
+ * Read every person named by a labelled line, an attendance table, a report
+ * heading, or a remark attributed to them.
  *
  * Returns at most one entry per (name, role) pair.
  */
 export function extractContributors(markdown: string): ExtractedContributor[] {
     const found = new Map<string, ExtractedContributor>();
 
-    // Whether the lines currently being read are items under a report heading,
-    // where a bare name is a person rather than a phrase that looks like one.
-    let underReports = false;
+    // The report section being read, if any. Under one of these a bare name is
+    // a person rather than a phrase that looks like one.
+    //
+    // Indentation is what bounds it. The agenda lists its reporters and stops,
+    // but the minutes write down what each of them said underneath their name,
+    // and a run that ended at the first line it could not read as a person
+    // ended at "Increase black visibility and retention of black students on
+    // campus" -- which is Oluwanifemi's report, not the end of the reports.
+    let reports: { heading: number; items: number | null } | null = null;
 
     for (const rawLine of markdown.split(/\r?\n/)) {
         if (rawLine.includes("|")) {
@@ -525,13 +690,18 @@ export function extractContributors(markdown: string): ExtractedContributor[] {
             continue;
         }
 
-        if (HEADING_LINE.test(rawLine)) underReports = false;
-
         const line = toPlainText(rawLine);
         if (!line || line.length > 500) continue;
 
-        if (REPORTS_LABEL.test(line)) {
-            underReports = true;
+        const indent = indentOf(rawLine);
+        if (reports && (HEADING_LINE.test(rawLine) || indent <= reports.heading)) {
+            reports = null;
+        }
+
+        // Checked before the run below, because the heading that opens a
+        // report section is itself nested under "Reports".
+        if (REPORTS_LABEL.test(line) || REPORTS_HEADING.test(line)) {
+            reports = { heading: indent, items: null };
             continue;
         }
 
@@ -539,7 +709,20 @@ export function extractContributors(markdown: string): ExtractedContributor[] {
         // much as anywhere else: the advisor under "Advisor Report:" is staff.
         if (harvestLabeledText(found, line, line) > 0) continue;
 
-        if (underReports) underReports = harvestReportItem(found, line);
+        if (harvestConfirmation(found, line)) continue;
+
+        if (reports) {
+            // The first line under the heading sets the depth its people sit
+            // at. Anything deeper is one of them talking, and is left to
+            // harvestSpeaker rather than ending the list.
+            reports.items ??= indent;
+            if (indent <= reports.items) {
+                if (!harvestReportItem(found, line)) reports = null;
+                continue;
+            }
+        }
+
+        harvestSpeaker(found, rawLine, line);
     }
 
     return [...found.values()];
