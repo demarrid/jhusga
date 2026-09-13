@@ -53,7 +53,7 @@ const ACRONYMS = new Map(
 /** Words that stay lowercase inside a title. */
 const MINOR_WORDS = new Set([
     "a", "an", "and", "as", "at", "but", "by", "for", "in", "of", "on", "or",
-    "the", "to", "with", "vs",
+    "the", "to", "with", "vs", "v",
 ]);
 
 /** Committee folder names, as the SGA would write them in prose. */
@@ -80,10 +80,15 @@ const COMMITTEE_NAMES: Record<string, string> = {
  * makes them long enough to look like shouting and come back as "Sga-fc".
  */
 function isShouting(word: string): boolean {
-    return (word.match(/[A-Za-z]+/g) ?? []).some((run) => {
-        if (run.length < 4) return false;
+    const runs = word.match(/[A-Za-z]+/g) ?? [];
+    return runs.some((run) => {
         if (ACRONYMS.has(run.toLowerCase())) return false;
-        return run === run.toUpperCase();
+        if (run !== run.toUpperCase()) return false;
+        // "OF" and "THE" are shouting even at three letters; "SGA" is not,
+        // because it is listed above. Without this, a fully shouted PDF
+        // title comes back as "Opinion OF THE Judiciary".
+        if (MINOR_WORDS.has(run.toLowerCase())) return true;
+        return run.length >= 4;
     });
 }
 
@@ -110,6 +115,8 @@ function capitaliseWord(word: string, isFirst: boolean): string {
  */
 export function cleanTitle(raw: string): string {
     const collapsed = raw
+        .replace(/\.(docx?|pdf|txt|md)$/i, "")
+        .replace(/_/g, " ")
         .replace(/\s+/g, " ")
         .replace(/\s+([,.;:])/g, "$1")
         .trim();

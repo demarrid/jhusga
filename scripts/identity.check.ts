@@ -337,6 +337,21 @@ check(
     }) === "minutes.judicial",
 );
 check(
+    "a PDF in the judiciary opinions folder is an opinion",
+    classifyDocument({
+        name: "Morris v. SGA.pdf",
+        folderPath: "113th SGA Master Folder/Judiciary/Opinions",
+    }) === "judicial.opinion",
+);
+check(
+    "an opinion whose caption mentions certiorari is still an opinion",
+    classifyDocument({
+        name: "OPINION OF THE JUDICIARY_MORRIS v SGA No.26-0503E .pdf",
+        folderPath: "113th SGA Master Folder/Opinions",
+        content: "CERTIORARI TO THE JOHNS HOPKINS STUDENT GOVERNMENT ASSOCIATION JUDICIARY",
+    }) === "judicial.opinion",
+);
+check(
     "bylaws in a constitution folder stay bylaws",
     classifyDocument({
         name: "JHU SGA Bylaws April 2024",

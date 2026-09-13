@@ -66,6 +66,12 @@ check(
     extractDriveLinks("https://drive.google.com/drive/folders/1FNVLX3o1QAulNi0JY7XwOxHpQ6Oa0KIg")
         .length === 0,
 );
+check(
+    "a Drive PDF /file/d/ link is a document",
+    extractDriveLinks(
+        `https://drive.google.com/file/d/${BILL}/view?usp=sharing`,
+    )[0]?.fileId === BILL,
+);
 
 // A file ID is only a file ID on Drive. The SGA runs its committee placements
 // through Microsoft Forms, whose URLs carry an `id` parameter of their own, and

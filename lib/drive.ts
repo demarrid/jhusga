@@ -25,6 +25,16 @@ export const SHORTCUT_MIME = "application/vnd.google-apps.shortcut";
 export const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 export const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 export const GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation";
+export const PDF_MIME = "application/pdf";
+
+/**
+ * A native PDF, including files Drive stored as a generic binary but named
+ * `.pdf`. Google Docs that *happen* to be printable as PDF are a different
+ * thing -- those still go through the markdown export.
+ */
+export function isPdfFile(file: { mimeType: string; name: string }): boolean {
+    return file.mimeType === PDF_MIME || /\.pdf$/i.test(file.name);
+}
 
 /** A Drive account. Public files expose these even to a bare API key. */
 export type DriveUser = {
@@ -455,9 +465,86 @@ export async function exportSpreadsheetAsCsv(fileId: string): Promise<string> {
     return (await exportFile(fileId, "text/csv")).replace(/^\uFEFF/, "").trim();
 }
 
+/**
+ * Native files (PDFs, uploaded Word docs) have no `/export`. Drive serves
+ * the bytes themselves at `alt=media`.
+ *
+ * Empty on the same "Drive will not give us this" cases as `getFile` -- a
+ * file that is not shared is not a sync failure -- and on a file that is
+ * larger than the archive is willing to hold in memory.
+ */
+const MAX_BINARY_BYTES = 20 * 1024 * 1024;
+
+async function downloadFile(fileId: string): Promise<Uint8Array | null> {
+    const params = new URLSearchParams({
+        alt: "media",
+        supportsAllDrives: "true",
+        key: apiKey(),
+    });
+
+    let response: Response;
+    try {
+        response = await driveFetch(
+            `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?${params.toString()}`,
+        );
+    } catch (cause) {
+        if (cause instanceof Error && /Drive API (403|404)\b/.test(cause.message)) {
+            return null;
+        }
+        throw cause;
+    }
+
+    const declared = Number(response.headers.get("content-length") ?? 0);
+    if (declared > MAX_BINARY_BYTES) return new Uint8Array();
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_BINARY_BYTES) return new Uint8Array();
+    return bytes;
+}
+
+/**
+ * The words a PDF contains, as one string.
+ *
+ * Page breaks become blank lines. A scanned opinion with no text layer
+ * comes back empty, which is the same outcome as a Google Doc Drive
+ * will not export: the row is still stored, the reader still has the
+ * link, and there is nothing to cite.
+ *
+ * Exported so the check suite can feed a fixture without going through Drive.
+ */
+export async function extractPdfText(bytes: Uint8Array): Promise<string> {
+    if (bytes.byteLength === 0) return "";
+
+    const { extractText } = await import("unpdf");
+    const { text } = await extractText(bytes, { mergePages: true });
+    const merged = typeof text === "string" ? text : text.join("\n\n");
+    return sanitizeExport(merged);
+}
+
+/**
+ * Download a Drive PDF and flatten it to the same stored text a Doc gets.
+ *
+ * Empty when Drive will not serve the file, or when the file has no text
+ * layer. The caller still records the document; it just has no body.
+ */
+export async function exportPdfAsText(fileId: string): Promise<string> {
+    const bytes = await downloadFile(fileId);
+    if (!bytes) return "";
+    try {
+        return await extractPdfText(bytes);
+    } catch (cause) {
+        // A corrupt or image-only PDF is a fact about that file, not a
+        // reason to fail the rest of the walk.
+        if (cause instanceof Error) return "";
+        throw cause;
+    }
+}
+
 /** Stable link back to the original, for "open in Google Docs". */
 export function driveViewLink(file: DriveFile): string {
-    return (
-        file.webViewLink ?? `https://docs.google.com/document/d/${file.id}/edit`
-    );
+    if (file.webViewLink) return file.webViewLink;
+    if (isPdfFile(file)) {
+        return `https://drive.google.com/file/d/${file.id}/view`;
+    }
+    return `https://docs.google.com/document/d/${file.id}/edit`;
 }

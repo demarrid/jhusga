@@ -165,6 +165,32 @@ check(
 );
 check("markdown bold is stripped from names", !billPeople.some((p) => p.name.includes("*")));
 
+// The Accountability Act wraps its sponsors across two indented lines with a
+// trailing "and". Reading each line on its own drops Isaac Zhang.
+const wrappedSponsors = [
+    "**An SGA Funding Bill**",
+    "Introduced by: **Vice President of the Senate Shreemann Patel**",
+    "Sponsored by:   **President of the Senate Jazzlyn Fernandez** and",
+    "                         **Chair of Academic Affairs Isaac Zhang**",
+    "",
+    "Presented for First Reading this **8th** day of **September** in the year **2026**",
+].join("\n");
+
+const wrappedPeople = extractContributors(wrappedSponsors);
+check(
+    "a sponsor named on the next line is still found",
+    wrappedPeople.some((p) => p.name === "Isaac Zhang" && p.role === "sponsor"),
+    wrappedPeople,
+);
+check(
+    "the sponsor named on the label line is still found",
+    wrappedPeople.some((p) => p.name === "Jazzlyn Fernandez" && p.role === "sponsor"),
+);
+check(
+    "a blank line ends the wrapped list before the next section",
+    !wrappedPeople.some((p) => p.name.includes("September")),
+);
+
 // The template lives in the same folder as real bills.
 const template = [
     "Introduced by: **INTRODUCER**",

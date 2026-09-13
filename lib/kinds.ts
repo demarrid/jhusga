@@ -215,17 +215,24 @@ function classifyJudicial(name: string, haystack: string, content?: string): Doc
     const namedOrFiled = (pattern: RegExp) =>
         pattern.test(name) || (judicialFolder && pattern.test(body));
 
+    if (namedOrFiled(/advisory opinion/)) return "judicial.advisory_opinion";
+
+    // An opinion *on* a petition for certiorari is still an opinion. The
+    // caption of Morris v. SGA says "CERTIORARI TO THE ... JUDICIARY";
+    // reading that as the writ itself would hide every published decision
+    // in the Opinions folder.
+    if (/opinion|decision/.test(name) || /\bopinions?\b/.test(haystack)) {
+        return "judicial.opinion";
+    }
+
     if (namedOrFiled(/writ of certiorari|\bcertiorari\b/)) {
         return "judicial.writ_of_certiorari";
     }
     if (namedOrFiled(/writ of mandamus|\bmandamus\b/)) {
         return "judicial.writ_of_mandamus";
     }
-    if (namedOrFiled(/advisory opinion/)) return "judicial.advisory_opinion";
 
     if (!judicialFolder && !/\bwrit\b/.test(name)) return null;
-
-    if (/opinion|decision/.test(name)) return "judicial.opinion";
     if (/\border\b/.test(name)) return "judicial.order";
     if (/complaint|petition/.test(name)) return "judicial.complaint";
     if (/\bwrit\b/.test(name)) return "judicial.writ";

@@ -248,7 +248,8 @@ function byPerson(
 
 function originalLabel(source: string): string {
     if (/sharepoint\.com/i.test(source)) return "Open the original in SharePoint";
-    if (/(?:docs|drive)\.google\.com/i.test(source)) return "Open the original in Google Docs";
+    if (/docs\.google\.com/i.test(source)) return "Open the original in Google Docs";
+    if (/drive\.google\.com/i.test(source)) return "Open the original in Google Drive";
     // "Read" rather than "open", and named: the publisher is the point.
     if (/jhunewsletter\.com/i.test(source)) return "Read this article in The News-Letter";
     return "Open the original";

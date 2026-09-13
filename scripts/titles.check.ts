@@ -25,6 +25,12 @@ console.log("cleaning");
 
 check("leading and doubled spaces go", cleanTitle(" Senate GBM  #13 ") === "Senate GBM #13");
 check(
+    "a PDF filename loses its extension and its underscores",
+    cleanTitle("OPINION OF THE JUDICIARY_MORRIS v SGA No.26-0503E .pdf") ===
+        "Opinion of the Judiciary Morris v SGA No.26-0503E",
+    cleanTitle("OPINION OF THE JUDICIARY_MORRIS v SGA No.26-0503E .pdf"),
+);
+check(
     "shouting is undone but acronyms survive",
     cleanTitle("MINUTES of Senate GBM #14") === "Minutes of Senate GBM #14",
     cleanTitle("MINUTES of Senate GBM #14"),

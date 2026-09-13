@@ -42,6 +42,7 @@ const SUITES = [
     "cite",
     "contributors",
     "directory",
+    "drive",
     "links",
     "identity",
     "integrity",

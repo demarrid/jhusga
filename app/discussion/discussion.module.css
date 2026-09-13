@@ -1,7 +1,43 @@
+.discussionRoot {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f7f9fb;
+}
+
+.discussionRoot > .page {
+  min-height: 0;
+  flex: 1 0 auto;
+}
+
 .page {
   min-height: 100vh;
   background: #f7f9fb;
   color: #172b44;
+}
+
+/*
+ * Standing disclaimer on every discussion route. The forum is anonymous and
+ * signed-in Hopkins undergrads write what they like, so any reader landing
+ * on a thread needs the line that says the SGA is not speaking here.
+ *
+ * A quiet strip along the bottom, above whatever site chrome comes after.
+ */
+.disclaimer {
+  flex-shrink: 0;
+  padding: 1.25rem max(6vw, 1.5rem);
+  border-top: 1px solid #cbd5e1;
+  background: #eef2f7;
+  color: #4b5c72;
+  font-size: 0.78rem;
+  font-style: italic;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.disclaimer p {
+  max-width: 52rem;
+  margin: 0 auto;
 }
 
 .pageHeader {

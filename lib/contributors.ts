@@ -439,6 +439,55 @@ function labeledSegments(text: string): { role: ContributorRole; names: string; 
     }).filter((segment) => segment.names.length > 0 && segment.names.length < 400);
 }
 
+/** Whether the line's final characters mean the list has more names coming. */
+const TRAILING_JOIN = /(?:\band\b|,|;|&)\s*$/i;
+
+/**
+ * If a labelled line ends with "and" or a comma, the role stays open so the
+ * next indented line's names can be attached to it. Only introducer, sponsor
+ * and attendance-shaped roles wrap this way in practice.
+ */
+function openContinuation(line: string): { role: ContributorRole; evidence: string } | null {
+    if (!TRAILING_JOIN.test(line)) return null;
+    const segments = labeledSegments(line);
+    const last = segments[segments.length - 1];
+    if (!last) return null;
+    if (!TRAILING_JOIN.test(last.names)) return null;
+    return { role: last.role, evidence: line };
+}
+
+/**
+ * Record any people named on a wrapped line, e.g. the "Chair of Academic
+ * Affairs Isaac Zhang" line that continues a "Sponsored by:" list.
+ */
+function harvestContinuedList(
+    found: Map<string, ExtractedContributor>,
+    line: string,
+    carry: { role: ContributorRole; evidence: string },
+): boolean {
+    let recorded = 0;
+    let carried = "";
+    for (const candidate of splitPeople(line)) {
+        const token = carried ? `${carried} and ${candidate}` : candidate;
+        if (parsePersonToken(token)) {
+            if (recordPerson(found, token, carry.role, carry.evidence)) recorded += 1;
+            carried = "";
+            continue;
+        }
+        if (looksLikeOffice(candidate)) {
+            carried = token;
+            continue;
+        }
+        carried = "";
+    }
+    return recorded > 0;
+}
+
+/** Whether the wrapped line itself trails off with another joiner. */
+function continuedListStillOpen(line: string): boolean {
+    return TRAILING_JOIN.test(line);
+}
+
 function harvestLabeledText(
     found: Map<string, ExtractedContributor>,
     text: string,
@@ -687,14 +736,30 @@ export function extractContributors(markdown: string, title?: string): Extracted
     // campus" -- which is Oluwanifemi's report, not the end of the reports.
     let reports: { heading: number; items: number | null } | null = null;
 
+    // The label list being continued, if the previous line ended with "and" or
+    // a comma. Bills typeset "Sponsored by:" as one indented block across
+    // several lines, and reading each line on its own drops the sponsors
+    // named after the first: Isaac Zhang in the Accountability Act.
+    let carryingList: { role: ContributorRole; evidence: string } | null = null;
+
     for (const rawLine of markdown.split(/\r?\n/)) {
         if (rawLine.includes("|")) {
             harvestAttendanceTable(found, rawLine);
+            carryingList = null;
             continue;
         }
 
         const line = toPlainText(rawLine);
-        if (!line || line.length > 500) continue;
+        if (!line) {
+            // A blank line ends the wrapped list; a run of them ends the
+            // report section, but that is handled by indent below.
+            carryingList = null;
+            continue;
+        }
+        if (line.length > 500) {
+            carryingList = null;
+            continue;
+        }
 
         const indent = indentOf(rawLine);
         if (reports && (HEADING_LINE.test(rawLine) || indent <= reports.heading)) {
@@ -705,12 +770,24 @@ export function extractContributors(markdown: string, title?: string): Extracted
         // report section is itself nested under "Reports".
         if (REPORTS_LABEL.test(line) || REPORTS_HEADING.test(line)) {
             reports = { heading: indent, items: null };
+            carryingList = null;
             continue;
         }
 
         // A labelled line means what its label says, in a report section as
         // much as anywhere else: the advisor under "Advisor Report:" is staff.
-        if (harvestLabeledText(found, line, line) > 0) continue;
+        const labeled = harvestLabeledText(found, line, line);
+        if (labeled > 0) {
+            carryingList = openContinuation(line);
+            continue;
+        }
+
+        // Wrapped continuation of a "Sponsored by: X and" list.
+        if (carryingList && harvestContinuedList(found, line, carryingList)) {
+            carryingList = continuedListStillOpen(line) ? carryingList : null;
+            continue;
+        }
+        carryingList = null;
 
         if (harvestConfirmation(found, line)) continue;
 
