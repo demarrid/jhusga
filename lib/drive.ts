@@ -517,8 +517,7 @@ export async function extractPdfText(bytes: Uint8Array): Promise<string> {
 
     const { extractText } = await import("unpdf");
     const { text } = await extractText(bytes, { mergePages: true });
-    const merged = typeof text === "string" ? text : text.join("\n\n");
-    return sanitizeExport(merged);
+    return sanitizeExport(text);
 }
 
 /**
