@@ -10,6 +10,7 @@
 
 import { parseTimeframe, withoutTimeframe } from "../lib/when";
 import { questionTerms } from "../lib/terms";
+import { questionFocus } from "../config/search";
 
 /** A Friday, so "this week" has five days of it behind it. */
 const NOW = new Date("2026-09-11T18:00:00.000Z");
@@ -28,6 +29,8 @@ const CASES: { question: string; label: string | null; start?: string; end?: str
     { question: "what has changed since January", label: "January 2026 onwards", start: "2026-01-01", end: "2026-09-12" },
     { question: "funding bills in 2025", label: "2025", start: "2025-01-01", end: "2026-01-01" },
     { question: "recent minutes", label: "the past 30 days", start: "2026-08-13", end: "2026-09-12" },
+    { question: "what is the most recent constitution", label: null },
+    { question: "the latest bylaws", label: null },
     { question: "what happened last semester", label: "last semester", start: "2026-01-01", end: "2026-08-01" },
     { question: "what happened over the last two years", label: "the past 2 years", start: "2024-09-12", end: "2026-09-12" },
 
@@ -97,4 +100,20 @@ for (const test of CASES) {
 }
 
 console.log(`\n${CASES.length - failures}/${CASES.length} passed`);
-process.exitCode = failures > 0 ? 1 : 0;
+
+let focusFailures = 0;
+function focusCheck(question: string, expected: "current" | "historical") {
+    const actual = questionFocus(question);
+    const ok = actual === expected;
+    if (!ok) focusFailures += 1;
+    console.log(`${ok ? "ok  " : "FAIL"} focus ${question} → ${actual}`);
+}
+
+console.log("\nquestionFocus");
+focusCheck("how do I get a bill passed", "current");
+focusCheck("what is the most recent constitution", "current");
+focusCheck("when is the last time the constitution was updated", "historical");
+focusCheck("compare constitution 2026 april to constitution 2025 fall", "historical");
+focusCheck("why can't I find the constitutional crisis", "historical");
+
+process.exitCode = failures + focusFailures > 0 ? 1 : 0;

@@ -1,6 +1,7 @@
 import { generateJson } from "@/lib/ai";
 import { bodyForOffice, type SgaBody } from "@/lib/bodies";
 import { nameKey } from "@/lib/contributors";
+import { sessionStartDate } from "@/config/session";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -47,12 +48,21 @@ export type NameContext = {
     body?: SgaBody | null;
     /** Current-session documents may be read against who is serving now. */
     isCurrentSession?: boolean;
+    /**
+     * When set, `positions` on each regular are the seats held on this date
+     * rather than the seats held today. An archived document is read against
+     * who sat then: RSO senator as a sophomore, KSAS senator as a senior.
+     */
+    asOf?: Date;
+    sessionNumber?: number;
 };
 
 let regularsCache: RegularPerson[] | null = null;
+const regularsByDay = new Map<string, RegularPerson[]>();
 
 export function resetNameResolverCache() {
     regularsCache = null;
+    regularsByDay.clear();
 }
 
 export function isShortForm(name: string): boolean {
@@ -193,9 +203,23 @@ export function misspellingCandidates(
     );
 }
 
-export async function loadRegulars(): Promise<RegularPerson[]> {
-    if (regularsCache) return regularsCache;
+export async function loadRegulars(asOf?: Date): Promise<RegularPerson[]> {
+    if (!asOf) {
+        if (regularsCache) return regularsCache;
+        regularsCache = await loadRegularsAt(undefined);
+        return regularsCache;
+    }
 
+    const key = asOf.toISOString().slice(0, 10);
+    const cached = regularsByDay.get(key);
+    if (cached) return cached;
+
+    const loaded = await loadRegularsAt(asOf);
+    regularsByDay.set(key, loaded);
+    return loaded;
+}
+
+async function loadRegularsAt(asOf: Date | undefined): Promise<RegularPerson[]> {
     const affiliates = await prisma.hopkinsAffiliate.findMany({
         select: {
             id: true,
@@ -203,13 +227,23 @@ export async function loadRegulars(): Promise<RegularPerson[]> {
             nameKey: true,
             contributions: { select: { documentId: true } },
             hopkinsRelationships: {
-                where: { endedAt: null, hopkinsCategory: { type: "position" } },
+                where: {
+                    hopkinsCategory: { type: "position" },
+                    ...(asOf
+                        ? {
+                            AND: [
+                                { OR: [{ startedAt: null }, { startedAt: { lte: asOf } }] },
+                                { OR: [{ endedAt: null }, { endedAt: { gt: asOf } }] },
+                            ],
+                        }
+                        : { endedAt: null }),
+                },
                 select: { hopkinsCategory: { select: { name: true } } },
             },
         },
     });
 
-    regularsCache = affiliates
+    return affiliates
         .map((person) => {
             const positions = person.hopkinsRelationships.map(
                 (row) => row.hopkinsCategory.name,
@@ -241,8 +275,6 @@ export async function loadRegulars(): Promise<RegularPerson[]> {
                     person.positions.length > 0),
         )
         .sort((a, b) => b.documentCount - a.documentCount);
-
-    return regularsCache;
 }
 
 /** Whether a candidate's full name is written out in the document. */
@@ -288,9 +320,11 @@ export function narrowByDocument(
     // Programming whoever else in the room is also called Grace -- and these
     // minutes go on to introduce a Grace Yang who is not her.
     //
-    // Only for the session now sitting, for the same reason as the tests
-    // below: who holds which seat is not known for any other.
-    if (office && context.isCurrentSession) {
+    // Only when we know who sat: the session now sitting, or an archived
+    // document whose seats were recorded as of its date. Who holds which seat
+    // today is not what "Chair of Programming - Grace" meant in the 112th.
+    const officesKnown = Boolean(context.isCurrentSession || context.asOf);
+    if (office && officesKnown) {
         const wanted = officeKey(office);
         const holder = only(
             candidates.filter((person) =>
@@ -309,7 +343,7 @@ export function narrowByDocument(
 
     // Who is serving is only known for the current session, so an archived
     // document is never read against today's officers.
-    if (!context.isCurrentSession) return null;
+    if (!officesKnown) return null;
 
     if (context.body) {
         const seated = only(
@@ -831,7 +865,13 @@ export async function resolveAffiliates(
     mentions: NameMention[],
     context: NameContext = {},
 ): Promise<(string | null)[]> {
-    const regulars = await loadRegulars();
+    const asOf =
+        context.asOf ??
+        (!context.isCurrentSession && context.sessionNumber
+            ? sessionStartDate(context.sessionNumber)
+            : undefined);
+    const datedContext = { ...context, asOf };
+    const regulars = await loadRegulars(context.isCurrentSession ? undefined : asOf);
     const ids: (string | null)[] = mentions.map(() => null);
     const pending: Pending[] = [];
 
@@ -923,7 +963,7 @@ export async function resolveAffiliates(
             // "Amy" is Amy Xu here and Amy Li in the minutes of two sessions
             // ago, and one global mapping cannot be right in both.
             if (candidates.length > 1) {
-                const narrowed = narrowByDocument(pool, context, mention.office);
+                const narrowed = narrowByDocument(pool, datedContext, mention.office);
                 if (narrowed) {
                     ids[index] = narrowed.person.id;
                     continue;
@@ -962,7 +1002,7 @@ export async function resolveAffiliates(
         const picked = await askModelToPick(
             pending.map((item) => ({ name: item.name, evidence: item.evidence })),
             pool,
-            context,
+            datedContext,
         );
 
         for (const item of pending) {

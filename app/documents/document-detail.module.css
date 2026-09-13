@@ -471,6 +471,40 @@
 .diffRemoved { background: #f7e5e5; color: #6e3030; }
 .diffSkipped { padding-block: 0.75rem; color: #758497; }
 
+.amendments {
+  margin-top: 3rem;
+}
+
+.amendments h2 {
+  margin: 0;
+  color: #002d72;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: 1.35rem;
+  font-weight: 540;
+}
+
+.amendments ul {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #b4c3d1;
+}
+
+.amendments li {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid #b4c3d1;
+}
+
+.amendments a {
+  color: #002d72;
+  font-weight: 650;
+}
+
+.amendments span {
+  color: #607286;
+  font-size: 0.78rem;
+}
+
 @media (max-width: 900px) {
   .readerLayout {
     grid-template-columns: 1fr;

@@ -44,6 +44,7 @@ const SUITES = [
     "directory",
     "links",
     "identity",
+    "integrity",
     "meetings",
     "names",
     "newsletter",

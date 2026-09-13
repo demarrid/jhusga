@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useEffect, useState, useTransition, type CSSProperties } from "react";
 
 import { askArchive } from "@/api/search";
-import Checkbox from "@/app/(components)/Checkbox";
 import CitedProse from "@/app/(components)/CitedProse";
-import { MAX_QUESTION_CHARS, type SearchScope } from "@/config/search";
+import { MAX_QUESTION_CHARS } from "@/config/search";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
 import { formatDateShort } from "@/lib/dates";
@@ -56,7 +55,6 @@ const EXAMPLE_LOOP = [...EXAMPLES, EXAMPLES[0]];
 
 export default function NaturalLanguageSearch() {
     const [question, setQuestion] = useState("");
-    const [scope, setScope] = useState<SearchScope>("current");
     const [answer, setAnswer] = useState<QuestionAnswer | null>(null);
     const [pending, startTransition] = useTransition();
     const [exampleIndex, setExampleIndex] = useState(0);
@@ -85,10 +83,10 @@ export default function NaturalLanguageSearch() {
         });
     }
 
-    function ask(asked: string, withScope: SearchScope) {
+    function ask(asked: string) {
         if (asked.trim().length < 3) return;
         startTransition(async () => {
-            setAnswer(await askArchive(asked, withScope));
+            setAnswer(await askArchive(asked));
         });
     }
 
@@ -98,7 +96,7 @@ export default function NaturalLanguageSearch() {
                 className={styles.form}
                 onSubmit={(event) => {
                     event.preventDefault();
-                    ask(question, scope);
+                    ask(question);
                 }}
             >
                 <div className={styles.questionField}>
@@ -144,21 +142,6 @@ export default function NaturalLanguageSearch() {
                 >
                     {pending ? "Reading…" : "Ask"}
                 </button>
-                <div className={styles.scopeToggle}>
-                    <Checkbox
-                        checked={scope === "all"}
-                        onChange={(checked) => {
-                            const next: SearchScope = checked ? "all" : "current";
-                            setScope(next);
-                            // Re-asking immediately is the point of the toggle:
-                            // it is how a reader moves a question from "what
-                            // are the rules now" to "when did that change".
-                            if (answer) ask(question, next);
-                        }}
-                    >
-                        Include past sessions
-                    </Checkbox>
-                </div>
             </form>
 
             <div className={styles.answerRegion} aria-live="polite" aria-busy={pending}>
@@ -170,9 +153,9 @@ export default function NaturalLanguageSearch() {
 
 function Answer({ answer }: { answer: QuestionAnswer }) {
     const scopeLabel =
-        answer.scope === "all"
-            ? "every session in the archive"
-            : `the ${sessionOrdinal(SESSION_NUMBER)} session`;
+        answer.focus === "historical"
+            ? "the archive"
+            : "the documents now in force";
 
     const reason = noAnswerReason(answer, scopeLabel);
 
@@ -209,8 +192,9 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
                     {answer.timeframe
                         ? `${sentenceCase(scopeLabel)} holds nothing for ${answer.timeframe.label}.`
                         : `Nothing in ${scopeLabel} matches those words.`}
-                    {answer.scope === "current" &&
-                        " Past sessions are not searched unless you ask for them."}
+                    {answer.focus === "current" &&
+                        !answer.timeframe &&
+                        " Older editions are left out unless the question is about when something changed."}
                 </p>
             )}
         </div>

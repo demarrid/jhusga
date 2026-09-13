@@ -6,7 +6,7 @@
  *   npm run search -- --index --force    -- re-split the whole corpus
  *   npm run search -- "how many caucus senators can there be?"
  *   npm run search -- "what happened last week?"
- *   npm run search -- --all "when was the first caucus position introduced?"
+ *   npm run search -- --current "how do I get a bill passed?"
  *   npm run search -- --passages "caucus"   -- retrieval only, no model call
  *   npm run search -- --passages "what happened last week"  -- and the period
  *
@@ -21,7 +21,7 @@ process.loadEnvFile(path.join(process.cwd(), ".env"));
 async function main() {
     const args = process.argv.slice(2);
     const force = args.includes("--force");
-    const scope = args.includes("--all") ? "all" : "current";
+    const scope = args.includes("--current") ? "current" : "all";
     const passagesOnly = args.includes("--passages");
     const question = args.filter((arg) => !arg.startsWith("--")).join(" ");
 
@@ -127,8 +127,9 @@ async function reportCoverage() {
     console.log(`Documents with text:       ${documents}`);
     console.log(`Indexed:                   ${indexed}`);
     console.log(`Passages:                  ${passages}`);
-    // The browser searches the current session unless the reader opts out, so
-    // a corpus that is indexed but entirely historical still answers nothing.
+    // The browser searches the whole archive and then keeps the documents
+    // now in force, so an older constitution still answers "what is the
+    // constitution" even when the 114th has not adopted a new one.
     console.log(`Indexed in session ${SESSION_NUMBER}:    ${currentIndexed}`);
 
     if (indexed < documents) {

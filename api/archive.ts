@@ -2,6 +2,7 @@
 
 import { SESSION_NUMBER } from "@/config/sga";
 import { collapseUnchanged, diffLines } from "@/lib/diff";
+import { listedDate } from "@/lib/dates";
 import {
     COMPARABLE_KINDS,
     isComparableKind,
@@ -57,12 +58,13 @@ export type LineageMember = {
     title: string;
     kind: DocumentKind;
     sessionNumber: number | null;
+    datedAt: Date | null;
     driveModifiedTime: Date | null;
 };
 
 export type Lineage = {
     lineageKey: string;
-    /** Newest session first. */
+    /** Newest edition first. */
     members: LineageMember[];
 };
 
@@ -72,6 +74,8 @@ function toMember(document: {
     displayTitle: string;
     kind: string;
     sessionNumber: number | null;
+    datedAt?: Date | null;
+    driveCreatedTime?: Date | null;
     driveModifiedTime: Date | null;
 }): LineageMember {
     return {
@@ -79,24 +83,33 @@ function toMember(document: {
         title: document.displayTitle || document.title,
         kind: isDocumentKind(document.kind) ? document.kind : "unknown",
         sessionNumber: document.sessionNumber,
+        datedAt: listedDate({
+            datedAt: document.datedAt ?? null,
+            driveCreatedTime: document.driveCreatedTime ?? null,
+            driveModifiedTime: document.driveModifiedTime,
+        }),
         driveModifiedTime: document.driveModifiedTime,
     };
 }
+
+const lineageSelect = {
+    id: true,
+    title: true,
+    displayTitle: true,
+    kind: true,
+    sessionNumber: true,
+    datedAt: true,
+    driveCreatedTime: true,
+    driveModifiedTime: true,
+} as const;
 
 /** Every session's copy of one guiding document, newest first. */
 export async function getLineage(lineageKey: string): Promise<Lineage> {
     if (demoModeEnabled()) return demoLineage(lineageKey);
     const documents = await prisma.document.findMany({
         where: { lineageKey, kind: { in: COMPARABLE_KINDS } },
-        select: {
-            id: true,
-            title: true,
-            displayTitle: true,
-            kind: true,
-            sessionNumber: true,
-            driveModifiedTime: true,
-        },
-        orderBy: { sessionNumber: "desc" },
+        select: lineageSelect,
+        orderBy: [{ sessionNumber: "desc" }, { datedAt: "desc" }],
     });
 
     return { lineageKey, members: documents.map(toMember) };
@@ -121,16 +134,8 @@ export async function getComparableLineages(): Promise<Lineage[]> {
     // One query for all of them rather than one per lineage.
     const documents = await prisma.document.findMany({
         where: { lineageKey: { in: keys }, kind: { in: COMPARABLE_KINDS } },
-        select: {
-            id: true,
-            title: true,
-            displayTitle: true,
-            kind: true,
-            lineageKey: true,
-            sessionNumber: true,
-            driveModifiedTime: true,
-        },
-        orderBy: { sessionNumber: "desc" },
+        select: { ...lineageSelect, lineageKey: true },
+        orderBy: [{ sessionNumber: "desc" }, { datedAt: "desc" }],
     });
 
     const byLineage = new Map<string, LineageMember[]>();
@@ -142,13 +147,9 @@ export async function getComparableLineages(): Promise<Lineage[]> {
 
     return [...byLineage.entries()]
         .map(([lineageKey, members]) => ({ lineageKey, members }))
-        // Two copies the same session kept of one document are a Drive
-        // duplicate, not an amendment; the comparison is a cross-session one.
-        .filter(
-            (lineage) =>
-                new Set(lineage.members.map((member) => member.sessionNumber)).size > 1,
-        )
-        // Documents spanning the most sessions first.
+        // One file is not a comparison; two editions of the same instrument
+        // are, even when they were adopted in the same session.
+        .filter((lineage) => lineage.members.length > 1)
         .sort((a, b) => b.members.length - a.members.length);
 }
 
@@ -158,11 +159,12 @@ export type ComparisonOptions = {
         title: string;
         kind: DocumentKind;
         sessionNumber: number | null;
+        datedAt: Date | null;
         lineageKey: string;
     };
     /** Whether this is the sort of document worth comparing at all. */
     comparable: boolean;
-    /** The same document as kept by other sessions. */
+    /** The other editions of this document, including dated copies from the same session. */
     otherSessions: LineageMember[];
     /** This document's own history, for amendments made within a session. */
     revisions: {
@@ -187,6 +189,9 @@ export async function getComparisonOptions(
             kind: true,
             sessionNumber: true,
             lineageKey: true,
+            datedAt: true,
+            driveCreatedTime: true,
+            driveModifiedTime: true,
             revisions: {
                 select: {
                     id: true,
@@ -203,28 +208,20 @@ export async function getComparisonOptions(
 
     const comparable = isComparableKind(document.kind) && document.lineageKey !== "";
 
-    // Only other sessions: a second copy of this session's bylaws sitting in
-    // the same folder is a Drive duplicate, and diffing it against its twin
-    // presents a copy-paste as an amendment.
+    // Every other edition, including dated snapshots from the same session.
+    // "Constitution April 2026" and "Constitution Fall 2025" are two files
+    // the SGA kept on purpose; collapsing them as Drive duplicates would
+    // hide the comparison the archive exists to make. Identical text is
+    // still shown — the page says so — rather than dropped.
     const siblings = comparable
         ? await prisma.document.findMany({
             where: {
                 lineageKey: document.lineageKey,
                 kind: { in: COMPARABLE_KINDS },
                 id: { not: documentId },
-                ...(document.sessionNumber !== null
-                    ? { sessionNumber: { not: document.sessionNumber } }
-                    : {}),
             },
-            select: {
-                id: true,
-                title: true,
-                displayTitle: true,
-                kind: true,
-                sessionNumber: true,
-                driveModifiedTime: true,
-            },
-            orderBy: { sessionNumber: "desc" },
+            select: lineageSelect,
+            orderBy: [{ sessionNumber: "desc" }, { datedAt: "desc" }],
         })
         : [];
 
@@ -234,6 +231,7 @@ export async function getComparisonOptions(
             title: document.displayTitle || document.title,
             kind: isDocumentKind(document.kind) ? document.kind : "unknown",
             sessionNumber: document.sessionNumber,
+            datedAt: listedDate(document),
             lineageKey: document.lineageKey,
         },
         comparable,
@@ -294,6 +292,98 @@ export async function compareDocuments(
         coarse: diff.coarse,
         ops: collapseUnchanged(diff),
     };
+}
+
+export type AmendmentLink = {
+    id: string;
+    title: string;
+    kind: DocumentKind;
+    sessionNumber: number | null;
+    datedAt: Date | null;
+};
+
+/**
+ * Bills that amended this instrument between two editions.
+ *
+ * The line-by-line diff is the net change; these are the acts that produced
+ * it, which a reader comparing April 2026 to Fall 2025 also wants to see.
+ */
+export async function getAmendmentsBetween(
+    beforeId: string,
+    afterId: string,
+): Promise<AmendmentLink[]> {
+    if (demoModeEnabled()) return [];
+
+    const select = {
+        id: true,
+        title: true,
+        displayTitle: true,
+        kind: true,
+        lineageKey: true,
+        sessionNumber: true,
+        datedAt: true,
+        driveCreatedTime: true,
+        driveModifiedTime: true,
+    } as const;
+
+    const [left, right] = await Promise.all([
+        prisma.document.findUnique({ where: { id: beforeId }, select }),
+        prisma.document.findUnique({ where: { id: afterId }, select }),
+    ]);
+    if (!left || !right) return [];
+
+    const amendmentKind =
+        left.kind === "guiding.constitution" || right.kind === "guiding.constitution"
+            ? "bill.constitution_amendment"
+            : left.kind === "guiding.bylaws" || right.kind === "guiding.bylaws"
+                ? "bill.bylaws_amendment"
+                : null;
+    if (!amendmentKind) return [];
+
+    const leftDate = listedDate(left)?.getTime() ?? 0;
+    const rightDate = listedDate(right)?.getTime() ?? 0;
+    const start = Math.min(leftDate, rightDate);
+    const end = Math.max(leftDate, rightDate);
+
+    const lineageKey = left.lineageKey || right.lineageKey;
+    const bills = await prisma.document.findMany({
+        where: {
+            kind: amendmentKind,
+            ...(lineageKey ? { lineageKey } : {}),
+        },
+        select: {
+            id: true,
+            title: true,
+            displayTitle: true,
+            kind: true,
+            sessionNumber: true,
+            datedAt: true,
+            driveCreatedTime: true,
+            driveModifiedTime: true,
+        },
+    });
+
+    return bills
+        .map((bill) => ({
+            id: bill.id,
+            title: bill.displayTitle || bill.title,
+            kind: isDocumentKind(bill.kind) ? bill.kind : "unknown",
+            sessionNumber: bill.sessionNumber,
+            datedAt: listedDate(bill),
+        }))
+        .filter((bill) => {
+            const time = bill.datedAt?.getTime();
+            if (time === undefined) {
+                const session = bill.sessionNumber;
+                if (session === null) return true;
+                const olderSession = Math.min(left.sessionNumber ?? session, right.sessionNumber ?? session);
+                const newerSession = Math.max(left.sessionNumber ?? session, right.sessionNumber ?? session);
+                return session >= olderSession && session <= newerSession;
+            }
+            if (start === 0 && end === 0) return true;
+            return time >= start && time <= end;
+        })
+        .sort((a, b) => (a.datedAt?.getTime() ?? 0) - (b.datedAt?.getTime() ?? 0));
 }
 
 /**

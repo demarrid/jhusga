@@ -1,9 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { compareDocuments, getComparisonOptions } from "@/api/archive";
+import {
+    compareDocuments,
+    getAmendmentsBetween,
+    getComparisonOptions,
+    type LineageMember,
+} from "@/api/archive";
 import DocumentDiff from "@/app/(components)/DocumentDiff";
 import { sessionOrdinal } from "@/config/session";
+import { formatMonthYear } from "@/lib/dates";
+import { documentKindLabel } from "@/lib/kinds";
+import { documentEdition } from "@/lib/titles";
 
 import styles from "../../document-detail.module.css";
 
@@ -25,11 +33,15 @@ export default async function ComparePage({
     const { document, comparable, otherSessions } = options;
     const other = otherSessions.find((member) => member.id === against);
 
-    // Read the diff chronologically: the older session is the "before" side,
+    // Read the diff chronologically: the older edition is the "before" side,
     // whichever document the reader happened to start from.
     const olderFirst =
         other &&
-        (other.sessionNumber ?? 0) <= (document.sessionNumber ?? 0)
+        versionTime(other) <= versionTime({
+            datedAt: document.datedAt,
+            sessionNumber: document.sessionNumber,
+            title: document.title,
+        })
             ? { before: other.id, after: document.id }
             : other && { before: document.id, after: other.id };
 
@@ -37,11 +49,15 @@ export default async function ComparePage({
         ? await compareDocuments(olderFirst.before, olderFirst.after)
         : null;
 
+    const amendments = olderFirst
+        ? await getAmendmentsBetween(olderFirst.before, olderFirst.after)
+        : [];
+
     return (
         <main className={styles.page}>
           <header className={styles.masthead}>
             <Link className={styles.backLink} href={`/documents/${document.id}`}>← Back to document</Link>
-            <h1>Compare across sessions</h1>
+            <h1>Compare editions</h1>
             <p className={styles.metadata}>
                 {document.title}
                 {document.sessionNumber !== null && (
@@ -56,27 +72,26 @@ export default async function ComparePage({
 
             {!comparable ? (
                 <p className={styles.compareIntro}>
-                    Only the guiding documents are compared across sessions. Each
-                    session adopts its own constitution and bylaws, so the difference
-                    between two sessions&apos; copies is the record of what was
-                    amended; this document has no counterpart in another session.
+                    Only the governing documents are compared across editions.
+                    Each constitution and set of bylaws the SGA adopted is kept
+                    as its own snapshot, so the difference between two copies is
+                    the record of what was amended; this document has no
+                    counterpart to compare against.
                 </p>
             ) : otherSessions.length === 0 ? (
                 <p className={styles.compareIntro}>
-                    No other session has a copy of this document, so there is nothing
-                    to compare against yet.
+                    No other edition of this document is in the archive yet, so
+                    there is nothing to compare against.
                 </p>
             ) : (
-                <nav className={styles.compareOptions} aria-label="Sessions to compare">
+                <nav className={styles.compareOptions} aria-label="Editions to compare">
                     {otherSessions.map((member) => (
                         <Link
                             key={member.id}
                             href={`/documents/${document.id}/compare?against=${member.id}`}
                             className={`${styles.compareOption} ${member.id === against ? styles.compareOptionActive : ""}`}
                         >
-                            {member.sessionNumber === null
-                                ? member.title
-                                : `vs. ${sessionOrdinal(member.sessionNumber)} session`}
+                            {`vs. ${versionLabel(member)}`}
                         </Link>
                     ))}
                 </nav>
@@ -104,7 +119,52 @@ export default async function ComparePage({
                     )}
                 </>
             )}
+
+            {amendments.length > 0 && (
+                <section className={styles.amendments}>
+                    <h2>Amendments between these editions</h2>
+                    <ul>
+                        {amendments.map((amendment) => (
+                            <li key={amendment.id}>
+                                <Link href={`/documents/${amendment.id}`}>
+                                    {amendment.title}
+                                </Link>
+                                <span>
+                                    {` — ${[
+                                        documentKindLabel(amendment.kind),
+                                        formatMonthYear(amendment.datedAt),
+                                        amendment.sessionNumber !== null &&
+                                            `${sessionOrdinal(amendment.sessionNumber)} session`,
+                                    ]
+                                        .filter(Boolean)
+                                        .join(" · ")}`}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            )}
           </div>
         </main>
     );
+}
+
+function versionLabel(member: Pick<LineageMember, "title" | "datedAt" | "sessionNumber">): string {
+    const edition = documentEdition(member.title);
+    const when = edition ?? formatMonthYear(member.datedAt);
+    const session =
+        member.sessionNumber !== null ? `${sessionOrdinal(member.sessionNumber)} session` : null;
+
+    if (when && session && !edition) return `${when} · ${session}`;
+    return when ?? session ?? member.title;
+}
+
+function versionTime(member: {
+    datedAt: Date | null;
+    sessionNumber: number | null;
+    title: string;
+}): number {
+    if (member.datedAt) return member.datedAt.getTime();
+    if (member.sessionNumber !== null) return member.sessionNumber * 1e12;
+    return 0;
 }

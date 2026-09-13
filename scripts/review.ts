@@ -54,13 +54,17 @@ async function main() {
         return;
     }
 
+    const { RATIFICATION_MARKER } = await import("../lib/integrity");
+
     console.log(`${held.length} change(s) held:\n`);
     for (const document of held) {
+        const ratification = document.heldReason.endsWith(RATIFICATION_MARKER);
         console.log(`${document.displayTitle || document.title}`);
         console.log(`  id      ${document.id}`);
         console.log(`  kind    ${document.kind}${document.anyoneCanEdit ? "  ANYONE CAN EDIT" : ""}`);
+        console.log(`  mode    ${ratification ? "ratification (needs a Senate meeting record)" : "screening (looks destructive)"}`);
         console.log(`  held    ${document.heldAt?.toISOString() ?? "?"}`);
-        console.log(`  why     ${document.heldReason}`);
+        console.log(`  why     ${document.heldReason.replace(RATIFICATION_MARKER, "")}`);
         console.log(`  drive   ${document.source}`);
         console.log("");
     }

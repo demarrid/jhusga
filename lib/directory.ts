@@ -1,4 +1,4 @@
-import { SESSION_NUMBER } from "@/config/session";
+import { SESSION_NUMBER, sessionEndDate, sessionStartDate } from "@/config/session";
 import { isAttendanceSheet, parseAttendanceSheet } from "@/lib/attendance";
 import { nameKey } from "@/lib/contributors";
 import { parseCsvLine } from "@/lib/csv";
@@ -1154,6 +1154,12 @@ export function buildSessionDirectory(documents: DirectoryDocument[]): {
 /**
  * Write emails and roster offices onto affiliates so other pages can use them.
  * The contact page itself re-reads the source documents.
+ *
+ * Each session is a term. A person who was RSO senator as a sophomore, left,
+ * and sat as a KSAS senator as a senior gets two rows with different start
+ * dates — and can hold Parliamentarian in both terms with a gap between.
+ * Past sessions are recorded with both ends of the term filled in, and never
+ * close a seat the current session still lists.
  */
 export async function recordDirectory(
     session: number = SESSION_NUMBER,
@@ -1171,12 +1177,16 @@ export async function recordDirectory(
     });
 
     const { members } = buildSessionDirectory(documents);
+    const isCurrent = session === SESSION_NUMBER;
+    const termStart = sessionStartDate(session);
+    const termEnd = isCurrent ? null : sessionEndDate(session);
 
     const affiliateIds = await resolveAffiliates(
         members.map((member) => ({
             name: member.name,
             evidence: member.positions.join(", ") || member.email || member.name,
         })),
+        { isCurrentSession: isCurrent, asOf: isCurrent ? undefined : termStart },
     );
 
     let emails = 0;
@@ -1186,7 +1196,7 @@ export async function recordDirectory(
     for (const [index, member] of members.entries()) {
         const affiliateId = affiliateIds[index]!;
 
-        if (member.email) {
+        if (member.email && isCurrent) {
             const clash = await prisma.hopkinsAffiliate.findFirst({
                 where: { email: member.email, NOT: { id: affiliateId } },
                 select: { id: true },
@@ -1208,22 +1218,70 @@ export async function recordDirectory(
                 select: { id: true },
             });
 
-            const held = await prisma.hopkinsRelationship.findFirst({
-                where: {
-                    hopkinsAffiliateId: affiliateId,
-                    hopkinsCategoryId: category.id,
-                    endedAt: null,
-                },
-                select: { id: true },
-            });
-
-            if (!held) {
-                await prisma.hopkinsRelationship.create({
-                    data: {
+            if (isCurrent) {
+                const open = await prisma.hopkinsRelationship.findFirst({
+                    where: {
                         hopkinsAffiliateId: affiliateId,
                         hopkinsCategoryId: category.id,
+                        endedAt: null,
                     },
+                    select: { id: true },
                 });
+
+                if (!open) {
+                    const sameTerm = await prisma.hopkinsRelationship.findFirst({
+                        where: {
+                            hopkinsAffiliateId: affiliateId,
+                            hopkinsCategoryId: category.id,
+                            startedAt: termStart,
+                        },
+                        select: { id: true },
+                    });
+
+                    if (sameTerm) {
+                        await prisma.hopkinsRelationship.update({
+                            where: { id: sameTerm.id },
+                            data: { endedAt: null },
+                        });
+                    } else {
+                        await prisma.hopkinsRelationship.create({
+                            data: {
+                                hopkinsAffiliateId: affiliateId,
+                                hopkinsCategoryId: category.id,
+                                startedAt: termStart,
+                            },
+                        });
+                    }
+                }
+            } else {
+                const existing = await prisma.hopkinsRelationship.findFirst({
+                    where: {
+                        hopkinsAffiliateId: affiliateId,
+                        hopkinsCategoryId: category.id,
+                        startedAt: termStart,
+                    },
+                    select: { id: true, endedAt: true },
+                });
+
+                if (!existing) {
+                    await prisma.hopkinsRelationship.create({
+                        data: {
+                            hopkinsAffiliateId: affiliateId,
+                            hopkinsCategoryId: category.id,
+                            startedAt: termStart,
+                            endedAt: termEnd,
+                        },
+                    });
+                } else if (existing.endedAt === null) {
+                    // Left over from a run that recorded this seat while the
+                    // session was current. The term is over now, so its end
+                    // is filled in: without this, "asOf" lookups treat the
+                    // seat as if it were still open years later.
+                    await prisma.hopkinsRelationship.update({
+                        where: { id: existing.id },
+                        data: { endedAt: termEnd },
+                    });
+                }
             }
 
             keep.push({ affiliateId, categoryId: category.id });
@@ -1231,21 +1289,65 @@ export async function recordDirectory(
         }
     }
 
-    const open = await prisma.hopkinsRelationship.findMany({
-        where: { endedAt: null, hopkinsCategory: { type: "position" } },
-        select: { id: true, hopkinsAffiliateId: true, hopkinsCategoryId: true },
-    });
-
-    const keepKeys = new Set(keep.map((row) => `${row.affiliateId}:${row.categoryId}`));
-    const stale = open.filter(
-        (row) => !keepKeys.has(`${row.hopkinsAffiliateId}:${row.hopkinsCategoryId}`),
-    );
-    if (stale.length > 0) {
-        await prisma.hopkinsRelationship.updateMany({
-            where: { id: { in: stale.map((row) => row.id) } },
-            data: { endedAt: new Date() },
+    if (isCurrent) {
+        const open = await prisma.hopkinsRelationship.findMany({
+            where: { endedAt: null, hopkinsCategory: { type: "position" } },
+            select: { id: true, hopkinsAffiliateId: true, hopkinsCategoryId: true },
         });
+
+        const keepKeys = new Set(keep.map((row) => `${row.affiliateId}:${row.categoryId}`));
+        const stale = open.filter(
+            (row) => !keepKeys.has(`${row.hopkinsAffiliateId}:${row.hopkinsCategoryId}`),
+        );
+        if (stale.length > 0) {
+            await prisma.hopkinsRelationship.updateMany({
+                where: { id: { in: stale.map((row) => row.id) } },
+                data: { endedAt: new Date() },
+            });
+        }
     }
 
     return { members: members.length, emails, offices };
+}
+
+/**
+ * Record every session's directory, oldest first, so a seat held years ago
+ * is still a term and the current slate is the one left open.
+ */
+export async function recordAllDirectories(): Promise<{
+    sessions: number;
+    members: number;
+    emails: number;
+    offices: number;
+}> {
+    const sessions = await prisma.document.findMany({
+        where: { sessionNumber: { not: null } },
+        distinct: ["sessionNumber"],
+        select: { sessionNumber: true },
+    });
+
+    const numbers = sessions
+        .map((row) => row.sessionNumber)
+        .filter((session): session is number => session !== null)
+        .sort((left, right) => left - right);
+
+    let members = 0;
+    let emails = 0;
+    let offices = 0;
+
+    for (const session of numbers) {
+        if (session === SESSION_NUMBER) continue;
+        const recorded = await recordDirectory(session);
+        members += recorded.members;
+        emails += recorded.emails;
+        offices += recorded.offices;
+    }
+
+    const current = await recordDirectory(SESSION_NUMBER);
+    return {
+        sessions: numbers.length || 1,
+        members: members + current.members,
+        emails: emails + current.emails,
+        offices: offices + current.offices,
+    };
 }

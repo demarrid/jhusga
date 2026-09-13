@@ -99,7 +99,7 @@ export async function getDocuments(filters: {
                                     hopkinsRelationships: {
                                         some: {
                                             hopkinsCategoryId: officeId,
-                                            endedAt: null,
+                                            ...(filters.session === "all" ? {} : { endedAt: null }),
                                         },
                                     },
                                 },
@@ -270,7 +270,7 @@ export async function getOfficesInUse(
 ): Promise<{ id: string; name: string; count: number }[]> {
     if (demoModeEnabled()) return demoOffices();
     const held = {
-        endedAt: null,
+        ...(session === "all" ? {} : { endedAt: null }),
         hopkinsAffiliate: {
             contributions: { some: { document: sessionWhere(session) } },
         },

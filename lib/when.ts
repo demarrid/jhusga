@@ -359,11 +359,24 @@ export function parseTimeframe(question: string, now: Date = new Date()): Timefr
     }
 
     const recent = RECENT.exec(question);
-    if (recent) {
+    if (recent && !isStandingLookup(question)) {
         return rolling(now, RECENT_DAYS, "day", recent[0]);
     }
 
     return null;
+}
+
+/**
+ * "Most recent constitution" is asking for the edition now in force, not for
+ * documents dated in the last thirty days. "Recent minutes" still is a period.
+ */
+const STANDING_LOOKUP = /\b(constitution|bylaws?)\b/i;
+
+const PERIOD_EVENT =
+    /\b(happened|happen|minutes|meetings?|bills?|news|passed|voted|introduced)\b/i;
+
+function isStandingLookup(question: string): boolean {
+    return STANDING_LOOKUP.test(question) && !PERIOD_EVENT.test(question);
 }
 
 /** A month named without a year is the most recent one that has happened. */

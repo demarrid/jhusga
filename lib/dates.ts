@@ -33,6 +33,17 @@ export function formatDateShort(date: Date | null | undefined): string | null {
     });
 }
 
+/** "April 2026". For an edition of a governing document. */
+export function formatMonthYear(date: Date | null | undefined): string | null {
+    if (!date) return null;
+
+    return date.toLocaleDateString("en-US", {
+        timeZone: ZONE,
+        year: "numeric",
+        month: "long",
+    });
+}
+
 /**
  * "09/08/26". For the date a standardised title carries, where the whole
  * point is that every title in a listing is the same width and sorts by eye.

@@ -1,6 +1,6 @@
 'use server'
 
-import { MAX_QUESTION_CHARS, type SearchScope } from "@/config/search";
+import { MAX_QUESTION_CHARS } from "@/config/search";
 import { answerQuestion, type QuestionAnswer } from "@/lib/search";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { demoSearchAnswer } from "@/lib/demo-data";
@@ -38,13 +38,13 @@ function withinRateLimit(): boolean {
 
 export async function askArchive(
     question: string,
-    scope: SearchScope = "current",
 ): Promise<QuestionAnswer> {
     const asked = question.trim().slice(0, MAX_QUESTION_CHARS);
 
     const empty: QuestionAnswer = {
         question: asked,
-        scope,
+        scope: "all",
+        focus: "current",
         status: "empty",
         content: "",
         citations: [],
@@ -56,7 +56,7 @@ export async function askArchive(
 
     if (asked.length < 3) return empty;
 
-    if (demoModeEnabled()) return demoSearchAnswer(asked, scope);
+    if (demoModeEnabled()) return demoSearchAnswer(asked);
 
     if (!withinRateLimit()) {
         return {
@@ -66,5 +66,5 @@ export async function askArchive(
         };
     }
 
-    return answerQuestion(asked, { scope });
+    return answerQuestion(asked);
 }

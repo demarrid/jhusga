@@ -15,7 +15,7 @@ import {
 } from "@/lib/names";
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
-import { isDirectorySheetName, recordDirectory } from "@/lib/directory";
+import { isDirectorySheetName, recordAllDirectories } from "@/lib/directory";
 import { documentDate, linkedSession } from "@/lib/identity";
 import {
     GOOGLE_DOC_MIME,
@@ -321,12 +321,14 @@ export async function recordDates(): Promise<number> {
 }
 
 /**
- * Re-derive every document's kind from its filename and folder.
+ * Re-derive every document's kind from its filename and folder, and the
+ * lineage key that follows from it.
  *
  * Improving classifyDocument should take effect without a Drive walk, the
  * same way improving the meeting keys does. Cheap-path syncs skip the
  * classify call, so without this a bill ingested before "Act" was a kind
- * would stay unknown forever.
+ * would stay unknown forever — and dated constitutions would keep the
+ * keys that could not join them.
  */
 export async function recordKinds(): Promise<number> {
     const documents = await prisma.document.findMany({
@@ -334,7 +336,7 @@ export async function recordKinds(): Promise<number> {
         // article has neither, so every pass would reclassify it as "unknown"
         // and undo the one thing that keeps it out of the SGA's own record.
         where: { kind: { notIn: SECONDARY_KINDS } },
-        select: { id: true, title: true, folderPath: true, kind: true },
+        select: { id: true, title: true, folderPath: true, kind: true, driveFileId: true, lineageKey: true, content: true },
     });
 
     let changed = 0;
@@ -343,12 +345,14 @@ export async function recordKinds(): Promise<number> {
         const kind = classifyDocument({
             name: document.title,
             folderPath: document.folderPath,
+            content: document.content,
         });
-        if (kind === document.kind) continue;
+        const lineageKey = lineageKeyFor(document.title, document.driveFileId, kind);
+        if (kind === document.kind && lineageKey === document.lineageKey) continue;
 
         await prisma.document.update({
             where: { id: document.id },
-            data: { kind },
+            data: { kind, lineageKey },
         });
         changed += 1;
     }
@@ -424,9 +428,8 @@ export async function rebuildReferences(): Promise<number> {
  * built from the people named across the whole archive: a handle that matches
  * nobody early in a sync may match once the roster has been read.
  *
- * Rows are written with source "drive", which `recordContributors` clears, so
- * a later re-parse never leaves a stale guess behind. Manual corrections use
- * source "manual" and are untouched by either.
+ * Rows are written with source "drive". Parser-authored rows are a different
+ * source, so a later re-parse of the text does not drop a Drive match.
  */
 export async function recordDriveAccounts(): Promise<number> {
     const people = await prisma.hopkinsAffiliate.findMany({
@@ -508,17 +511,25 @@ export async function recordContributors(
     documentId: string,
     content: string,
 ): Promise<number> {
-    const parsed = extractContributors(content);
-
-    await prisma.documentContributor.deleteMany({
-        where: { documentId, source: { in: ["parsed", "drive"] } },
-    });
-
     // A first name means whoever the *document* means, so the resolver is
     // told which meeting this is and gets the text to look full names up in.
     const document = await prisma.document.findUnique({
         where: { id: documentId },
-        select: { kind: true, folderPath: true, title: true, sessionNumber: true },
+        select: {
+            kind: true,
+            folderPath: true,
+            title: true,
+            sessionNumber: true,
+            datedAt: true,
+            driveOwnerName: true,
+            driveLastEditorName: true,
+        },
+    });
+
+    const parsed = extractContributors(content, document?.title);
+
+    await prisma.documentContributor.deleteMany({
+        where: { documentId, source: "parsed" },
     });
 
     const affiliateIds = await resolveAffiliates(
@@ -529,9 +540,18 @@ export async function recordContributors(
             office: person.office,
         })),
         {
-            text: content,
+            text: [
+                document?.title,
+                document?.driveOwnerName,
+                document?.driveLastEditorName,
+                content,
+            ]
+                .filter(Boolean)
+                .join("\n\n"),
             body: document ? bodyForDocument(document) : null,
             isCurrentSession: document?.sessionNumber === SESSION_NUMBER,
+            asOf: document?.datedAt ?? undefined,
+            sessionNumber: document?.sessionNumber ?? undefined,
         },
     );
 
@@ -651,14 +671,15 @@ async function exportIngestible(file: WalkedFile): Promise<string | null> {
  * would undo that. `recordSessions` keeps it current instead.
  */
 function driveMetadata(file: WalkedFile, discoveredVia: "walk" | "link") {
+    const kind = classifyDocument({ name: file.name, folderPath: file.folderPath });
     return {
         source: driveViewLink(file),
         mimeType: file.mimeType,
         title: file.name,
-        kind: classifyDocument({ name: file.name, folderPath: file.folderPath }),
+        kind,
         folderPath: file.folderPath,
         discoveredVia,
-        lineageKey: lineageKeyFor(file.name, file.id),
+        lineageKey: lineageKeyFor(file.name, file.id, kind),
         driveCreatedTime: file.createdTime ? new Date(file.createdTime) : null,
         driveModifiedTime: file.modifiedTime ? new Date(file.modifiedTime) : null,
         lastSyncedAt: new Date(),
@@ -1095,7 +1116,7 @@ export async function syncMasterFolder(
 
         summary.documentsLinkedIn = await followLinks(options, summary);
 
-        await recordDirectory(SESSION_NUMBER);
+        await recordAllDirectories();
 
         // Whole-corpus passes. Each of these needs every document to exist
         // before it can be right, so they run once at the end rather than per

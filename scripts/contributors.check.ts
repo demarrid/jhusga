@@ -698,5 +698,24 @@ check(
     nameKey("Kai Martin") !== nameKey("Kai Martins"),
 );
 
+console.log("\ntitle authors");
+check(
+    "a working doc names its author",
+    extractContributors("Background:\nDraft the proposal.", "Jackson Working Doc").some(
+        (person) => person.name === "Jackson" && person.role === "author" && person.onlyIfKnown,
+    ),
+);
+check(
+    "a committee working doc is not a person called CEC",
+    extractContributors("Background:\n9/15 talk to the CSC", "CEC Initiatives Working Doc")
+        .length === 0,
+);
+check(
+    "a full name in the title is kept",
+    extractContributors("", "Jackson Morris Working Doc").some(
+        (person) => person.name === "Jackson Morris" && person.role === "author",
+    ),
+);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

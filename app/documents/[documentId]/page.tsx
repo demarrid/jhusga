@@ -98,7 +98,7 @@ export default async function DocumentPage({
                 </a>
                 {document.lineageKey && isComparableKind(document.kind) && (
                     <Link href={`/documents/${document.id}/compare`}>
-                        Compare across sessions
+                        Compare editions
                     </Link>
                 )}
             </div>

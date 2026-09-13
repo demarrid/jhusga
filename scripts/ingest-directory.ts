@@ -52,7 +52,11 @@ async function main() {
                 kind: classifyDocument({ name: file.name, folderPath: file.folderPath }),
                 folderPath: file.folderPath,
                 sessionNumber: file.sessionNumber,
-                lineageKey: lineageKeyFor(file.name, file.id),
+                lineageKey: lineageKeyFor(
+                    file.name,
+                    file.id,
+                    classifyDocument({ name: file.name, folderPath: file.folderPath }),
+                ),
                 driveModifiedTime,
                 lastSyncedAt: new Date(),
                 driveOwnerName: file.owner?.displayName ?? null,

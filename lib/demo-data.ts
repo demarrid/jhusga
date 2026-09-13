@@ -3,7 +3,7 @@ import { FORUM_CATEGORIES } from "@/config/forum";
 import { SESSION_NUMBER } from "@/config/session";
 import { isComparableKind, isDocumentKind, type DocumentKind } from "@/lib/kinds";
 import { renderDocument } from "@/lib/render";
-import type { SearchScope } from "@/config/search";
+import { questionFocus } from "@/config/search";
 import { collapseUnchanged, diffLines } from "@/lib/diff";
 import { byNewestFirst, listedDate } from "@/lib/dates";
 import { parseTimeframe } from "@/lib/when";
@@ -163,6 +163,7 @@ function lineageMember(document: RawDocument) {
         title: document.title,
         kind: documentKind(document.kind),
         sessionNumber: document.sessionNumber,
+        datedAt: date(document.driveCreatedTime),
         driveModifiedTime: date(document.driveModifiedTime),
     };
 }
@@ -192,6 +193,7 @@ export function demoComparisonOptions(documentId: string) {
             title: document.title,
             kind: documentKind(document.kind),
             sessionNumber: document.sessionNumber,
+            datedAt: date(document.driveCreatedTime),
             lineageKey: document.lineageKey,
         },
         comparable,
@@ -346,12 +348,13 @@ export function demoHeldQueue() {
     }];
 }
 
-export function demoSearchAnswer(question: string, scope: SearchScope) {
-    const documents = demoDocuments({ session: scope === "all" ? "all" : SESSION_NUMBER });
+export function demoSearchAnswer(question: string) {
+    const documents = demoDocuments({ session: "all" });
 
     // A question naming a period is answered by date here too, so the demo
     // shows the behaviour rather than only the prose.
     const period = parseTimeframe(question);
+    const focus = questionFocus(question);
     const inPeriod = period
         ? documents.filter((document) => {
             const date = listedDate(document);
@@ -375,7 +378,8 @@ export function demoSearchAnswer(question: string, scope: SearchScope) {
     if (period) {
         return {
             question,
-            scope,
+            scope: "all" as const,
+            focus,
             status: "empty" as const,
             content: "",
             citations: [],
@@ -393,7 +397,8 @@ export function demoSearchAnswer(question: string, scope: SearchScope) {
 
     return {
         question,
-        scope,
+        scope: "all" as const,
+        focus,
         status: "fresh" as const,
         content: "The demo archive suggests starting with the constitution and recent Senate minutes [1].",
         citations: [{

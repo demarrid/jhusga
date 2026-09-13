@@ -26,6 +26,24 @@ export function sessionFromAcademicYearStart(year: number): number | null {
     return session;
 }
 
+/**
+ * Midnight UTC on 1 June of the session's first calendar year.
+ *
+ * Sessions turn over in June (see sessionForDate in lib/identity.ts), so a
+ * seat recorded for the 113th starts here and, unless still held, ends when
+ * the 114th begins. Used to give non-consecutive terms distinct start dates:
+ * the same person can be RSO senator as a sophomore, leave, and sit as a KSAS
+ * senator as a senior, and the two rows do not collide.
+ */
+export function sessionStartDate(session: number): Date {
+    return new Date(Date.UTC(academicYearStart(session), 5, 1, 12, 0, 0));
+}
+
+/** The instant the next session begins, i.e. when this one's seats lapse. */
+export function sessionEndDate(session: number): Date {
+    return sessionStartDate(session + 1);
+}
+
 /** "114th", "113th", "1st". Handles the 11/12/13 exceptions. */
 export function sessionOrdinal(session: number): string {
     const lastTwo = session % 100;

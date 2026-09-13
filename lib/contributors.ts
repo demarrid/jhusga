@@ -21,6 +21,7 @@ export const CONTRIBUTOR_ROLES = [
     "nominee",
     "reporting",
     "interlocutor",
+    "author",
     "present",
     "staff",
     "guest",
@@ -67,6 +68,8 @@ export function contributorRoleLabel(role: string): string {
         // weaker fact and leaves the stronger one unsaid.
         case "interlocutor":
             return "Interlocutor";
+        case "author":
+            return "Author";
         case "confirmed":
             return "Confirmed";
         case "nominee":
@@ -671,7 +674,7 @@ function indentOf(rawLine: string): number {
  *
  * Returns at most one entry per (name, role) pair.
  */
-export function extractContributors(markdown: string): ExtractedContributor[] {
+export function extractContributors(markdown: string, title?: string): ExtractedContributor[] {
     const found = new Map<string, ExtractedContributor>();
 
     // The report section being read, if any. Under one of these a bare name is
@@ -725,7 +728,37 @@ export function extractContributors(markdown: string): ExtractedContributor[] {
         harvestSpeaker(found, rawLine, line);
     }
 
+    if (title) harvestTitleAuthor(found, title);
+
     return [...found.values()];
+}
+
+/**
+ * A working doc often names its author only in the filename — "Jackson
+ * Working Doc" — and nowhere in a labelled list. Read conservatively: the
+ * name is marked onlyIfKnown, so "Jackson" becomes Jackson Morris when the
+ * archive already knows him and is left alone when it does not.
+ */
+const TITLE_NOISE =
+    /\b(working\s+docs?|notes?|drafts?|tracker|initiatives?|agenda|minutes|bylaws|constitution|bill|act|report|template)\b/gi;
+
+function harvestTitleAuthor(
+    found: Map<string, ExtractedContributor>,
+    title: string,
+): void {
+    const cleaned = title.replace(TITLE_NOISE, " ").replace(/\s+/g, " ").trim();
+    if (!cleaned) return;
+
+    const parsed = parsePersonToken(cleaned);
+    if (parsed) {
+        recordPerson(found, parsed.name, "author", title, parsed.office ?? undefined, true);
+        return;
+    }
+
+    const first = cleaned.split(/\s+/)[0] ?? "";
+    if (isPlausibleName(first)) {
+        recordPerson(found, first, "author", title, undefined, true);
+    }
 }
 
 /**

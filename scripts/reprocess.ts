@@ -30,10 +30,9 @@ async function main() {
         rebuildReferences,
         recordDriveAccounts,
     } = await import("../lib/sync");
-    const { recordDirectory } = await import("../lib/directory");
+    const { recordAllDirectories } = await import("../lib/directory");
     const { mergePeopleOneTypoApart, pruneStaleAliases, resetNameResolverCache } =
         await import("../lib/names");
-    const { SESSION_NUMBER } = await import("../config/session");
 
     const documents = await prisma.document.findMany({
         select: { id: true, title: true, description: true, content: true },
@@ -61,7 +60,7 @@ async function main() {
     // Who holds which seat is established first, because reading "Amy" in a
     // set of minutes depends on knowing that Amy Xu is the sitting Treasurer.
     resetNameResolverCache();
-    await recordDirectory(SESSION_NUMBER);
+    await recordAllDirectories();
 
     // Two passes: the first creates full-name people, the second can fold
     // "Sumi" / "Jazz" onto those regulars now that they exist.
@@ -103,7 +102,7 @@ async function main() {
 
     // People whose every mention has just been reparsed away would otherwise
     // linger in the person filter forever.
-    const directory = await recordDirectory(SESSION_NUMBER);
+    const directory = await recordAllDirectories();
 
     // Drive accounts are matched against the people the passes above just
     // established, so this has to come after them. Session has to be settled

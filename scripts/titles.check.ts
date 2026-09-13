@@ -253,6 +253,12 @@ check(
     standing("JHU SGA Bylaws 2026-2027"),
 );
 check(
+    "a dated constitution keeps the month it was adopted, not the session that holds the file",
+    standing("SGA Constitution April 2026") === "JHU SGA Constitution (April 2026)" &&
+        standing("Constitution Fall 2025", 113) === "JHU SGA Constitution (Fall 2025)",
+    [standing("SGA Constitution April 2026"), standing("Constitution Fall 2025", 113)],
+);
+check(
     "a prior session's copy lines up beside it",
     standing("JHU SGA Bylaws", 112) === "JHU SGA Bylaws (112th Session)",
     standing("JHU SGA Bylaws", 112),

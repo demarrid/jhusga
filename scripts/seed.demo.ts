@@ -265,7 +265,7 @@ async function main() {
                 kind: fixture.kind,
                 folderPath: fixture.folderPath,
                 sessionNumber: fixture.sessionNumber,
-                lineageKey: lineageKeyFor(fixture.title, fixture.driveFileId),
+                lineageKey: lineageKeyFor(fixture.title, fixture.driveFileId, fixture.kind),
                 driveModifiedTime: new Date(),
                 lastSyncedAt: new Date(),
             },

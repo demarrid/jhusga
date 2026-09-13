@@ -65,6 +65,26 @@ export function assessChange(input: {
         ? "This file is shared so that anyone with the link can edit it, and "
         : "";
 
+    // Guiding documents are amended in a Senate meeting, not by a quiet edit
+    // to the Drive file. Nothing in the file itself can prove that a meeting
+    // adopted the change, so any change -- addition, removal, or reword, at
+    // any size -- is held until somebody with a copy of the minutes clears
+    // it. The site keeps serving the last ratified text. See the "ratified"
+    // marker below: the review script checks for it and treats a hold in
+    // this mode as "confirm this was adopted" rather than "confirm this is
+    // not vandalism".
+    if (isGoverning(input.kind)) {
+        return {
+            ...verdict,
+            publish: false,
+            reason:
+                `${preamble}the constitution and bylaws are amended by a bill passed in a Senate meeting, ` +
+                `and this edit to the source file has not been ratified in one yet ` +
+                `(${diff.added} line${diff.added === 1 ? "" : "s"} added, ` +
+                `${diff.removed} removed) — ratified.`,
+        };
+    }
+
     if (diff.removed === 0 && !HOLD_PURE_ADDITIONS) {
         return verdict;
     }
@@ -98,14 +118,38 @@ function percent(fraction: number): string {
     return `${Math.round(fraction * 100)}%`;
 }
 
+const GOVERNING_PATTERN = /^guiding\./;
+
+/**
+ * Whether a change to this kind has to be adopted in a meeting rather than
+ * merely watched for destruction.
+ */
+export function isGoverning(kind: string): boolean {
+    return GOVERNING_PATTERN.test(kind);
+}
+
+/**
+ * A marker embedded in `heldReason` so the reader-facing notice and the
+ * review script can tell "held pending ratification" apart from "held for
+ * possible destruction". Not shown to the reader.
+ */
+export const RATIFICATION_MARKER = " — ratified.";
+
 /**
  * How to describe a held document to a reader, as opposed to a reviewer.
  *
- * Deliberately does not say "vandalism": the overwhelmingly likely explanation
- * is that somebody rewrote a document legitimately and nobody has confirmed it
- * yet, and accusing an officer of vandalism in public would be worse than the
- * risk this whole mechanism exists to manage.
+ * Two shapes. A governing document is held because the edit to the Drive file
+ * has no meeting behind it yet, and the notice says so: the reader is looking
+ * at the last ratified text on purpose, not because the archive suspects
+ * vandalism. Everything else is held because the change was large enough for
+ * someone to look, and the notice keeps the older phrasing — deliberately not
+ * saying "vandalism", since the overwhelmingly likely explanation is that
+ * somebody rewrote the document and nobody has confirmed it yet.
  */
 export function heldNotice(reason: string): string {
+    if (reason.endsWith(RATIFICATION_MARKER)) {
+        const trimmed = reason.slice(0, -RATIFICATION_MARKER.length);
+        return `${trimmed} You are reading the text last adopted by the Senate; the edit is stored and will appear here once a meeting record confirms it.`;
+    }
     return `The source file has changed substantially since this text was last checked — ${reason} You are reading the last checked version. The change is stored and awaiting review.`;
 }

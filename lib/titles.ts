@@ -355,6 +355,68 @@ const SESSION_ORDINAL = /\b\d{1,3}(?:st|nd|rd|th)\b/g;
 /** "2025-2026", "2025-26". */
 const ACADEMIC_YEAR = /\b(?:19|20)\d{2}\s*(?:[-–—]|to)\s*(?:(?:19|20)?\d{2})\b/g;
 
+const MONTH_NAMES = [
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+];
+
+const MONTH_ABBREVIATIONS = [
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sept", "sep", "oct", "nov", "dec",
+];
+
+const SEASONS = ["spring", "summer", "fall", "autumn", "winter"];
+
+const EDITION_WORD = new RegExp(
+    `\\b(?:${[...MONTH_NAMES, ...MONTH_ABBREVIATIONS, ...SEASONS].join("|")})\\.?\\b`,
+    "g",
+);
+
+function titleCaseWord(word: string): string {
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
+/**
+ * The edition a governing document's filename names, if it names one.
+ *
+ * "Constitution April 2026" and "Constitution Fall 2025" are two snapshots of
+ * the same instrument. The edition stays in the display title so a later
+ * rewrite of the live constitution file cannot be mistaken for the April
+ * 2026 copy sitting next to it.
+ */
+export function documentEdition(title: string): string | null {
+    const monthYear = new RegExp(
+        `\\b(${MONTH_NAMES.join("|")})\\s+((?:19|20)\\d{2})\\b`,
+        "i",
+    ).exec(title);
+    if (monthYear) return `${titleCaseWord(monthYear[1]!)} ${monthYear[2]}`;
+
+    const abbreviated = new RegExp(
+        `\\b(${MONTH_ABBREVIATIONS.join("|")})\\.?\\s+((?:19|20)\\d{2})\\b`,
+        "i",
+    ).exec(title);
+    if (abbreviated) {
+        const token = abbreviated[1]!.toLowerCase().replace(/^sept$/, "sep");
+        const index = [
+            "jan", "feb", "mar", "apr", "may", "jun",
+            "jul", "aug", "sep", "oct", "nov", "dec",
+        ].indexOf(token);
+        const month = index === -1 ? abbreviated[1]! : MONTH_NAMES[index]!;
+        return `${titleCaseWord(month)} ${abbreviated[2]}`;
+    }
+
+    const season = new RegExp(
+        `\\b(${SEASONS.join("|")})\\s+((?:19|20)\\d{2})\\b`,
+        "i",
+    ).exec(title);
+    if (season) {
+        const name = season[1]!.toLowerCase() === "autumn" ? "Fall" : titleCaseWord(season[1]!);
+        return `${name} ${season[2]}`;
+    }
+
+    return null;
+}
+
 /**
  * The filename reduced to what the document *is*.
  *
@@ -371,6 +433,7 @@ function standingKey(title: string): string {
             .replace(SESSION_ORDINAL, " ")
             .replace(ACADEMIC_YEAR, " ")
             .replace(/\b(?:19|20)\d{2}\b/g, " ")
+            .replace(EDITION_WORD, " ")
             // After the years, never before: the "114" of "114th SGA Roster"
             // leads the string too, and is a session rather than a sort digit.
             .replace(/^\s*\d+\s*(?=[a-z])/, "")
@@ -385,6 +448,13 @@ function standingTitle(input: TitleInput): string | null {
 
     const name = STANDING_DOCUMENTS.get(standingKey(input.title));
     if (!name) return null;
+
+    // A dated snapshot keeps the date it was adopted, not the session that
+    // happens to hold the file. Renaming "Constitution April 2026" to
+    // "JHU SGA Constitution (114th Session)" would let a later rewrite of
+    // the live constitution look like the same document.
+    const edition = documentEdition(input.title);
+    if (edition) return `${name} (${edition})`;
 
     return `${name} (${sessionOrdinal(input.sessionNumber)} Session)`;
 }

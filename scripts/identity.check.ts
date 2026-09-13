@@ -307,6 +307,42 @@ check(
     "a Rules Bill is senate rules, not a generic bill",
     classifyDocument({ name: rulesTitle, folderPath: "" }) === "bill.senate_rules",
 );
+check(
+    "a writ of certiorari is a judicial filing",
+    classifyDocument({
+        name: "Writ of Certiorari — Student Body President",
+        folderPath: "Judiciary",
+    }) === "judicial.writ_of_certiorari",
+);
+check(
+    "a judiciary working doc that grants certiorari is a writ",
+    classifyDocument({
+        name: "Jackson Working Doc",
+        folderPath: "Judiciary",
+        content: "The Judiciary has granted a Writ of Certiorari filed by Petitioner Mr. Jackson Morris.",
+    }) === "judicial.writ_of_certiorari",
+);
+check(
+    "an advisory opinion is not minutes",
+    classifyDocument({
+        name: "Advisory Opinion 2026-01",
+        folderPath: "Judiciary/Opinions",
+    }) === "judicial.advisory_opinion",
+);
+check(
+    "judicial minutes stay minutes",
+    classifyDocument({
+        name: "Judiciary Meeting Minutes 09.08.2026",
+        folderPath: "Judiciary",
+    }) === "minutes.judicial",
+);
+check(
+    "bylaws in a constitution folder stay bylaws",
+    classifyDocument({
+        name: "JHU SGA Bylaws April 2024",
+        folderPath: "Guiding Documents/Constitution",
+    }) === "guiding.bylaws",
+);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

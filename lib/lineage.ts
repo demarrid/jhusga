@@ -3,13 +3,18 @@
  *
  * The 113th and 114th both have a constitution, and comparing them is the
  * point of keeping the archive. Their Drive file IDs differ and their titles
- * usually carry a session ordinal or academic year, so the join key has to be
- * the title with those markers stripped.
+ * usually carry a session ordinal, academic year, or the month they were
+ * adopted, so the join key has to be the title with those markers stripped.
  *
- * Dates are deliberately *kept*: "Senate Minutes 2025-10-14" and
- * "Senate Minutes 2026-10-14" are different meetings, not two versions of one
- * document, and collapsing them would be wrong.
+ * Dates are deliberately *kept* for ordinary files: "Senate Minutes 2025-10-14"
+ * and "Senate Minutes 2026-10-14" are different meetings, not two versions of
+ * one document, and collapsing them would be wrong. Constitutions and bylaws
+ * are the exception -- "Constitution April 2026" and "Constitution Fall 2025"
+ * *are* two versions of one document, and the date is which edition, not a
+ * different thing.
  */
+
+import { isComparableKind } from "@/lib/kinds";
 
 /** Full dates, which identify a one-off document rather than a recurring one. */
 const DATE_PATTERN = /\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b/g;
@@ -33,8 +38,14 @@ const NOISE_PATTERN =
  * `fallback` (normally the Drive file ID) is used when nothing meaningful
  * survives normalisation, so untitled documents each get their own lineage
  * rather than all collapsing into one.
+ *
+ * `kind` is what lets two dated constitutions join: without it, "April" and
+ * "Fall" would keep them apart, and there would be nothing to compare.
  */
-export function lineageKeyFor(title: string, fallback: string): string {
+export function lineageKeyFor(title: string, fallback: string, kind?: string): string {
+    const governing = kind ? governingLineageKey(kind, title) : null;
+    if (governing) return governing;
+
     const lowered = title.toLowerCase();
 
     // Pull dates out before stripping year ranges, so "2025-10-14" is not
@@ -58,4 +69,38 @@ export function lineageKeyFor(title: string, fallback: string): string {
         .join(" ");
 
     return withDates || `untitled:${fallback}`;
+}
+
+/**
+ * The one key every edition of a governing document shares.
+ *
+ * CSE's constitution is a different instrument from the SGA's, so it keeps
+ * its own lineage. Amendment bills join the thing they amend so a comparison
+ * can list the changes between two editions; they are not themselves compared
+ * as if they were a full constitution.
+ */
+export function governingLineageKey(kind: string, title: string): string | null {
+    const lowered = title.toLowerCase();
+
+    if (kind === "guiding.constitution" || kind === "bill.constitution_amendment") {
+        if (
+            /\bcse\b/.test(lowered) ||
+            /committee on student elections/.test(lowered) ||
+            /elections committee/.test(lowered)
+        ) {
+            return "cse constitution";
+        }
+        if (/\bycc\b/.test(lowered)) return "ycc constitution";
+        return "sga constitution";
+    }
+
+    if (kind === "guiding.bylaws" || kind === "bill.bylaws_amendment") {
+        return "sga bylaws";
+    }
+
+    if (kind && isComparableKind(kind)) {
+        return lineageKeyFor(title, "guiding");
+    }
+
+    return null;
 }

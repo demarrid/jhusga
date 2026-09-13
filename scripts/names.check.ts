@@ -221,6 +221,14 @@ check(
         "Chair of Programming",
     ) === null,
 );
+check(
+    "an archived document is read against who sat then",
+    narrowByDocument(
+        [GRACE_GUAN, GRACE_WANG],
+        { text: SUM_EXEC, isCurrentSession: false, asOf: new Date("2025-10-01") },
+        "Chair of Programming",
+    )?.person.id === GRACE_GUAN.id,
+);
 
 console.log("\nrestraint");
 

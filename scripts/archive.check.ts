@@ -6,7 +6,7 @@
 import { archiveSessionFor } from "../lib/drive";
 import { collapseUnchanged, diffLines } from "../lib/diff";
 import { lineageKeyFor } from "../lib/lineage";
-import { academicYearStart, sessionFromAcademicYearStart } from "../config/session";
+import { academicYearStart, sessionEndDate, sessionFromAcademicYearStart, sessionStartDate } from "../config/session";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -40,6 +40,12 @@ check(
     "the 114th academic year starts in 2026",
     academicYearStart(114) === 2026 && sessionFromAcademicYearStart(2026) === 114,
 );
+check(
+    "a session starts on 1 June of its first calendar year",
+    sessionStartDate(114).toISOString() === "2026-06-01T12:00:00.000Z" &&
+        sessionEndDate(113).toISOString() === "2026-06-01T12:00:00.000Z",
+    [sessionStartDate(114).toISOString(), sessionEndDate(113).toISOString()],
+);
 
 console.log("\nlineageKeyFor");
 
@@ -50,6 +56,37 @@ check("this session's and last session's constitution share a lineage", current 
     current,
     prior,
 });
+check(
+    "dated editions of the SGA constitution share a lineage",
+    lineageKeyFor("SGA Constitution April 2026", "a", "guiding.constitution") ===
+        lineageKeyFor("SGA Constitution Fall 2025", "b", "guiding.constitution") &&
+        lineageKeyFor("SGA Constitution Fall 2025", "b", "guiding.constitution") ===
+            lineageKeyFor("SGA Constitution Spring 2024", "c", "guiding.constitution"),
+    {
+        april: lineageKeyFor("SGA Constitution April 2026", "a", "guiding.constitution"),
+        fall: lineageKeyFor("SGA Constitution Fall 2025", "b", "guiding.constitution"),
+        spring: lineageKeyFor("SGA Constitution Spring 2024", "c", "guiding.constitution"),
+    },
+);
+check(
+    "the CSE constitution is not the SGA's",
+    lineageKeyFor("CSE Constitution Feb. 2024", "a", "guiding.constitution") !==
+        lineageKeyFor("SGA Constitution April 2026", "b", "guiding.constitution"),
+    {
+        cse: lineageKeyFor("CSE Constitution Feb. 2024", "a", "guiding.constitution"),
+        sga: lineageKeyFor("SGA Constitution April 2026", "b", "guiding.constitution"),
+    },
+);
+check(
+    "the YCC constitution is not the SGA's",
+    lineageKeyFor("YCC Constitution 2023-24", "a", "guiding.constitution") !==
+        lineageKeyFor("SGA Constitution April 2026", "b", "guiding.constitution"),
+);
+check(
+    "a constitution amendment joins the constitution's lineage",
+    lineageKeyFor("Constitutional Amendment", "a", "bill.constitution_amendment") ===
+        lineageKeyFor("SGA Constitution April 2026", "b", "guiding.constitution"),
+);
 check(
     "a budget with an academic year collapses across sessions",
     lineageKeyFor("SGA Budget 2025-2026", "a") ===

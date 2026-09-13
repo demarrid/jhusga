@@ -19,6 +19,14 @@ export const DOCUMENT_KINDS = [
     "guiding.constitution",
     "guiding.bylaws",
     "guiding.other",
+    "judicial.writ_of_certiorari",
+    "judicial.writ_of_mandamus",
+    "judicial.writ",
+    "judicial.advisory_opinion",
+    "judicial.opinion",
+    "judicial.order",
+    "judicial.complaint",
+    "judicial.other",
     "attendance",
     "directory",
     "tracker",
@@ -40,6 +48,9 @@ export function isDocumentKind(value: string): value is DocumentKind {
  */
 const KIND_LABELS: Partial<Record<DocumentKind, string>> = {
     "newsletter.article": "News-Letter article",
+    "judicial.writ_of_certiorari": "Judiciary / Writ of certiorari",
+    "judicial.writ_of_mandamus": "Judiciary / Writ of mandamus",
+    "judicial.advisory_opinion": "Judiciary / Advisory opinion",
 };
 
 /** "bill.bylaws_amendment" -> "Bill / Bylaws amendment". */
@@ -89,6 +100,12 @@ export const AUTHORITATIVE_KINDS: DocumentKind[] = [
     "bill.constitution_amendment",
     "bill.bylaws_amendment",
     "bill.senate_rules",
+    "judicial.writ_of_certiorari",
+    "judicial.writ_of_mandamus",
+    "judicial.writ",
+    "judicial.advisory_opinion",
+    "judicial.opinion",
+    "judicial.order",
 ];
 
 /**
@@ -119,7 +136,7 @@ export function isComparableKind(kind: string): boolean {
  */
 function minutesKind(text: string): DocumentKind | null {
     if (/exec/.test(text)) return "minutes.executive";
-    if (/judicial/.test(text)) return "minutes.judicial";
+    if (/judicial|judiciary/.test(text)) return "minutes.judicial";
     if (/committee|commitee/.test(text)) return "minutes.committee";
     if (/senate|general sga|general body|\bgbm\b/.test(text)) return "minutes.senate";
     return null;
@@ -135,6 +152,7 @@ function minutesKind(text: string): DocumentKind | null {
 export function classifyDocument(input: {
     name: string;
     folderPath: string;
+    content?: string;
 }): DocumentKind {
     const name = input.name.toLowerCase();
     const path = input.folderPath.toLowerCase();
@@ -144,13 +162,21 @@ export function classifyDocument(input: {
     if (/roster|email list|contact list|directory/.test(haystack)) return "directory";
 
     // Constitution and bylaws, whether the adopted text or an amendment to it.
+    // The filename wins over the folder: a bylaws file sitting in a folder
+    // that also holds the constitution is still the bylaws.
     const amends = /amendment|amend\b|resolution/.test(name);
-    if (/constitution/.test(haystack)) {
+    if (/bylaw/.test(name) && !/constitution/.test(name)) {
+        return amends ? "bill.bylaws_amendment" : "guiding.bylaws";
+    }
+    if (/constitution/.test(name) || (/constitution/.test(path) && !/bylaw/.test(name))) {
         return amends ? "bill.constitution_amendment" : "guiding.constitution";
     }
     if (/bylaw/.test(haystack)) {
         return amends ? "bill.bylaws_amendment" : "guiding.bylaws";
     }
+    const judicial = classifyJudicial(name, haystack, input.content);
+    if (judicial) return judicial;
+
     if (/senate rules|standing rules|\brules bill\b/.test(haystack)) return "bill.senate_rules";
     if (/funding|budget|appropriation/.test(haystack)) return "bill.funding";
     // A bill or act that does not say which kind of bill it is. "The
@@ -172,4 +198,37 @@ export function classifyDocument(input: {
     if (/guiding document/.test(path)) return "guiding.other";
 
     return "unknown";
+}
+
+/**
+ * Filings of the Judiciary, which the Senate's taxonomy never covered.
+ *
+ * Distinguished from judicial *minutes*, which fall through and are classified
+ * below: a writ of certiorari is an instrument, not a record of who was in the
+ * room.
+ */
+function classifyJudicial(name: string, haystack: string, content?: string): DocumentKind | null {
+    if (/minutes|agenda/.test(name)) return null;
+
+    const judicialFolder = /judicial|judiciary/.test(haystack);
+    const body = (content ?? "").slice(0, 4_000).toLowerCase();
+    const namedOrFiled = (pattern: RegExp) =>
+        pattern.test(name) || (judicialFolder && pattern.test(body));
+
+    if (namedOrFiled(/writ of certiorari|\bcertiorari\b/)) {
+        return "judicial.writ_of_certiorari";
+    }
+    if (namedOrFiled(/writ of mandamus|\bmandamus\b/)) {
+        return "judicial.writ_of_mandamus";
+    }
+    if (namedOrFiled(/advisory opinion/)) return "judicial.advisory_opinion";
+
+    if (!judicialFolder && !/\bwrit\b/.test(name)) return null;
+
+    if (/opinion|decision/.test(name)) return "judicial.opinion";
+    if (/\border\b/.test(name)) return "judicial.order";
+    if (/complaint|petition/.test(name)) return "judicial.complaint";
+    if (/\bwrit\b/.test(name)) return "judicial.writ";
+    if (judicialFolder) return "judicial.other";
+    return null;
 }
