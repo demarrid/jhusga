@@ -1,13 +1,25 @@
 import { createHash } from "node:crypto";
 
-import { MAX_QUESTION_CHARS, questionFocus, type QuestionFocus, type SearchScope } from "@/config/search";
+import {
+    MAX_QUESTION_CHARS,
+    appendCitationMarkers,
+    askedMembershipGroup,
+    formatMembershipRoster,
+    isMembershipQuestion,
+    questionFocus,
+    type MembershipBody,
+    type QuestionFocus,
+    type SearchScope,
+} from "@/config/search";
 import { SESSION_NUMBER } from "@/config/sga";
 import { generateJson } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
+import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
 import { formatDate, listedDate } from "@/lib/dates";
 import { COMPARABLE_KINDS } from "@/lib/kinds";
 import { governingLineageKey } from "@/lib/lineage";
 import { splitIntoPassages } from "@/lib/passages";
+import { buildSessionDirectory } from "@/lib/directory";
 import { prisma } from "@/lib/prisma";
 import { questionTerms, tsQueryFor } from "@/lib/terms";
 import { parseTimeframe, withoutTimeframe, type Timeframe } from "@/lib/when";
@@ -32,11 +44,14 @@ import { Prisma } from "@prisma/client";
  * the documents behind them, so a page view is not a model call, and an
  * amendment invalidates the answer rather than leaving it quietly wrong.
  *
- * One class of question does not work this way at all. "What happened last
- * week" names a period rather than a subject, and matching its words finds
- * nothing worth having. Those questions are answered by date instead: the
- * period is parsed out (lib/when.ts), every document the archive dates inside
- * it is listed newest first, and search only orders what the dates selected.
+ * Two classes of question do not work this way. "Who is currently in the
+ * Judiciary?" is a roster lookup from the same directory as the contact page,
+ * because ranking the constitution's description of the office names nobody.
+ * "What happened last week" names a period rather than a subject, and matching
+ * its words finds nothing worth having. Those questions are answered by date
+ * instead: the period is parsed out (lib/when.ts), every document the archive
+ * dates inside it is listed newest first, and search only orders what the
+ * dates selected.
  */
 
 /** Passages fetched from Postgres before rescoring. */
@@ -71,7 +86,7 @@ const MAX_CONTEXT_CHARS = 60_000;
  * Bumped when the prompt or the retrieval rules change, so cached answers are
  * regenerated instead of served from instructions that no longer apply.
  */
-const PROMPT_VERSION = "archive-qa-v3";
+const PROMPT_VERSION = "archive-qa-v5";
 
 export type AnswerStatus = "fresh" | "stale" | "empty" | "failed" | "unavailable";
 
@@ -235,7 +250,12 @@ type DatedDocument = {
  * are not excluded, because they are the only place a question about when
  * something happened can be answered.
  */
-function kindWeight(kind: string): number {
+function kindWeight(kind: string, question: string): number {
+    if (isMembershipQuestion(question)) {
+        if (kind === "directory") return 2.6;
+        if (kind === "attendance") return 1.8;
+        if (kind.startsWith("guiding.")) return 0.55;
+    }
     if (kind === "guiding.constitution") return 1.6;
     if (kind === "guiding.bylaws") return 1.45;
     if (kind.startsWith("guiding.")) return 1.3;
@@ -250,6 +270,11 @@ function kindWeight(kind: string): number {
 function titleBoost(title: string, question: string, kind: string): number {
     const asked = question.toLowerCase();
     const named = title.toLowerCase();
+
+    if (isMembershipQuestion(question)) {
+        if (/guideline/.test(named)) return 0.25;
+        if (/sheet|roster|email list|contact list|directory/.test(named)) return 1.6;
+    }
 
     if (/constitution/.test(asked) && kind === "guiding.constitution") {
         if (/\bcse\b|elections/.test(named) && !/\bcse\b|elections/.test(asked)) {
@@ -269,6 +294,77 @@ function recencyBoost(date: Date | null): number {
     if (years < 1.5) return 1.12;
     if (years < 3) return 1.05;
     return 1;
+}
+
+/**
+ * Extra words a "who sits there" question needs to find the roster.
+ *
+ * "Who is currently in the Judiciary branch?" searches "currently judiciary
+ * branch", none of which the attendance sheet uses for a justice. Adding the
+ * name of the seat is what puts the sheet in front of the constitution.
+ */
+function membershipTerms(question: string): string[] {
+    if (!isMembershipQuestion(question)) return [];
+    const asked = question.toLowerCase();
+    const extra: string[] = [];
+    if (/judiciar/.test(asked)) extra.push("justice", "justices", "judiciary", "chief");
+    if (/\bsenate\b|\bsenators?\b/.test(asked)) extra.push("senator", "senators");
+    if (/executive|cabinet|e-?board/.test(asked)) extra.push("president", "cabinet", "executive");
+    return extra;
+}
+
+/**
+ * The current session's contact list and attendance sheet, so a question
+ * about who holds a seat is not answered from the constitution's description
+ * of the office.
+ */
+async function rosterPassages(
+    scope: SearchScope,
+    terms: string[],
+): Promise<RetrievedPassage[]> {
+    const rows = await prisma.document.findMany({
+        where: {
+            NOT: { content: "" },
+            ...(scope === "all" ? {} : { sessionNumber: SESSION_NUMBER }),
+            OR: [
+                { kind: "directory" },
+                {
+                    kind: "attendance",
+                    OR: [
+                        { title: { contains: "sheet", mode: "insensitive" } },
+                        { displayTitle: { contains: "sheet", mode: "insensitive" } },
+                    ],
+                },
+            ],
+        },
+        select: { id: true },
+        take: 8,
+        orderBy: { datedAt: { sort: "desc", nulls: "last" } },
+    });
+
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((row) => row.id);
+    const ranked = terms.length > 0 ? await rankedPassages(terms, scope, ids) : [];
+    const passages: RetrievedPassage[] = ranked.slice(0, 8).map((row) => {
+        const passage = toPassage(row);
+        passage.score = 10 + Number(row.rank);
+        return passage;
+    });
+
+    if (passages.length >= 4) return passages;
+
+    const openings = await openingPassages(ids, 4);
+    const seen = new Set(passages.map((passage) => passage.id));
+    for (const group of openings.values()) {
+        for (const row of group) {
+            if (seen.has(row.id)) continue;
+            const passage = toPassage(row);
+            passage.score = 10;
+            passages.push(passage);
+        }
+    }
+    return passages;
 }
 
 /**
@@ -341,7 +437,7 @@ async function rankedPassages(
     `;
 }
 
-function toPassage(row: CandidateRow, date?: Date | null): RetrievedPassage {
+function toPassage(row: CandidateRow, date?: Date | null, question = ""): RetrievedPassage {
     return {
         id: row.id,
         documentId: row.documentId,
@@ -351,7 +447,7 @@ function toPassage(row: CandidateRow, date?: Date | null): RetrievedPassage {
         contentHash: row.contentHash,
         heading: row.heading,
         content: row.content,
-        score: Number(row.rank) * kindWeight(row.kind),
+        score: Number(row.rank) * kindWeight(row.kind, question),
         date: date ?? listedDate(row),
     };
 }
@@ -515,15 +611,22 @@ export async function retrieve(
     const focus = options.focus ?? questionFocus(question);
     const limit = options.limit ?? CONTEXT_PASSAGES;
     const timeframe = parseTimeframe(question, options.now ?? new Date());
-    const terms = questionTerms(withoutTimeframe(question, timeframe));
+    const terms = [
+        ...questionTerms(withoutTimeframe(question, timeframe)),
+        ...membershipTerms(question),
+    ];
 
     if (!timeframe) {
         let passages = (await rankedPassages(terms, scope)).map((row) => {
-            const passage = toPassage(row);
+            const passage = toPassage(row, undefined, question);
             passage.score *= titleBoost(passage.documentTitle, question, passage.kind);
             passage.score *= recencyBoost(passage.date);
             return passage;
         });
+
+        if (isMembershipQuestion(question) && focus === "current") {
+            passages = [...(await rosterPassages(scope, terms)), ...passages];
+        }
 
         if (focus === "current") {
             const active = await newestGuidingIds();
@@ -538,7 +641,10 @@ export async function retrieve(
             if (filtered.length > 0) passages = filtered;
         }
 
-        passages = pickPassages(passages, PASSAGES_PER_DOCUMENT, limit);
+        const perDocument = isMembershipQuestion(question)
+            ? 5
+            : PASSAGES_PER_DOCUMENT;
+        passages = pickPassages(passages, perDocument, limit);
 
         return { passages, matches: await matchesFrom(passages), timeframe: null, focus };
     }
@@ -596,7 +702,7 @@ export async function retrieve(
     for (const document of listed) {
         const rows = bestByDocument.get(document.id) ?? openings.get(document.id) ?? [];
         for (const row of rows.slice(0, DATED_PASSAGES_PER_DOCUMENT)) {
-            passages.push(toPassage(row, dateById.get(document.id)));
+            passages.push(toPassage(row, dateById.get(document.id), question));
         }
         if (passages.length >= limit) break;
     }
@@ -736,6 +842,10 @@ Periods:
 - Answer such a question by saying what each document did, most recent first, and date each one. Group nothing under a heading; keep it to one bullet per document or per decision.
 - Report what is there. Never guess at why a period holds little; the prompt says outright when it holds nothing.
 
+Membership:
+- A question asking who currently holds a seat, or who is in a body, is answered from the contact list, roster, and attendance sheet. Name the people those documents name.
+- The constitution and bylaws say how a body is composed and how its members are appointed. They do not name the people currently sitting. Do not answer a "who is currently" question from those rules alone.
+
 Grounding:
 - Use only the supplied passages. Never use outside knowledge, and never infer a number that is not stated.
 - Each passage is labelled with the session it belongs to, and with the date the archive files it under when it has one.
@@ -846,6 +956,276 @@ function promptFingerprint(passages: RetrievedPassage[]): string {
 }
 
 /**
+ * A quote that can be placed uniquely, taken from around a name in a roster
+ * document. Prefer the name itself when it occurs once; a CSV row is a worse
+ * thing to put on a chip.
+ */
+function uniqueQuoteAround(content: string, name: string): string | null {
+    const needle = name.trim();
+    if (!needle) return null;
+    if (findQuote(content, needle)) return needle;
+
+    const idx = content.toLowerCase().indexOf(needle.toLowerCase());
+    if (idx < 0) return null;
+
+    const lineStart = content.lastIndexOf("\n", idx) + 1;
+    const lineBreak = content.indexOf("\n", idx);
+    const lineEnd = lineBreak === -1 ? content.length : lineBreak;
+    const line = content.slice(lineStart, lineEnd).replace(/\r/g, "").trim();
+
+    if (line.length > 0 && line.length <= 280 && findQuote(content, line)) {
+        return line;
+    }
+
+    const fromName = content
+        .slice(idx, Math.min(lineEnd, idx + 160))
+        .replace(/\r/g, "")
+        .trim();
+    if (fromName && findQuote(content, fromName)) return fromName;
+
+    for (let radius = 24; radius <= 220; radius += 16) {
+        const quote = content
+            .slice(
+                Math.max(lineStart, idx - radius),
+                Math.min(lineEnd, idx + needle.length + radius),
+            )
+            .replace(/\r/g, "")
+            .trim();
+        if (findQuote(content, quote)) return quote;
+    }
+
+    return null;
+}
+
+function membershipFingerprint(
+    group: MembershipBody,
+    sources: { id: string; contentHash: string }[],
+): string {
+    const hash = createHash("sha256").update(PROMPT_VERSION).update("\u0000membership-v3");
+    hash.update(`\u0000${group}`);
+    for (const source of [...sources].sort((a, b) => a.id.localeCompare(b.id))) {
+        hash.update(`\u0000${source.id}:${source.contentHash}`);
+    }
+    return hash.digest("hex");
+}
+
+function isRosterSheet(document: {
+    kind: string;
+    title: string;
+    displayTitle?: string | null;
+}): boolean {
+    if (document.kind === "directory") return true;
+    if (document.kind !== "attendance") return false;
+    return /sheet/i.test(`${document.title} ${document.displayTitle ?? ""}`);
+}
+
+/**
+ * Who currently sits in a body, from the same directory the contact page uses.
+ *
+ * A membership question is a roster lookup. Ranking constitution passages
+ * about how the body is composed cannot name the people, and a model quoting
+ * a CSV row is a worse version of the parser that already sits on /contact.
+ */
+function buildMembershipAnswer(
+    group: MembershipBody,
+    documents: {
+        id: string;
+        title: string;
+        content: string;
+        kind: string;
+        folderPath: string | null;
+        driveModifiedTime: Date | null;
+        contentHash: string;
+        displayTitle?: string | null;
+    }[],
+): {
+    content: string;
+    citations: { documentId: string; quote: string }[];
+    sourceIds: string[];
+} | null {
+    const { members } = buildSessionDirectory(
+        documents.map((document) => ({
+            ...document,
+            folderPath: document.folderPath ?? undefined,
+        })),
+    );
+    const seated =
+        group === "all" ? members : members.filter((member) => member.group === group);
+    if (seated.length === 0) return null;
+
+    const sourceIds = new Set<string>();
+    for (const member of seated) {
+        for (const source of member.positionSources ?? []) {
+            if (source) sourceIds.add(source.documentId);
+        }
+        if (member.emailSource) sourceIds.add(member.emailSource.documentId);
+    }
+
+    if (sourceIds.size === 0) {
+        for (const document of documents) {
+            if (isRosterSheet(document)) sourceIds.add(document.id);
+        }
+    }
+
+    const byId = new Map(documents.map((document) => [document.id, document]));
+    const citations: { documentId: string; quote: string }[] = [];
+
+    for (const id of sourceIds) {
+        const document = byId.get(id);
+        if (!document?.content) continue;
+        const named = seated.find((member) =>
+            document.content.toLowerCase().includes(member.name.toLowerCase()),
+        );
+        if (!named) continue;
+        const quote = uniqueQuoteAround(document.content, named.name);
+        if (!quote) continue;
+        citations.push({ documentId: id, quote });
+    }
+
+    if (citations.length === 0) return null;
+
+    return {
+        content: appendCitationMarkers(formatMembershipRoster(group, seated), citations.length),
+        citations,
+        sourceIds: [...sourceIds],
+    };
+}
+
+async function matchesForDocuments(ids: string[]): Promise<MatchedDocument[]> {
+    if (ids.length === 0) return [];
+
+    const rows = await prisma.document.findMany({
+        where: { id: { in: ids } },
+        select: {
+            id: true,
+            title: true,
+            displayTitle: true,
+            kind: true,
+            sessionNumber: true,
+            datedAt: true,
+            content: true,
+        },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const matches: MatchedDocument[] = [];
+
+    for (const id of ids) {
+        const row = byId.get(id);
+        if (!row) continue;
+        matches.push({
+            id: row.id,
+            title: row.displayTitle || row.title,
+            kind: row.kind,
+            sessionNumber: row.sessionNumber,
+            date: row.datedAt,
+            summary: "",
+            heading: "",
+            excerpt: excerpt(row.content),
+        });
+    }
+
+    return withSummaries(matches);
+}
+
+async function tryMembershipAnswer(
+    asked: string,
+    options: {
+        scope: SearchScope;
+        key: string;
+        force?: boolean;
+        base: Omit<QuestionAnswer, "status">;
+    },
+): Promise<QuestionAnswer | null> {
+    const group = askedMembershipGroup(asked);
+    if (!group) return null;
+
+    const meta = await prisma.document.findMany({
+        where: {
+            sessionNumber: SESSION_NUMBER,
+            OR: [
+                { kind: { in: ["directory", "attendance"] } },
+                { kind: { startsWith: "minutes" } },
+            ],
+        },
+        select: { id: true, contentHash: true, kind: true, title: true, displayTitle: true },
+    });
+
+    const fingerprint = membershipFingerprint(group, meta);
+    const rosterIds = meta.filter(isRosterSheet).map((document) => document.id);
+
+    const existing = await prisma.searchAnswer.findUnique({
+        where: { questionKey: options.key },
+    });
+
+    if (existing) {
+        await prisma.searchAnswer.update({
+            where: { id: existing.id },
+            data: { askedCount: { increment: 1 }, lastAskedAt: new Date() },
+        });
+    }
+
+    const cacheUsable =
+        existing &&
+        !options.force &&
+        existing.promptHash === fingerprint &&
+        existing.status === "fresh";
+
+    if (cacheUsable) {
+        return {
+            ...options.base,
+            matches: await matchesForDocuments(rosterIds),
+            status: "fresh",
+            content: existing.content,
+            citations: await citationsFor(existing.id),
+            generatedAt: existing.generatedAt,
+            error: existing.error,
+        };
+    }
+
+    const documents = await prisma.document.findMany({
+        where: { id: { in: meta.map((document) => document.id) } },
+        select: {
+            id: true,
+            title: true,
+            content: true,
+            kind: true,
+            folderPath: true,
+            driveModifiedTime: true,
+            contentHash: true,
+            displayTitle: true,
+        },
+    });
+
+    const built = buildMembershipAnswer(group, documents);
+    if (!built) return null;
+
+    const contentById = new Map(documents.map((document) => [document.id, document.content]));
+    const generatedAt = new Date();
+    const answerId = await persistVerifiedAnswer({
+        key: options.key,
+        question: asked,
+        scope: options.scope,
+        content: built.content,
+        model: "directory",
+        fingerprint,
+        citations: built.citations,
+        contentById,
+        generatedAt,
+    });
+
+    return {
+        ...options.base,
+        matches: await matchesForDocuments(
+            built.sourceIds.length > 0 ? built.sourceIds : rosterIds,
+        ),
+        status: "fresh",
+        content: built.content,
+        citations: await citationsFor(answerId),
+        generatedAt,
+    };
+}
+
+/**
  * One answer's citations, in the shape SourceChip reads.
  *
  * The href is the same deep link the page sections use, so a marker in an
@@ -912,11 +1292,32 @@ export async function answerQuestion(
     // A question that is nothing but a period ("what happened last week") has
     // no search terms at all, and is still answerable. Only a question with
     // neither is empty before anything has been read.
-    if (!parseTimeframe(asked, now) && questionTerms(asked).length === 0) {
+    if (
+        !parseTimeframe(asked, now) &&
+        questionTerms(asked).length === 0 &&
+        !isMembershipQuestion(asked)
+    ) {
         return { ...blank, status: "empty" };
     }
 
-    const { passages, matches, timeframe } = await retrieve(asked, { scope, focus, now });
+    // Roster questions are a lookup, not retrieval. Answer them from the
+    // contact list before paying for a full-text search that ranks Article V
+    // of the constitution first.
+    if (focus === "current" && !parseTimeframe(asked, now) && isMembershipQuestion(asked)) {
+        const membership = await tryMembershipAnswer(asked, {
+            scope,
+            force: options.force,
+            key: questionKeyFor(asked, scope, focus, null),
+            base: { ...blank, timeframe: null },
+        });
+        if (membership) return membership;
+    }
+
+    const { passages, matches, timeframe } = await retrieve(asked, {
+        scope,
+        focus,
+        now,
+    });
     const key = questionKeyFor(asked, scope, focus, timeframe);
     const base = { ...blank, timeframe };
 
@@ -1047,28 +1448,19 @@ export async function answerQuestion(
     });
     const contentById = new Map(documents.map((document) => [document.id, document.content]));
 
-    const verified: { documentId: string; quote: string }[] = [];
-    let rejected = 0;
+    const { kept: verified, remap, rejected } = assignCitationOrdinals(
+        response.citations ?? [],
+        (citation) => {
+            const documentId = citation.documentId?.trim();
+            const quote = citation.quote;
+            if (!documentId || !quote) return null;
+            const content = contentById.get(documentId);
+            if (!content || !findQuote(content, quote)) return null;
+            return `${documentId}\0${quote}`;
+        },
+    );
 
-    for (const citation of response.citations ?? []) {
-        const documentId = citation.documentId?.trim();
-        const quote = citation.quote;
-        if (!documentId || !quote) {
-            rejected += 1;
-            continue;
-        }
-
-        const content = contentById.get(documentId);
-        if (!content || !findQuote(content, quote)) {
-            rejected += 1;
-            continue;
-        }
-
-        if (verified.some((item) => item.documentId === documentId && item.quote === quote)) {
-            continue;
-        }
-        verified.push({ documentId, quote });
-    }
+    const compacted = remapCitedContent(answer, remap);
 
     if (verified.length === 0) {
         const message = `Model returned ${rejected} citation(s), none of which could be verified against the documents`;
@@ -1082,49 +1474,88 @@ export async function answerQuestion(
     }
 
     const generatedAt = new Date();
+    const answerId = await persistVerifiedAnswer({
+        key,
+        question: asked,
+        scope,
+        content: compacted,
+        model,
+        fingerprint,
+        citations: verified.map((item) => ({
+            documentId: item.documentId!.trim(),
+            quote: item.quote!,
+        })),
+        contentById,
+        generatedAt,
+    });
 
-    const answerId = await prisma.$transaction(async (tx) => {
+    return {
+        ...base,
+        matches,
+        status: "fresh",
+        content: compacted,
+        citations: await citationsFor(answerId),
+        generatedAt,
+    };
+}
+
+async function persistVerifiedAnswer(input: {
+    key: string;
+    question: string;
+    scope: SearchScope;
+    content: string;
+    model: string;
+    fingerprint: string;
+    citations: { documentId: string; quote: string }[];
+    contentById: Map<string, string>;
+    generatedAt: Date;
+}): Promise<string> {
+    return prisma.$transaction(async (tx) => {
         const row = await tx.searchAnswer.upsert({
-            where: { questionKey: key },
+            where: { questionKey: input.key },
             create: {
-                questionKey: key,
-                question: asked,
-                scope,
-                content: answer,
+                questionKey: input.key,
+                question: input.question,
+                scope: input.scope,
+                content: input.content,
                 status: "fresh",
-                model,
-                promptHash: fingerprint,
+                model: input.model,
+                promptHash: input.fingerprint,
                 error: null,
-                generatedAt,
+                generatedAt: input.generatedAt,
                 askedCount: 1,
             },
             update: {
-                question: asked,
-                scope,
-                content: answer,
+                question: input.question,
+                scope: input.scope,
+                content: input.content,
                 status: "fresh",
-                model,
-                promptHash: fingerprint,
+                model: input.model,
+                promptHash: input.fingerprint,
                 error: null,
-                generatedAt,
+                generatedAt: input.generatedAt,
             },
         });
 
         await tx.searchAnswerCitation.deleteMany({ where: { answerId: row.id } });
 
-        for (const [ordinal, item] of verified.entries()) {
-            const anchor = findQuote(contentById.get(item.documentId)!, item.quote);
+        for (const [ordinal, item] of input.citations.entries()) {
+            const documentId = item.documentId.trim();
+            const quote = item.quote;
+            if (!documentId || !quote) continue;
+
+            const anchor = findQuote(input.contentById.get(documentId) ?? "", quote);
 
             // Annotations are shared with sections and summaries, so a passage
             // cited by an answer and by the About page is one highlight.
             const annotation =
                 (await tx.documentAnnotation.findFirst({
-                    where: { documentId: item.documentId, content: item.quote },
+                    where: { documentId, content: quote },
                 })) ??
                 (await tx.documentAnnotation.create({
                     data: {
-                        documentId: item.documentId,
-                        content: item.quote,
+                        documentId,
+                        content: quote,
                         startOffset: anchor?.startOffset ?? null,
                         endOffset: anchor?.endOffset ?? null,
                     },
@@ -1137,15 +1568,6 @@ export async function answerQuestion(
 
         return row.id;
     });
-
-    return {
-        ...base,
-        matches,
-        status: "fresh",
-        content: answer,
-        citations: await citationsFor(answerId),
-        generatedAt,
-    };
 }
 
 async function record(

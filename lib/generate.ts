@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { SESSION_NUMBER } from "@/config/sga";
 import { generateJson } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
+import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
 import { prisma } from "@/lib/prisma";
 import { sectionDefinition, type SectionStatus } from "@/lib/sections";
 
@@ -223,32 +224,22 @@ export async function generateSection(
 
     const documentsById = new Map(documents.map((doc) => [doc.id, doc]));
 
-    // The verification gate.
-    const verified: { documentId: string; quote: string }[] = [];
-    let rejected = 0;
+    // The verification gate. Surviving quotes keep their markers; a marker
+    // whose quote was dropped is rewritten away rather than published as raw
+    // `[9]` in the prose.
+    const { kept: verified, remap, rejected } = assignCitationOrdinals(
+        response.citations ?? [],
+        (citation) => {
+            const documentId = citation.documentId?.trim();
+            const quote = citation.quote;
+            if (!documentId || !quote) return null;
+            const document = documentsById.get(documentId);
+            if (!document || !findQuote(document.content, quote)) return null;
+            return `${documentId}\0${quote}`;
+        },
+    );
 
-    for (const citation of response.citations ?? []) {
-        const documentId = citation.documentId?.trim();
-        const quote = citation.quote;
-        if (!documentId || !quote) {
-            rejected += 1;
-            continue;
-        }
-
-        const document = documentsById.get(documentId);
-        if (!document || !findQuote(document.content, quote)) {
-            rejected += 1;
-            continue;
-        }
-
-        // Collapse duplicate quotes onto one chip.
-        if (verified.some((item) => item.documentId === documentId && item.quote === quote)) {
-            continue;
-        }
-        verified.push({ documentId, quote });
-    }
-
-    const content = (response.content ?? "").trim();
+    const content = remapCitedContent((response.content ?? "").trim(), remap);
 
     if (response.insufficientEvidence || !content) {
         await prisma.generatedSection.upsert({
@@ -320,19 +311,23 @@ export async function generateSection(
         await tx.citation.deleteMany({ where: { sectionId: section.id } });
 
         for (const [ordinal, item] of verified.entries()) {
+            const documentId = item.documentId?.trim();
+            const quote = item.quote;
+            if (!documentId || !quote) continue;
+
             const anchor = findQuote(
-                documentsById.get(item.documentId)!.content,
-                item.quote,
+                documentsById.get(documentId)!.content,
+                quote,
             );
 
             const annotation =
                 (await tx.documentAnnotation.findFirst({
-                    where: { documentId: item.documentId, content: item.quote },
+                    where: { documentId, content: quote },
                 })) ??
                 (await tx.documentAnnotation.create({
                     data: {
-                        documentId: item.documentId,
-                        content: item.quote,
+                        documentId,
+                        content: quote,
                         startOffset: anchor?.startOffset ?? null,
                         endOffset: anchor?.endOffset ?? null,
                     },

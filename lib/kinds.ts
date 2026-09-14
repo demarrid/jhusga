@@ -30,6 +30,8 @@ export const DOCUMENT_KINDS = [
     "attendance",
     "directory",
     "tracker",
+    "presentation",
+    "template",
     "newsletter.article",
     "unknown",
 ] as const;
@@ -51,6 +53,8 @@ const KIND_LABELS: Partial<Record<DocumentKind, string>> = {
     "judicial.writ_of_certiorari": "Judiciary / Writ of certiorari",
     "judicial.writ_of_mandamus": "Judiciary / Writ of mandamus",
     "judicial.advisory_opinion": "Judiciary / Advisory opinion",
+    presentation: "Presentation",
+    template: "Template",
 };
 
 /** "bill.bylaws_amendment" -> "Bill / Bylaws amendment". */
@@ -153,51 +157,97 @@ export function classifyDocument(input: {
     name: string;
     folderPath: string;
     content?: string;
+    /** The name the site shows, when it has already been rewritten. */
+    displayTitle?: string;
+    mimeType?: string;
 }): DocumentKind {
     const name = input.name.toLowerCase();
+    const shown = (input.displayTitle ?? "").toLowerCase();
     const path = input.folderPath.toLowerCase();
-    const haystack = `${path}/${name}`;
+    // The Drive filename and the house title both count: "Copy of Senate GBM
+    // #15" is still a Senate agenda once recordTitles has said so, and a
+    // Google Slides file is a presentation even when it is titled "Updates".
+    const titled = `${name} ${shown}`.replace(/\s+/g, " ").trim();
+    const haystack = `${path}/${titled}`;
 
     if (/attendance/.test(haystack)) return "attendance";
-    if (/roster|email list|contact list|directory/.test(haystack)) return "directory";
+    if (/roster|email list|contact list|contact sheet|directory/.test(haystack)) return "directory";
+
+    // A bill template is not a bill. Checked before the legislation rules so
+    // "SGA Bill Template" does not become one.
+    if (/\btemplate\b/.test(titled)) return "template";
+
+    // Briefing slides and update decks a group brings to a meeting. Checked
+    // before minutes so "Committee Update Presentation" is not a meeting.
+    if (isPresentation(input.mimeType, titled, path)) return "presentation";
 
     // Constitution and bylaws, whether the adopted text or an amendment to it.
     // The filename wins over the folder: a bylaws file sitting in a folder
     // that also holds the constitution is still the bylaws.
-    const amends = /amendment|amend\b|resolution/.test(name);
-    if (/bylaw/.test(name) && !/constitution/.test(name)) {
+    const amends = /amendment|amend\b|resolution/.test(titled);
+    if (/bylaw/.test(titled) && !/constitution/.test(titled)) {
         return amends ? "bill.bylaws_amendment" : "guiding.bylaws";
     }
-    if (/constitution/.test(name) || (/constitution/.test(path) && !/bylaw/.test(name))) {
+    if (/constitution/.test(titled) || (/constitution/.test(path) && !/bylaw/.test(titled))) {
         return amends ? "bill.constitution_amendment" : "guiding.constitution";
     }
     if (/bylaw/.test(haystack)) {
         return amends ? "bill.bylaws_amendment" : "guiding.bylaws";
     }
-    const judicial = classifyJudicial(name, haystack, input.content);
+    const judicial = classifyJudicial(titled, haystack, input.content);
     if (judicial) return judicial;
 
     if (/senate rules|standing rules|\brules bill\b/.test(haystack)) return "bill.senate_rules";
     if (/funding|budget|appropriation/.test(haystack)) return "bill.funding";
-    // A bill or act that does not say which kind of bill it is. "The
-    // Accountability Act" and "CLeRPA" are legislation; leaving them unknown
-    // hid them from the type filter next to the funding bills they were
-    // read with.
-    if (/\bbill\b|\bact\b/.test(name) && !/template/.test(name)) return "bill.other";
+    // A bill, act, or resolution that does not say which kind of bill it is.
+    // "The Accountability Act" and "Student Government Resolution regarding
+    // ICE" are legislation; leaving them unknown hid them from the type
+    // filter next to the funding bills they were read with.
+    if (/\bbill\b|\bact\b|\bresolution\b/.test(titled) && !/template/.test(titled)) {
+        return "bill.other";
+    }
 
     if (/tracksheet|initiative tracker/.test(haystack)) return "tracker";
 
-    if (/minutes|agenda/.test(name) || (/meeting/.test(name) && /committees\//i.test(path))) {
+    if (looksLikeMinutes(titled, path, haystack)) {
         // The filename first: a senator's own minutes of a Senate meeting,
         // filed in the folder of the committee they sit on, are the Senate's
         // minutes and not that committee's. Only a filename saying nothing
         // about which body met falls back to where the file is kept.
-        return minutesKind(name) ?? minutesKind(haystack) ?? "unknown";
+        return minutesKind(titled) ?? minutesKind(haystack) ?? "unknown";
     }
 
     if (/guiding document/.test(path)) return "guiding.other";
 
     return "unknown";
+}
+
+/**
+ * Briefing materials a group uses when it presents: Google Slides, a file
+ * named as a presentation or deck, or a committee's update doc linked from
+ * an agenda.
+ */
+function isPresentation(mimeType: string | undefined, titled: string, path = ""): boolean {
+    if (mimeType && /presentation/i.test(mimeType)) return true;
+    if (/\b(?:presentation|slides|deck|briefing)\b/.test(titled)) return true;
+    if (/\b(?:committee|council|caucus) updates?\b/.test(titled)) return true;
+    // Update docs a group files next to the agenda it presents from.
+    if (/\bupdates?\b/.test(titled) && /agenda/.test(path)) return true;
+    return false;
+}
+
+/**
+ * Whether this is a meeting record, including files the SGA never titled
+ * "minutes" or "agenda" -- "Senate GBM #15", "Exec Minutes 4/1", a committee
+ * file sitting in a Minutes folder.
+ */
+function looksLikeMinutes(titled: string, path: string, haystack: string): boolean {
+    if (/minutes|agenda|\bmins\b|\bgbm\b|general body/.test(titled)) return true;
+    if (/meeting/.test(titled) && /committees\//i.test(path)) return true;
+    if (/meeting/.test(titled) && (minutesKind(titled) !== null || minutesKind(haystack) !== null)) {
+        return true;
+    }
+    return false;
 }
 
 /**

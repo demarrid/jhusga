@@ -175,6 +175,7 @@ function subgroupRank(group: DirectoryGroup, subgroup: string | null): number {
 
 function seatRank(positions: string[]): number {
     const joined = positions.join(" ");
+    if (/chief justice/i.test(joined)) return -1;
     if (/class president/i.test(joined)) return 0;
     const numbered = /\b(?:senator\s*)?(\d+)\b/i.exec(joined);
     if (numbered) return Number(numbered[1]);

@@ -116,10 +116,12 @@ function renderCitedLine(text: string, byIndex: Map<number, SummaryCitation>) {
         }
 
         const citation = byIndex.get(part.index);
-        // A marker the model invented has nothing to point at, so it is shown
-        // as written rather than silently dropped.
+        // A marker the model invented, or one whose quote did not survive
+        // verification, has nothing to point at. Leaving `[9]` in the prose
+        // reads as a broken footnote; dropping it leaves the claim and the
+        // chips that do resolve.
         if (!citation) {
-            return <span key={index}>{`[${part.index}]`}</span>;
+            return null;
         }
 
         return (

@@ -338,7 +338,7 @@ export async function recordKinds(): Promise<number> {
         // article has neither, so every pass would reclassify it as "unknown"
         // and undo the one thing that keeps it out of the SGA's own record.
         where: { kind: { notIn: SECONDARY_KINDS } },
-        select: { id: true, title: true, folderPath: true, kind: true, driveFileId: true, lineageKey: true, content: true },
+        select: { id: true, title: true, folderPath: true, kind: true, driveFileId: true, lineageKey: true, content: true, displayTitle: true, mimeType: true },
     });
 
     let changed = 0;
@@ -348,6 +348,8 @@ export async function recordKinds(): Promise<number> {
             name: document.title,
             folderPath: document.folderPath,
             content: document.content,
+            displayTitle: document.displayTitle,
+            mimeType: document.mimeType,
         });
         const lineageKey = lineageKeyFor(document.title, document.driveFileId, kind);
         if (kind === document.kind && lineageKey === document.lineageKey) continue;
@@ -674,7 +676,11 @@ async function exportIngestible(file: WalkedFile): Promise<string | null> {
  * would undo that. `recordSessions` keeps it current instead.
  */
 function driveMetadata(file: WalkedFile, discoveredVia: "walk" | "link") {
-    const kind = classifyDocument({ name: file.name, folderPath: file.folderPath });
+    const kind = classifyDocument({
+        name: file.name,
+        folderPath: file.folderPath,
+        mimeType: file.mimeType,
+    });
     return {
         source: driveViewLink(file),
         mimeType: file.mimeType,

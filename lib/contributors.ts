@@ -159,6 +159,11 @@ const PLACEHOLDER_WORDS = new Set([
     // section, and "Template Bills" is two Title Case words.
     "template",
     "templates",
+    "senators",
+    "cabinet",
+    "officers",
+    "guests",
+    "members",
 ]);
 
 /**
@@ -280,7 +285,9 @@ export type ExtractedContributor = {
  * Deliberately strict. Real names in these documents are Title Case with one to
  * four parts; anything shouting in caps, carrying digits, or running longer
  * than that is template scaffolding or a sentence that happened to follow a
- * colon.
+ * colon. Minutes typed during a meeting are often all lowercase, so a single
+ * given name in lowercase still counts, and two lowercase tokens count when
+ * they are not ordinary English.
  */
 function isPlausibleName(candidate: string): boolean {
     const name = candidate.trim();
@@ -300,7 +307,48 @@ function isPlausibleName(candidate: string): boolean {
 
     // Every part must look like a name: starts uppercase, letters only
     // afterwards (allowing O'Brien, Garduno-Castaneda, and initials).
-    return parts.every((part) => /^[A-Z][A-Za-z'’.-]*$/.test(part));
+    if (parts.every((part) => /^[A-Z][A-Za-z'’.-]*$/.test(part))) {
+        return true;
+    }
+
+    // "jason", "sumire", "femi" — a first name the minute-taker did not
+    // capitalise.
+    if (parts.length === 1 && /^[a-z][a-z'’.-]{2,}$/.test(parts[0]!)) {
+        return true;
+    }
+
+    // "grace yang" under a confirmation heading. Two ordinary English words
+    // ("sports clubs") are not a name.
+    if (
+        parts.length === 2 &&
+        parts.every(
+            (part) =>
+                /^[a-z][a-z'’.-]{2,}$/.test(part) && !LOWERCASE_NAME_NOISE.has(part),
+        )
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+/** Words that are not a surname, used to refuse lowercase two-word phrases. */
+const LOWERCASE_NAME_NOISE = new Set([
+    "the", "and", "of", "for", "to", "in", "on", "at", "with", "from", "as",
+    "by", "or", "but", "an", "is", "was", "are", "be", "this", "that", "not",
+    "no", "non", "more", "first", "class", "committee", "meeting", "report",
+    "update", "motion", "public", "safety", "video", "games", "weekend",
+    "finance", "annual", "legislative", "business", "confirmation", "discussion",
+    "attendance", "sports", "clubs", "none",
+]);
+
+/** Capitalise a name the minutes wrote in lowercase, so "jason" is Jason. */
+function displayName(name: string): string {
+    if (name !== name.toLowerCase()) return name;
+    return name
+        .split(/\s+/)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
 }
 
 /** Split "A, B (note) and C" into its members, keeping parentheticals attached. */
@@ -383,7 +431,7 @@ function recordPerson(
     if (found.has(key)) return true;
 
     found.set(key, {
-        name: parsed.name,
+        name: displayName(parsed.name),
         role,
         office: parsed.office ?? (office ? tidyOffice(office) : null),
         note: parsed.note,
@@ -497,7 +545,11 @@ function harvestLabeledText(
 
     for (const segment of labeledSegments(text)) {
         let carried = "";
-        for (const candidate of splitPeople(segment.names, segment.firstNames)) {
+        for (const candidate of firstNameRoll(
+            splitPeople(segment.names, segment.firstNames),
+            segment.role,
+            segment.firstNames,
+        )) {
             // "and" joins two people *and* two titles of one person
             // ("VPOTS and Chair of IA Shreemann Patel"). A fragment that is
             // only an office is held and stuck on the next name.
@@ -516,6 +568,43 @@ function harvestLabeledText(
     }
 
     return recorded;
+}
+
+const ATTENDANCE_ROLES = new Set<ContributorRole>([
+    "present",
+    "excused",
+    "absent",
+    "late",
+    "guest",
+    "staff",
+]);
+
+/**
+ * A space-separated roll of first names on an attendance line.
+ *
+ * "Here:" already splits on spaces. "Excused: Yash Cole Issac" does not,
+ * because two Title Case words are usually a given name and a surname
+ * ("Abraham Aini"). Three or more bare given names on an attendance role
+ * are a roll, not someone called Yash Cole Issac.
+ */
+function firstNameRoll(
+    candidates: string[],
+    role: ContributorRole,
+    alreadySplit: boolean,
+): string[] {
+    if (alreadySplit || !ATTENDANCE_ROLES.has(role) || candidates.length !== 1) {
+        return candidates;
+    }
+
+    const tokens = candidates[0]!.split(/\s+/).filter(Boolean);
+    if (
+        tokens.length >= 3 &&
+        tokens.every((token) => /^[A-Za-z][a-z'’.-]{2,}$/.test(token))
+    ) {
+        return tokens;
+    }
+
+    return candidates;
 }
 
 /**
@@ -578,6 +667,10 @@ function harvestReportItem(
     const item = line.replace(ENUMERATOR, "").trim();
     if (!item) return false;
 
+    // "senators" under a reports heading is a grouping, not a person called
+    // Senators. Keep the run open so the names nested under it are still read.
+    if (REPORT_GROUP.test(item)) return true;
+
     const titled = OFFICE_HOLDER.exec(item);
     if (titled) {
         const [, office, candidate] = titled;
@@ -587,6 +680,13 @@ function harvestReportItem(
 
     return recordPerson(found, item, "reporting", line);
 }
+
+/**
+ * A grouping heading inside a report section: "senators", "cabinet". Not a
+ * person, but not the end of the reports either.
+ */
+const REPORT_GROUP =
+    /^(?:senators?|cabinet|officers?|guests?|members?|advisors?|staff|exec(?:utive)?(?:\s+board)?|cses?)$/i;
 
 /**
  * "Confirmation of Senate Parliamentarian: Shreemann Patel, confirmed with
@@ -692,7 +792,8 @@ function harvestAttendanceTable(
     if (cells.length % 2 === 0) {
         let pairs = true;
         for (let index = 1; index < cells.length; index += 2) {
-            if (!statusToRole(cells[index])) {
+            const status = toPlainText(cells[index].replace(/<br\s*\/?>/gi, " "));
+            if (!/^(?:present|excused|late|absent)\.?$/i.test(status)) {
                 pairs = false;
                 break;
             }
@@ -707,8 +808,13 @@ function harvestAttendanceTable(
     }
 
     for (const cell of cells) {
-        if (cell.length > 240) continue;
-        harvestLabeledText(found, toPlainText(cell), toPlainText(line));
+        // Inner line breaks are how a Here: roll is typed in a table cell:
+        // "Here:<br>Kai<br>Veda". Joining them with spaces is what lets the
+        // first-name splitter see a roll rather than a heading and seven
+        // orphan lines.
+        const text = toPlainText(cell.replace(/<br\s*\/?>/gi, " "));
+        if (!text) continue;
+        harvestLabeledText(found, text, text);
     }
 }
 
@@ -734,7 +840,7 @@ export function extractContributors(markdown: string, title?: string): Extracted
     // and a run that ended at the first line it could not read as a person
     // ended at "Increase black visibility and retention of black students on
     // campus" -- which is Oluwanifemi's report, not the end of the reports.
-    let reports: { heading: number; items: number | null } | null = null;
+    let reports: { heading: number; items: number | null; group: number | null } | null = null;
 
     // The label list being continued, if the previous line ended with "and" or
     // a comma. Bills typeset "Sponsored by:" as one indented block across
@@ -757,6 +863,7 @@ export function extractContributors(markdown: string, title?: string): Extracted
             continue;
         }
         if (line.length > 500) {
+            harvestLabeledText(found, line, line);
             carryingList = null;
             continue;
         }
@@ -769,7 +876,7 @@ export function extractContributors(markdown: string, title?: string): Extracted
         // Checked before the run below, because the heading that opens a
         // report section is itself nested under "Reports".
         if (REPORTS_LABEL.test(line) || REPORTS_HEADING.test(line)) {
-            reports = { heading: indent, items: null };
+            reports = { heading: indent, items: null, group: null };
             carryingList = null;
             continue;
         }
@@ -794,10 +901,20 @@ export function extractContributors(markdown: string, title?: string): Extracted
         if (reports) {
             // The first line under the heading sets the depth its people sit
             // at. Anything deeper is one of them talking, and is left to
-            // harvestSpeaker rather than ending the list.
+            // harvestSpeaker rather than ending the list — except a grouping
+            // like "senators", whose nested names are still reporters.
             reports.items ??= indent;
             if (indent <= reports.items) {
+                const item = line.replace(ENUMERATOR, "").trim();
+                if (REPORT_GROUP.test(item)) {
+                    reports.group = indent;
+                    continue;
+                }
+                reports.group = null;
                 if (!harvestReportItem(found, line)) reports = null;
+                continue;
+            }
+            if (reports.group !== null && harvestReportItem(found, line)) {
                 continue;
             }
         }

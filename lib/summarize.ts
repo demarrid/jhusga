@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 
 import { generateJson } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
+import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
 import { documentKindLabel } from "@/lib/kinds";
 import { prisma } from "@/lib/prisma";
 import type { SectionStatus } from "@/lib/sections";
@@ -267,21 +268,21 @@ export async function summarizeDocument(
         };
     }
 
-    // The verification gate: a quote that is not in this document is dropped.
-    const verified: string[] = [];
-    let rejected = 0;
+    // The verification gate: a quote that is not in this document is dropped,
+    // and its marker is rewritten away rather than published as raw `[9]`.
+    const { kept: verifiedQuotes, remap, rejected } = assignCitationOrdinals(
+        response.citations ?? [],
+        (citation) => {
+            const quote = citation.quote;
+            if (!quote || !findQuote(document.content, quote)) return null;
+            return quote;
+        },
+    );
+    const verified = verifiedQuotes
+        .map((citation) => citation.quote)
+        .filter((quote): quote is string => Boolean(quote));
 
-    for (const citation of response.citations ?? []) {
-        const quote = citation.quote;
-        if (!quote || !findQuote(document.content, quote)) {
-            rejected += 1;
-            continue;
-        }
-        if (verified.includes(quote)) continue;
-        verified.push(quote);
-    }
-
-    const content = (response.content ?? "").trim();
+    const content = remapCitedContent((response.content ?? "").trim(), remap);
 
     if (response.insufficientContent || !content) {
         await record(documentId, {

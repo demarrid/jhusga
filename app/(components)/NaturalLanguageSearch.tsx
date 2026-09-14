@@ -40,7 +40,7 @@ const EXAMPLES = [
     "What does it take to amend the constitution?",
     "How is a funding bill passed?",
     "What are the current initiatives?",
-    "Who is currently in Judiciary branch?",
+    "Who is currently in the Judiciary branch?",
     "What meetings can I attend?",
     "What is a Parlimentarian?",
     "Why are the Bylaws so long?",

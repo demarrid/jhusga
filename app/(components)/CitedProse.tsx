@@ -109,8 +109,12 @@ function renderCitedLine(text: string, byIndex: Map<number, ProseCitation>, mini
         }
 
         const citation = byIndex.get(part.index);
+        // A marker the model invented, or one whose quote did not survive
+        // verification, has nothing to point at. Leaving `[9]` in the prose
+        // reads as a broken footnote; dropping it leaves the claim and the
+        // chips that do resolve.
         if (!citation) {
-            return <span key={index}>{`[${part.index}]`}</span>;
+            return null;
         }
 
         return <SourceChip key={`${citation.id}-${index}`} citation={citation} mini={miniChips} />;

@@ -743,5 +743,62 @@ check(
     ),
 );
 
+const lowercaseMinutes = [
+    "1. reports",
+    "   1. jason",
+    "      1. jay games this weekend!",
+    "   2. sumire",
+    "   8. senators",
+    "      1. femi",
+    "      2. kai",
+    "2. non legislative",
+    "   1. jackson: motion to confirm present",
+].join("\n");
+const lowered = extractContributors(lowercaseMinutes);
+
+check(
+    "a lowercase report name is still the person who reported",
+    lowered.some((p) => p.name === "Jason" && p.role === "reporting") &&
+    lowered.some((p) => p.name === "Sumire" && p.role === "reporting"),
+    lowered,
+);
+check(
+    "senators under reports is a grouping, not a person",
+    !lowered.some((p) => /^senators?$/i.test(p.name)),
+    lowered,
+);
+check(
+    "a name nested under that grouping is still a reporter",
+    lowered.some((p) => p.name === "Femi" && p.role === "reporting") &&
+    lowered.some((p) => p.name === "Kai" && p.role === "reporting"),
+    lowered,
+);
+check(
+    "a lowercase speaker is named as having spoken",
+    lowered.some((p) => p.name === "Jackson" && p.role === "interlocutor"),
+    lowered,
+);
+
+const cellMinutes = [
+    `| Here:<br>Kai<br>Veda<br>Mahima<br>Kayla<br>Christina<br>Aashni<br>Abraham  | Absent:<br>Excused:<br>Yash<br>Cole<br>Issac<br>Unexcused:<br>N/A  |`,
+    `| :---- | :---- |`,
+].join("\n");
+const rolled = extractContributors(cellMinutes);
+
+check(
+    "a Here: roll inside a table cell names everyone present",
+    ["Kai", "Veda", "Mahima", "Kayla", "Christina", "Aashni", "Abraham"].every((name) =>
+        rolled.some((p) => p.name === name && p.role === "present"),
+    ),
+    rolled,
+);
+check(
+    "an Excused: first-name roll in the same cell is three people, not one",
+    ["Yash", "Cole", "Issac"].every((name) =>
+        rolled.some((p) => p.name === name && p.role === "excused"),
+    ),
+    rolled,
+);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

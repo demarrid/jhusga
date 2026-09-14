@@ -1,4 +1,10 @@
-import { citedIndexes, splitCitedParts, truncateAtWord } from "../lib/cite";
+import {
+    assignCitationOrdinals,
+    citedIndexes,
+    remapCitedContent,
+    splitCitedParts,
+    truncateAtWord,
+} from "../lib/cite";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -37,6 +43,35 @@ check(
     "long text ends on a word and an ellipsis",
     truncateAtWord("The Senate shall meet every two weeks during the year", 24).endsWith("…") &&
     !truncateAtWord("The Senate shall meet every two weeks during the year", 24).includes("wee…"),
+);
+
+console.log("\nremapCitedContent");
+
+const compact = assignCitationOrdinals(
+    ["keep", "drop", "keep-too", "keep"],
+    (quote) => (quote === "drop" ? null : quote),
+);
+
+check(
+    "a dropped quote is rejected",
+    compact.rejected === 1 && compact.kept.join() === "keep,keep-too",
+    compact,
+);
+check(
+    "a duplicate quote reuses the first ordinal",
+    compact.remap.get(1) === 1 && compact.remap.get(4) === 1 && compact.remap.get(3) === 2,
+    [...compact.remap],
+);
+check(
+    "markers are rewritten onto surviving quotes",
+    remapCitedContent("Claim. [1] Other. [2] Same again. [4] Invented. [9]", compact.remap) ===
+    "Claim. [1] Other. Same again. [1] Invented.",
+    remapCitedContent("Claim. [1] Other. [2] Same again. [4] Invented. [9]", compact.remap),
+);
+check(
+    "a dropped marker does not leave a space before the period",
+    remapCitedContent("a blank template. [9]", compact.remap) === "a blank template.",
+    remapCitedContent("a blank template. [9]", compact.remap),
 );
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);

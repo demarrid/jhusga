@@ -43,6 +43,68 @@ export function citedIndexes(text: string): number[] {
 }
 
 /**
+ * Map the model's original citation list onto the quotes that survived
+ * verification, collapsing duplicates onto the first copy.
+ *
+ * `keyOf` returns a stable key for a kept quote, or null to reject it.
+ * The remap is 1-based on both sides, matching `[n]` in the prose.
+ */
+export function assignCitationOrdinals<T>(
+    items: T[],
+    keyOf: (item: T) => string | null,
+): { kept: T[]; remap: Map<number, number>; rejected: number } {
+    const kept: T[] = [];
+    const remap = new Map<number, number>();
+    const indexByKey = new Map<string, number>();
+    let rejected = 0;
+
+    for (const [i, item] of items.entries()) {
+        const key = keyOf(item);
+        if (key === null) {
+            rejected += 1;
+            continue;
+        }
+
+        const existing = indexByKey.get(key);
+        if (existing !== undefined) {
+            remap.set(i + 1, existing);
+            continue;
+        }
+
+        kept.push(item);
+        const ordinal = kept.length;
+        indexByKey.set(key, ordinal);
+        remap.set(i + 1, ordinal);
+    }
+
+    return { kept, remap, rejected };
+}
+
+/**
+ * Rewrite `[n]` markers after verification drops or collapses quotes.
+ *
+ * A marker with no surviving quote is removed rather than left as raw `[9]`
+ * in the published prose: that is a footnote that points at nothing, and
+ * showing the brackets makes it look like the document itself.
+ */
+export function remapCitedContent(content: string, remap: Map<number, number>): string {
+    if (!content) return content;
+
+    return content
+        .replace(/\[(\d+)\]/g, (_full, digits: string) => {
+            const next = remap.get(Number(digits));
+            return next === undefined ? "" : `[${next}]`;
+        })
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/ +([.,;:!?])/g, "$1")
+        .split("\n")
+        .map((line) => line.replace(/[ \t]+$/g, ""))
+        .join("\n")
+        .trim();
+}
+
+/**
  * Generated prose as one line, for a listing.
  *
  * A restatement is a lead sentence and then bullets, which is right on the

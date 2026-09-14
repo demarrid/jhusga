@@ -10,7 +10,13 @@
 
 import { parseTimeframe, withoutTimeframe } from "../lib/when";
 import { questionTerms } from "../lib/terms";
-import { questionFocus } from "../config/search";
+import {
+    appendCitationMarkers,
+    askedMembershipGroup,
+    formatMembershipRoster,
+    isMembershipQuestion,
+    questionFocus,
+} from "../config/search";
 
 /** A Friday, so "this week" has five days of it behind it. */
 const NOW = new Date("2026-09-11T18:00:00.000Z");
@@ -116,4 +122,61 @@ focusCheck("when is the last time the constitution was updated", "historical");
 focusCheck("compare constitution 2026 april to constitution 2025 fall", "historical");
 focusCheck("why can't I find the constitutional crisis", "historical");
 
-process.exitCode = failures + focusFailures > 0 ? 1 : 0;
+console.log("\nisMembershipQuestion");
+let membershipFailures = 0;
+function membershipCheck(question: string, expected: boolean) {
+    const actual = isMembershipQuestion(question);
+    const ok = actual === expected;
+    if (!ok) membershipFailures += 1;
+    console.log(`${ok ? "ok  " : "FAIL"} membership ${question} → ${actual}`);
+}
+membershipCheck("Who is currently in the Judiciary branch?", true);
+membershipCheck("who is in the senate", true);
+membershipCheck("who sits on the judiciary", true);
+membershipCheck("current justices", true);
+membershipCheck("how many justices are there", false);
+membershipCheck("what is the judicial branch", false);
+membershipCheck("who can I talk to now", false);
+membershipCheck("who is in favor of the bill", false);
+membershipCheck("who's in charge of funding", false);
+
+console.log("\naskedMembershipGroup");
+let groupFailures = 0;
+function groupCheck(question: string, expected: ReturnType<typeof askedMembershipGroup>) {
+    const actual = askedMembershipGroup(question);
+    const ok = actual === expected;
+    if (!ok) groupFailures += 1;
+    console.log(`${ok ? "ok  " : "FAIL"} group ${question} → ${actual}`);
+}
+groupCheck("Who is currently in the Judiciary branch?", "judiciary");
+groupCheck("who is in the senate", "senate");
+groupCheck("who is in the executive board", "executive");
+groupCheck("how many justices are there", null);
+groupCheck("who is in favor of the bill", null);
+
+console.log("\nformatMembershipRoster");
+let rosterFailures = 0;
+function rosterCheck(label: string, actual: string, expected: string) {
+    const ok = actual === expected;
+    if (!ok) rosterFailures += 1;
+    console.log(`${ok ? "ok  " : "FAIL"} ${label}`);
+    if (!ok) console.log(`       expected ${JSON.stringify(expected)}\n       actual   ${JSON.stringify(actual)}`);
+}
+rosterCheck(
+    "two justices in a sentence",
+    formatMembershipRoster("judiciary", [
+        { name: "Tyler Turner", positions: ["Chief Justice"], group: "judiciary" },
+        { name: "Felix Titre", positions: ["Justice"], group: "judiciary" },
+    ]),
+    "The current Judiciary is Tyler Turner (Chief Justice) and Felix Titre (Justice).",
+);
+rosterCheck(
+    "markers sit behind a space",
+    appendCitationMarkers(
+        "The current Judiciary is Tyler Turner (Chief Justice) and Felix Titre (Justice).",
+        1,
+    ),
+    "The current Judiciary is Tyler Turner (Chief Justice) and Felix Titre (Justice). [1]",
+);
+
+process.exitCode = failures + focusFailures + membershipFailures + groupFailures + rosterFailures > 0 ? 1 : 0;

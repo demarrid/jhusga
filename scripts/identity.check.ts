@@ -358,6 +358,68 @@ check(
         folderPath: "Guiding Documents/Constitution",
     }) === "guiding.bylaws",
 );
+check(
+    "a Senate GBM without the word agenda is still Senate minutes",
+    classifyDocument({
+        name: "Copy of Senate GBM #15",
+        folderPath: "General SGA/Agenda Items",
+    }) === "minutes.senate",
+);
+check(
+    "the house title of a meeting classifies it even when the Drive name does not",
+    classifyDocument({
+        name: "4.1.26",
+        folderPath: "Executive Branch/Minutes for Exec Meetings",
+        displayTitle: "Executive Board Meeting #20 — Minutes (04/01/26)",
+    }) === "minutes.executive",
+);
+check(
+    "a committee update deck is a presentation",
+    classifyDocument({
+        name: "Robert's Rules of Order Presentation",
+        folderPath: "",
+    }) === "presentation" &&
+    classifyDocument({
+        name: "RSO Committee Updates",
+        folderPath: "Senate/Agenda Items",
+    }) === "presentation",
+);
+check(
+    "an update filed with the agenda is a presentation",
+    classifyDocument({
+        name: "Student Services Updates",
+        folderPath: "Senate/Agenda Items",
+    }) === "presentation",
+);
+check(
+    "Google Slides are a presentation even untitled",
+    classifyDocument({
+        name: "Updates",
+        folderPath: "",
+        mimeType: "application/vnd.google-apps.presentation",
+    }) === "presentation",
+);
+check(
+    "a bill template is a template, not a bill",
+    classifyDocument({
+        name: "SGA Bill Template (114th Session)",
+        folderPath: "Guiding Documents",
+    }) === "template",
+);
+check(
+    "a contact sheet is a directory",
+    classifyDocument({
+        name: "Student Government Association Contact Sheet",
+        folderPath: "",
+    }) === "directory",
+);
+check(
+    "a resolution is legislation",
+    classifyDocument({
+        name: "Student Government Resolution regarding ICE",
+        folderPath: "",
+    }) === "bill.other",
+);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
