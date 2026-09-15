@@ -415,6 +415,39 @@ function parsePersonToken(candidate: string): {
     };
 }
 
+/**
+ * Words a real person's name never contains, but that fall out of
+ * `parsePersonToken` when it peels titles off a phrase like "Senator Sun
+ * Moon of the FLI caucus" — it hands back "caucus" as if that were the name.
+ * Every one of these is the body somebody serves in, not the person serving.
+ */
+const NON_NAME_WORDS = new Set([
+    "senate",
+    "caucus",
+    "council",
+    "committee",
+    "class",
+    "board",
+    "cabinet",
+    "congress",
+    "executive",
+    "judiciary",
+    "association",
+    "coalition",
+    "university",
+    "school",
+    "department",
+    "society",
+    "the",
+]);
+
+/** A parsed name that could actually belong to a person. */
+function looksLikePersonName(name: string): boolean {
+    return !name
+        .split(/\s+/)
+        .some((part) => NON_NAME_WORDS.has(part.toLowerCase()));
+}
+
 function recordPerson(
     found: Map<string, ExtractedContributor>,
     candidate: string,
@@ -426,6 +459,11 @@ function recordPerson(
 ): boolean {
     const parsed = parsePersonToken(candidate);
     if (!parsed) return false;
+
+    // "Senator Sun Moon of the FLI caucus" peels down to "caucus", and
+    // "President Stone Meng of the Sophomore Class" to "Sophomore Class".
+    // The name that came back is the body somebody belongs to, not a person.
+    if (!looksLikePersonName(parsed.name)) return false;
 
     const key = `${nameKey(parsed.name)}::${role}`;
     if (found.has(key)) return true;
@@ -491,22 +529,86 @@ function labeledSegments(text: string): { role: ContributorRole; names: string; 
 const TRAILING_JOIN = /(?:\band\b|,|;|&)\s*$/i;
 
 /**
- * If a labelled line ends with "and" or a comma, the role stays open so the
- * next indented line's names can be attached to it. Only introducer, sponsor
- * and attendance-shaped roles wrap this way in practice.
+ * Bills stack introducers and co-sponsors as indented lines under the label,
+ * often with no trailing "and". Attendance rolls wrap with a joiner instead.
  */
-function openContinuation(line: string): { role: ContributorRole; evidence: string } | null {
-    if (!TRAILING_JOIN.test(line)) return null;
+const STACKED_LIST_ROLES = new Set<ContributorRole>(["introducer", "sponsor"]);
+
+/**
+ * How a wrapped label list closes.
+ *
+ *   "trailing" is the old behaviour: an attendance line that ends with a
+ *   comma wraps once, and the very next line -- names, and only names --
+ *   is added to it. The rest of the meeting agenda is not.
+ *
+ *   "stacked" is the new behaviour: a bill lists co-sponsors as one
+ *   indented block, sometimes for three or four lines with no joiner, and
+ *   the list stays open until the first line that is not a person.
+ */
+type CarryingList = {
+    role: ContributorRole;
+    evidence: string;
+    mode: "trailing" | "stacked";
+};
+
+/**
+ * If a labelled line still has names coming, keep the role open.
+ *
+ * A trailing "and" or comma is the old wrap: the Accountability Act writes
+ * "Sponsored by: Jazzlyn Fernandez and" and continues Isaac Zhang on the
+ * next line. Stacked without a joiner is the new one: the JHUMA BBQ bill
+ * puts Jackson Morris on the label line and Veda Kommineni on the next,
+ * and only sponsor/introducer lists in bills stack that way.
+ */
+function openContinuation(line: string): CarryingList | null {
     const segments = labeledSegments(line);
     const last = segments[segments.length - 1];
     if (!last) return null;
-    if (!TRAILING_JOIN.test(last.names)) return null;
-    return { role: last.role, evidence: line };
+    if (TRAILING_JOIN.test(last.names)) {
+        return { role: last.role, evidence: line, mode: "trailing" };
+    }
+    if (
+        STACKED_LIST_ROLES.has(last.role) &&
+        splitPeople(last.names).some((token) => {
+            const parsed = parsePersonToken(token);
+            return parsed !== null && looksLikePersonName(parsed.name);
+        })
+    ) {
+        return { role: last.role, evidence: line, mode: "stacked" };
+    }
+    return null;
+}
+
+/**
+ * "Sponsored By:" with the names on the following lines, not after the colon.
+ *
+ * Only sponsor and introducer labels wrap this way in bills. Attendance rolls
+ * "Absent:", "Present:", "Excused:" are followed by tables or comma lists,
+ * not stacked names -- an agenda's "Absent: / Agenda" would otherwise become
+ * a person called Agenda.
+ */
+function openBareLabel(line: string): CarryingList | null {
+    const match = /^(.+?)\s*:\s*$/.exec(line);
+    if (!match) return null;
+    const label = match[1].trim();
+    for (const entry of ROLE_LABELS) {
+        if (!STACKED_LIST_ROLES.has(entry.role)) continue;
+        if (entry.pattern.test(label)) {
+            return { role: entry.role, evidence: line, mode: "stacked" };
+        }
+    }
+    return null;
 }
 
 /**
  * Record any people named on a wrapped line, e.g. the "Chair of Academic
  * Affairs Isaac Zhang" line that continues a "Sponsored by:" list.
+ *
+ * `parsePersonToken` is forgiving -- it peels titles off a phrase until
+ * something plausible is left -- so inside a labelled list "Senator Sun Moon
+ * of the FLI caucus" reduces to a name of "caucus". The body-word guard in
+ * `recordPerson` throws that away; a name still missing is a better outcome
+ * than a body written down as a person.
  */
 function harvestContinuedList(
     found: Map<string, ExtractedContributor>,
@@ -529,11 +631,6 @@ function harvestContinuedList(
         carried = "";
     }
     return recorded > 0;
-}
-
-/** Whether the wrapped line itself trails off with another joiner. */
-function continuedListStillOpen(line: string): boolean {
-    return TRAILING_JOIN.test(line);
 }
 
 function harvestLabeledText(
@@ -675,10 +772,18 @@ function harvestReportItem(
     if (titled) {
         const [, office, candidate] = titled;
         if (!looksLikeOffice(office!)) return false;
-        return recordPerson(found, candidate!, "reporting", line, office!);
+        // Shape is still a report item slot even when the candidate is a
+        // body ("Advisor Report - Executive Team- Exec"); the next line can
+        // still be a real reporter, so the run has not ended.
+        recordPerson(found, candidate!, "reporting", line, office!);
+        return true;
     }
 
-    return recordPerson(found, item, "reporting", line);
+    if (parsePersonToken(item)) {
+        recordPerson(found, item, "reporting", line);
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -842,11 +947,11 @@ export function extractContributors(markdown: string, title?: string): Extracted
     // campus" -- which is Oluwanifemi's report, not the end of the reports.
     let reports: { heading: number; items: number | null; group: number | null } | null = null;
 
-    // The label list being continued, if the previous line ended with "and" or
-    // a comma. Bills typeset "Sponsored by:" as one indented block across
-    // several lines, and reading each line on its own drops the sponsors
-    // named after the first: Isaac Zhang in the Accountability Act.
-    let carryingList: { role: ContributorRole; evidence: string } | null = null;
+    // The labelled list still being read. Bills typeset "Sponsored by:" as
+    // one indented block across several lines, sometimes with a trailing
+    // "and" and sometimes without; reading each line on its own drops every
+    // name after the first.
+    let carryingList: CarryingList | null = null;
 
     for (const rawLine of markdown.split(/\r?\n/)) {
         if (rawLine.includes("|")) {
@@ -889,9 +994,20 @@ export function extractContributors(markdown: string, title?: string): Extracted
             continue;
         }
 
-        // Wrapped continuation of a "Sponsored by: X and" list.
+        const bare = openBareLabel(line);
+        if (bare) {
+            carryingList = bare;
+            continue;
+        }
+
+        // Wrapped continuation of a labelled list. A trailing-joiner wrap
+        // ("Absentees: X, Y,") only extends one line unless that line also
+        // trails off; a stacked sponsor list stays open until the first
+        // line that is not a person ("Referred to the Senate…").
         if (carryingList && harvestContinuedList(found, line, carryingList)) {
-            carryingList = continuedListStillOpen(line) ? carryingList : null;
+            if (carryingList.mode === "trailing" && !TRAILING_JOIN.test(line)) {
+                carryingList = null;
+            }
             continue;
         }
         carryingList = null;

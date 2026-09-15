@@ -191,6 +191,168 @@ check(
     !wrappedPeople.some((p) => p.name.includes("September")),
 );
 
+// Funding bills also stack co-sponsors as indented lines with no trailing
+// "and": Jackson on the label line, Veda on the next, then the referral.
+const stackedSponsors = [
+    "Sponsored by:  Jackson Morris",
+    "\t\t    Veda Kommineni",
+    "Referred to the Senate by the **Committee on Finance** which recommends its **passing** by a vote of **\\_** to **\\_**",
+    "*Be it enacted by the Senate of the Student Government Association of The Johns Hopkins University assembled that*",
+].join("\n");
+
+const stackedPeople = extractContributors(stackedSponsors);
+check(
+    "a co-sponsor stacked under Sponsored by without a trailing and is found",
+    stackedPeople.some((p) => p.name === "Veda Kommineni" && p.role === "sponsor"),
+    stackedPeople,
+);
+check(
+    "the sponsor named on the label line is still found when the next is stacked",
+    stackedPeople.some((p) => p.name === "Jackson Morris" && p.role === "sponsor"),
+    stackedPeople,
+);
+check(
+    "the referral sentence is not read as a person",
+    !stackedPeople.some((p) => /referred|senate|committee|finance/i.test(p.name)),
+    stackedPeople,
+);
+
+const threeStacked = [
+    "Sponsored by:  Jackson Morris",
+    "\t\t    Veda Kommineni",
+    "\t\t    Paul Woo",
+    "Referred to the Senate by the Committee on Finance",
+].join("\n");
+const threePeople = extractContributors(threeStacked);
+check(
+    "a third stacked co-sponsor is still attached",
+    ["Jackson Morris", "Veda Kommineni", "Paul Woo"].every((name) =>
+        threePeople.some((p) => p.name === name && p.role === "sponsor"),
+    ),
+    threePeople,
+);
+
+// Some bills put nothing after the colon and list every sponsor underneath.
+const bareSponsoredBy = [
+    "Sponsored By:",
+    "Freshman President Veda Kommineni",
+    "Freshman Senator Isaac Zhang",
+    "Presented for First Reading this 8th day of September",
+].join("\n");
+const barePeople = extractContributors(bareSponsoredBy);
+check(
+    "names under a bare Sponsored By label are still sponsors",
+    ["Veda Kommineni", "Isaac Zhang"].every((name) =>
+        barePeople.some((p) => p.name === name && p.role === "sponsor"),
+    ),
+    barePeople,
+);
+check(
+    "a dating line after a bare Sponsored By list is not a person",
+    !barePeople.some((p) => p.name.includes("September")),
+    barePeople,
+);
+
+const stackedThenBlank = [
+    "Sponsored by:  Jackson Morris",
+    "\t\t    Veda Kommineni",
+    "",
+    "Mamadou Thiam",
+].join("\n");
+check(
+    "a blank line still ends a stacked sponsor list",
+    !extractContributors(stackedThenBlank).some((p) => p.name === "Mamadou Thiam"),
+    extractContributors(stackedThenBlank),
+);
+
+// A stacked co-sponsor line where the last word of the affiliation is a
+// body ("of the Junior Class", "of the FLI caucus") reduces to the body
+// itself inside parsePersonToken. Better to keep the missed name a gap
+// than to write down the body as a person.
+const stackedWithAffiliation = [
+    "Sponsored by: President Stone Meng of the Sophomore Class and",
+    "    Senator Tim Huang of the Sophomore Class",
+    "Senator Jennifer Tang Cabrera of the Junior Class",
+    "Executive Secretary Amy Li of the Sophomore Class",
+    "",
+    "Referred to the Senate",
+].join("\n");
+const bodiedPeople = extractContributors(stackedWithAffiliation);
+check(
+    "a stacked sponsor whose affiliation is a body is not written down as that body",
+    !bodiedPeople.some(
+        (p) => /^(?:junior|sophomore|senior)\s+class$/i.test(p.name),
+    ),
+    bodiedPeople,
+);
+check(
+    "a bare caucus is not recorded as a sponsor",
+    !extractContributors(
+        [
+            "Sponsored By:  Senator Hailey Tomlinson of the WGM Caucus",
+            "                Senator Sun Moon of the FLI caucus",
+        ].join("\n"),
+    ).some((p) => /^caucus$/i.test(p.name)),
+);
+check(
+    "the Senate is not recorded as an introducer",
+    !extractContributors(
+        [
+            "INTRODUCED BY:",
+            "Vice President of the Senate and Chair of Internal Affairs Shreemann Patel",
+        ].join("\n"),
+    ).some((p) => /^senate$/i.test(p.name)),
+);
+
+// An attendance line that wraps with a comma only extends to the very next
+// line -- the agenda items below it are not more absentees.
+const wrappedAbsentees = extractContributors(
+    [
+        "b. Unexcused Absentees: Jordyn Craig-Schwartz, Ethan Edelstein,",
+        "Adithyan Neelamana, Amy Xu",
+        "2. Convening Business (40 min)",
+        "3. Amendment and Approval of the Agenda (1 min)",
+        "4. Public Input (3 min)",
+    ].join("\n"),
+);
+check(
+    "the wrapped absentee line still adds names from the next line",
+    ["Adithyan Neelamana", "Amy Xu"].every((n) =>
+        wrappedAbsentees.some((p) => p.name === n && p.role === "absent"),
+    ),
+    wrappedAbsentees,
+);
+check(
+    "an agenda item below a wrapped absentee list is not an absentee",
+    !wrappedAbsentees.some(
+        (p) => /^(?:convening business|amendment|public input)$/i.test(p.name),
+    ),
+    wrappedAbsentees,
+);
+
+// An advisor report line names a real reporter after the dash, and a shape
+// like "Executive Team- Exec" further up is not a person but does not end
+// the report section: Jessica Snell should still be the advisor.
+const advisorReport = extractContributors(
+    [
+        "5. Reports",
+        "   1. Executive Team- Exec",
+        "   2. Advisor Report (2 min) - Jessica Snell",
+    ].join("\n"),
+);
+check(
+    "an advisor named on a report item is still recorded",
+    advisorReport.some(
+        (p) => p.name === "Jessica Snell" && p.role === "reporting",
+    ),
+    advisorReport,
+);
+check(
+    "a body-shaped report item does not become a person",
+    !advisorReport.some((p) => /executive/i.test(p.name)),
+    advisorReport,
+);
+
 // The template lives in the same folder as real bills.
 const template = [
     "Introduced by: **INTRODUCER**",
