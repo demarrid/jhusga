@@ -43,6 +43,10 @@ export type QuestionFocus = "current" | "historical";
  * "Earliest" and "oldest" only count next to a document. Bare, they are how
  * somebody asks who the oldest sitting senator is, which is a roster
  * question about the people now, not a request for the 110th's bylaws.
+ *
+ * News-Letter articles stay eligible either way. They are reporting about
+ * the SGA, not an old copy of the bylaws, so a current-focus question still
+ * reads them.
  */
 const HISTORICAL_QUESTION = [
     /\bwhen (?:was|were|did|is the last)\b/i,

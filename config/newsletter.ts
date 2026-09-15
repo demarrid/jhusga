@@ -121,8 +121,9 @@ export const NEWSLETTER_RUN_BUDGET_MS = Number(
  * How many calendar years back a routine run searches.
  *
  * New coverage only ever appears in the current year or, in January, the one
- * before it, so a nightly run reads two years and costs six search requests.
- * Reaching the rest of the archive is what `--backfill` is for.
+ * before it, so a nightly run and a manual `npm run sync` read two years and
+ * cost six search requests. Reaching the rest of the archive is what
+ * `--backfill` is for.
  */
 export const NEWSLETTER_RECENT_YEARS = 2;
 

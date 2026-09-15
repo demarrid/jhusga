@@ -255,6 +255,11 @@ export function matchedPhrases(text: string): NewsletterPhrase[] {
  * The date fence is what keeps the query under the engine's 1000-hit cap; see
  * NEWSLETTER_SEARCH_RESULT_CAP. `o=date` orders newest first, which matters
  * only in that it makes a truncated page's contents predictable.
+ *
+ * Deliberately not `tg=archives`. That tag is the digitised print section,
+ * whose newest entry is from 2012, so restricting to it would drop every
+ * article the paper has published online since. Those print pages are found
+ * anyway: a year-fenced search with no tag returns them too.
  */
 export function searchUrl(input: {
     phrase: string;

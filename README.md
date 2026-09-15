@@ -209,10 +209,20 @@ phrase is why it is here.
 honours it, which is the one fact that shapes operating this: a full backfill is
 hours of wall clock, so runs are budgeted and resumable rather than exhaustive.
 An article already stored is never fetched again, so a settled year costs six
-search requests. The nightly job is its own cron route (`app/api/cron/newsletter/`)
-rather than a step inside the Drive sync, because a job bounded by somebody
+search requests. A manual `npm run sync` runs the same recent-years pass after
+it finishes with Drive, so a new article is noticed without waiting for the
+nightly job. That nightly job is its own cron route (`app/api/cron/newsletter/`)
+rather than a step inside `/api/cron/sync`, because a job bounded by somebody
 else's crawl delay cannot share a five-minute function with one that has to
-finish. The first load is `npm run newsletter -- --backfill`.
+finish. Reaching 2001 is `npm run newsletter -- --backfill`, or
+`npm run sync -- --newsletter-backfill`.
+
+The search is not restricted to the paper's `Archives` tag. That tag is the
+digitised print section and ends around 2012; the year-fenced queries include
+those pages and everything published online since. Natural-language search
+reads the articles too: they stay eligible even when the question is about the
+rules now, because reporting is not a superseded edition of the constitution.
+They are still attributed as reporting, never as an SGA record.
 
 ### Layout
 
@@ -229,7 +239,7 @@ finish. The first load is `npm run newsletter -- --backfill`.
 | `app/(components)/` | `SourceChip`, `DocumentViewer`, `DocumentDiff`, `CitedProse`, `NaturalLanguageSearch`, `SignIn`, `NewPostForm`, `ReplyForm`, `ModerationControls`. |
 | `app/api/cron/sync/` | The daily job, guarded by `CRON_SECRET`. Scheduled in `vercel.json`. |
 | `app/api/cron/newsletter/` | The daily News-Letter pass, same guard. Separate because it is budgeted, not finite. |
-| `scripts/` | `sync` (manual run, supports `--dry-run`), `newsletter`, `review`, `prune`, `seed.demo`, and the `*.check.ts` suites. |
+| `scripts/` | `sync` (manual run: Drive, then recent News-Letter coverage; supports `--dry`), `newsletter`, `review`, `prune`, `seed.demo`, and the `*.check.ts` suites. |
 
 ### Historical documents
 
@@ -242,7 +252,7 @@ what makes `/documents/<id>/compare` able to diff them.
 
 ```sh
 npm run dev          # develop
-npm run sync         # sync Drive now; --dry-run to walk without writing
+npm run sync         # Drive, then new News-Letter coverage; --dry to walk without writing
 npm run reprocess    # re-parse stored text (people, dates, links); no Drive walk
 npm run newsletter   # News-Letter coverage; -- --backfill for every year, --dry to search only
 npm run summarize    # restate the documents a sync left over; -- --force to redo

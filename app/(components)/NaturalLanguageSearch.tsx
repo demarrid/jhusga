@@ -374,9 +374,12 @@ function readReducedMotion(): boolean {
 }
 
 function Answer({ answer }: { answer: QuestionAnswer }) {
+    // A question naming a period is answered by date across every session, so
+    // its reading is "period" and the label falls through to the archive
+    // rather than naming current law.
     const scopeLabel =
         answer.reading === "current"
-            ? "the documents now in force"
+            ? "current law and News-Letter reporting"
             : answer.reading === "membership"
               ? "the contact list"
               : "the archive";

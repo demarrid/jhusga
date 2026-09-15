@@ -12,6 +12,7 @@
  * `creator` are all as the CMS emits them. No network: a check that needs the
  * site to be up is a check that fails when the site is down.
  */
+import { NEWSLETTER_PHRASES } from "../config/newsletter";
 import { documentKindLabel, isSecondaryKind, isDocumentKind, AUTHORITATIVE_KINDS, COMPARABLE_KINDS } from "../lib/kinds";
 import { sessionForDate } from "../lib/identity";
 import { meetingFor, meetingLog } from "../lib/meetings";
@@ -345,6 +346,13 @@ check(
     url,
 );
 check("the page and page size are asked for", url.includes("page=3") && url.includes("per_page=200"));
+check(
+    // Digitised print is tagged Archives and ends around 2012. Restricting
+    // to that tag would drop every article published online since.
+    "a search is not restricted to the Archives tag",
+    !url.includes("tg="),
+    url,
+);
 
 console.log("\nreading an article");
 
@@ -532,6 +540,13 @@ check(
     matchedPhrases("the student\ngovernment voted").join() === "student government",
 );
 check("the older name matches", matchedPhrases("Student Council met").join() === "student council");
+check(
+    // The phrases the paper is searched for, and the phrases an article must
+    // actually contain. Changing this list is changing what the archive is.
+    "the archive searches for the SGA under the names it has used",
+    NEWSLETTER_PHRASES.join() === "sga,student government,student council",
+    NEWSLETTER_PHRASES,
+);
 check(
     "a piece mentioning none of them matches nothing",
     matchedPhrases("The lacrosse team beat Maryland on Saturday.").length === 0,

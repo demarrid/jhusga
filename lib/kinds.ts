@@ -84,7 +84,8 @@ export function documentKindLabel(kind: string): string {
  * characterisation to the body it was reporting on. So the passes that assume
  * authorship refuse these kinds outright rather than being taught to handle
  * them: see `meetingFor`, `canonicalTitle`, and the corpus passes in
- * lib/sync.ts.
+ * lib/sync.ts. lib/search.ts keeps them in a current-focus question: they
+ * are reporting, not superseded editions of the rules.
  */
 export const SECONDARY_KINDS: DocumentKind[] = ["newsletter.article"];
 
