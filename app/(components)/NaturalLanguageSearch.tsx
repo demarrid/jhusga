@@ -1,16 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition, type CSSProperties } from "react";
+import {
+    useEffect,
+    useRef,
+    useState,
+    useSyncExternalStore,
+    useTransition,
+    type CSSProperties,
+} from "react";
 
-import { askArchive } from "@/api/search";
+import { askArchive, askArchiveSources } from "@/api/search";
 import CitedProse from "@/app/(components)/CitedProse";
-import { MAX_QUESTION_CHARS } from "@/config/search";
+import { MAX_QUESTION_CHARS, describeQuestionReading } from "@/config/search";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
 import { formatDateShort } from "@/lib/dates";
 import { documentKindLabel } from "@/lib/kinds";
-import type { MatchedDocument, QuestionAnswer } from "@/lib/search";
+import type { MatchedDocument, QuestionAnswer, ReadingDocument } from "@/lib/search";
 
 import styles from "./NaturalLanguageSearch.module.css";
 
@@ -53,18 +60,45 @@ const EXAMPLE_CYCLE_MS = 2_800;
 /** First item repeated at the end so the carousel can snap back without reversing. */
 const EXAMPLE_LOOP = [...EXAMPLES, EXAMPLES[0]];
 
+/** How long each document stays current in the reading status. */
+function readingStepMs(count: number): number {
+    if (count <= 1) return 2_200;
+    if (count <= 4) return 1_800;
+    if (count <= 8) return 1_400;
+    return 900;
+}
+
+/** A list longer than this is reported as a count, not walked line by line. */
+const READING_LIST_LIMIT = 12;
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+/**
+ * How far through the documents the status line has got.
+ *
+ * One piece of state rather than two, because an index only means anything
+ * against the list it counts: kept apart, the position of the last question
+ * survives into the next one and the status opens partway down a list it has
+ * not read.
+ */
+type Reading = { documents: ReadingDocument[]; index: number };
+
+const NOTHING_READ: Reading = { documents: [], index: 0 };
+
 export default function NaturalLanguageSearch() {
     const [question, setQuestion] = useState("");
     const [answer, setAnswer] = useState<QuestionAnswer | null>(null);
+    const [reading, setReading] = useState<Reading>(NOTHING_READ);
     const [pending, startTransition] = useTransition();
     const [exampleIndex, setExampleIndex] = useState(0);
     const [exampleSlide, setExampleSlide] = useState(true);
+    const reducedMotion = usePrefersReducedMotion();
+    const asking = useRef(false);
 
     useEffect(() => {
         if (question.length > 0) return;
 
-        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        if (reducedMotion) return;
+        if (window.matchMedia(REDUCED_MOTION_QUERY).matches) return;
 
         const timer = window.setInterval(() => {
             setExampleIndex((index) => index + 1);
@@ -72,6 +106,22 @@ export default function NaturalLanguageSearch() {
 
         return () => window.clearInterval(timer);
     }, [question]);
+
+    const readingDocuments = reading.documents;
+
+    useEffect(() => {
+        if (!pending || reducedMotion || readingDocuments.length === 0) return;
+
+        const timer = window.setInterval(() => {
+            setReading((current) =>
+                current.index >= current.documents.length
+                    ? current
+                    : { ...current, index: current.index + 1 },
+            );
+        }, readingStepMs(readingDocuments.length));
+
+        return () => window.clearInterval(timer);
+    }, [pending, reducedMotion, readingDocuments]);
 
     function finishExampleLoop() {
         if (exampleIndex !== EXAMPLES.length) return;
@@ -84,11 +134,50 @@ export default function NaturalLanguageSearch() {
     }
 
     function ask(asked: string) {
-        if (asked.trim().length < 3) return;
+        // The button is disabled while a question is in flight, but the input
+        // is not, so without this a held Enter key starts a second pair of
+        // requests whose replies race the first. A ref rather than `pending`,
+        // because two submits in one tick read the same stale flag.
+        if (asking.current || asked.trim().length < 3) return;
+        asking.current = true;
+
+        // Cleared here rather than inside the transition below: an update made
+        // in an async transition does not reach the screen until that
+        // transition settles, which would leave the last question's documents
+        // on show for the whole of the next one.
+        setAnswer(null);
+        setReading(NOTHING_READ);
+
         startTransition(async () => {
-            setAnswer(await askArchive(asked));
+            // Retrieval is started first and in the same tick as generation, so
+            // the names of the documents being read can arrive while the model
+            // is still working. See askArchiveSources.
+            let finished = false;
+            const sourcesPromise = askArchiveSources(asked)
+                .then((documents) => {
+                    if (!finished) setReading({ documents, index: 0 });
+                })
+                .catch(() => {});
+
+            try {
+                setAnswer(await askArchive(asked));
+            } finally {
+                finished = true;
+                await sourcesPromise;
+                asking.current = false;
+            }
         });
     }
+
+    // The bar only measures the walk through the documents, which is the part
+    // whose length is known. Once it reaches the end the model is still
+    // writing, so the bar goes back to the indeterminate sweep rather than
+    // sitting full -- a bar that fills and then stops reads as a hang.
+    const walkingSources =
+        pending && !reducedMotion && reading.index < reading.documents.length;
+    const readingProgress = walkingSources
+        ? (reading.index + 1) / (reading.documents.length + 1)
+        : 0;
 
     return (
         <div className={styles.panel}>
@@ -129,7 +218,18 @@ export default function NaturalLanguageSearch() {
                         />
                     </div>
                     <div
-                        className={`${styles.loadingTrack} ${pending ? styles.loading : ""}`}
+                        className={[
+                            styles.loadingTrack,
+                            pending ? styles.loading : "",
+                            walkingSources ? styles.determinate : "",
+                        ]
+                            .filter(Boolean)
+                            .join(" ")}
+                        style={
+                            walkingSources
+                                ? ({ "--reading-progress": readingProgress } as CSSProperties)
+                                : undefined
+                        }
                         aria-hidden="true"
                     >
                         <span />
@@ -144,23 +244,151 @@ export default function NaturalLanguageSearch() {
                 </button>
             </form>
 
-            <div className={styles.answerRegion} aria-live="polite" aria-busy={pending}>
-                {answer && !pending && <Answer answer={answer} />}
+            <div className={styles.answerRegion} aria-busy={pending}>
+                {pending && (
+                    <ReadingStatus
+                        documents={reading.documents}
+                        index={reading.index}
+                        reducedMotion={reducedMotion}
+                    />
+                )}
+                <div aria-live="polite">
+                    {answer && !pending && <Answer answer={answer} />}
+                </div>
             </div>
         </div>
     );
 }
 
+/**
+ * What is being read while an answer is still being written.
+ *
+ * Retrieval returns in a moment; generation does not. The names below are the
+ * documents that retrieval picked, walked through one at a time so the wait
+ * is a progress report rather than a blank pause. Screen readers hear the
+ * count once, not every title as it cycles.
+ */
+function ReadingStatus({
+    documents,
+    index,
+    reducedMotion,
+}: {
+    documents: ReadingDocument[];
+    index: number;
+    reducedMotion: boolean;
+}) {
+    if (documents.length === 0) {
+        return (
+            <p className={styles.readingStatus} aria-live="polite">
+                Looking through the archive…
+            </p>
+        );
+    }
+
+    const total = documents.length;
+    const plural = total === 1 ? "" : "s";
+    const writing = !reducedMotion && index >= total;
+    const current = headlineDocument(documents, index, reducedMotion);
+    const announcement = writing
+        ? `Writing an answer from ${total} document${plural}.`
+        : `Reading ${total} document${plural}.`;
+
+    return (
+        <div className={styles.reading}>
+            <p className={styles.readingAnnouncement} aria-live="polite">
+                {announcement}
+            </p>
+            <p className={styles.readingStatus} aria-hidden="true">
+                {writing
+                    ? "Writing an answer from those documents…"
+                    : reducedMotion
+                      ? `Reading ${total} document${plural}`
+                      : `Reading ${index + 1} of ${total} document${plural}`}
+            </p>
+            {current && (
+                <p key={current.id} className={styles.readingTitle} aria-hidden="true">
+                    {current.title}
+                </p>
+            )}
+            {total > 1 && total <= READING_LIST_LIMIT && (
+                <ol className={styles.readingList} aria-hidden="true">
+                    {documents.map((document, documentIndex) => (
+                        <li
+                            key={document.id}
+                            className={readingItemClass(documentIndex, index, reducedMotion)}
+                        >
+                            {document.title}
+                        </li>
+                    ))}
+                </ol>
+            )}
+        </div>
+    );
+}
+
+/**
+ * The document named in large type, if any.
+ *
+ * With motion, whichever one the status has reached. Without, nothing moves
+ * while the reader waits, so a lone document is named and a list is left to
+ * the list below.
+ */
+function headlineDocument(
+    documents: ReadingDocument[],
+    index: number,
+    reducedMotion: boolean,
+): ReadingDocument | null {
+    if (reducedMotion) return documents.length === 1 ? documents[0] : null;
+    return index < documents.length ? documents[index] : null;
+}
+
+function readingItemClass(
+    documentIndex: number,
+    index: number,
+    reducedMotion: boolean,
+): string | undefined {
+    if (reducedMotion) return undefined;
+    if (documentIndex === index) return styles.readingNow;
+    return documentIndex < index ? styles.readingDone : undefined;
+}
+
+/**
+ * Whether the reader has asked for less motion.
+ *
+ * Subscribed to rather than read once, so changing the system setting takes
+ * effect without a reload. The server and the first client render both answer
+ * no, which is the markup the page is hydrated from.
+ */
+function usePrefersReducedMotion(): boolean {
+    return useSyncExternalStore(subscribeToReducedMotion, readReducedMotion, () => false);
+}
+
+function subscribeToReducedMotion(onChange: () => void): () => void {
+    const media = window.matchMedia(REDUCED_MOTION_QUERY);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+}
+
+function readReducedMotion(): boolean {
+    return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
 function Answer({ answer }: { answer: QuestionAnswer }) {
     const scopeLabel =
-        answer.focus === "historical"
-            ? "the archive"
-            : "the documents now in force";
+        answer.reading === "current"
+            ? "the documents now in force"
+            : answer.reading === "membership"
+              ? "the contact list"
+              : "the archive";
 
     const reason = noAnswerReason(answer, scopeLabel);
 
     return (
         <div className={styles.answer}>
+            <p className={styles.readingNote}>
+                {describeQuestionReading(answer.reading, answer.timeframe)}
+            </p>
+
             {answer.content ? (
                 <div className={styles.answerContent}>
                     {answer.status === "stale" && (
@@ -192,9 +420,6 @@ function Answer({ answer }: { answer: QuestionAnswer }) {
                     {answer.timeframe
                         ? `${sentenceCase(scopeLabel)} holds nothing for ${answer.timeframe.label}.`
                         : `Nothing in ${scopeLabel} matches those words.`}
-                    {answer.focus === "current" &&
-                        !answer.timeframe &&
-                        " Older editions are left out unless the question is about when something changed."}
                 </p>
             )}
         </div>

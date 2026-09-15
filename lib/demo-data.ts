@@ -380,6 +380,7 @@ export function demoSearchAnswer(question: string) {
             question,
             scope: "all" as const,
             focus,
+            reading: "period" as const,
             status: "empty" as const,
             content: "",
             citations: [],
@@ -399,6 +400,7 @@ export function demoSearchAnswer(question: string) {
         question,
         scope: "all" as const,
         focus,
+        reading: focus,
         status: "fresh" as const,
         content: "The demo archive suggests starting with the constitution and recent Senate minutes [1].",
         citations: [{

@@ -73,8 +73,10 @@ async function main() {
 
     const { answerQuestion } = await import("../lib/search");
     const answer = await answerQuestion(question, { scope, force });
+    const { describeQuestionReading } = await import("../config/search");
 
-    console.log(`\n${answer.status.toUpperCase()}${answer.error ? `: ${answer.error}` : ""}\n`);
+    console.log(`\n${answer.status.toUpperCase()}${answer.error ? `: ${answer.error}` : ""}`);
+    console.log(`${describeQuestionReading(answer.reading, answer.timeframe)}\n`);
 
     if (answer.timeframe) {
         console.log(

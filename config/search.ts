@@ -33,16 +33,75 @@ export type QuestionFocus = "current" | "historical";
  * Default is current: most people asking the archive want the constitution
  * in force, not the 112th's. A question that names a change, a comparison,
  * a crisis, or "the last time" has to look further back.
+ *
+ * Conjugations count, and they are listed rather than packed into one
+ * expression so a cue cannot steal a word boundary from its neighbour.
+ * "How have the bylaws changed over time" is the same kind of question as
+ * "how has the constitution changed"; treating it as current law drops every
+ * older edition before the model ever sees them.
+ *
+ * "Earliest" and "oldest" only count next to a document. Bare, they are how
+ * somebody asks who the oldest sitting senator is, which is a roster
+ * question about the people now, not a request for the 110th's bylaws.
  */
+const HISTORICAL_QUESTION = [
+    /\bwhen (?:was|were|did|is the last)\b/i,
+    /\blast time\b/i,
+    /\bused to\b/i,
+    /\bprevious\b/i,
+    /\bprior\b/i,
+    /\bhistor(?:y|ical)\b/i,
+    /\boriginally\b/i,
+    /\bfirst time\b/i,
+    /\bover time\b/i,
+    /\bover the years\b/i,
+    /\bconstitutional crisis\b/i,
+    /\bcrisis\b/i,
+    /\bcompar(?:e|ing|ed)\b/i,
+    /\bhow ha(?:s|ve)\b/i,
+    /\b(?:have|has|had)(?:\s+\w+){0,5}\s+changed\b/i,
+    /\bwhat changed\b/i,
+    /\bbetween the\b/i,
+    /\b(?:earliest|oldest)\b.{0,48}\b(?:bylaws?|constitution|edition|version|archive|document|minutes|record|stuff)\b/i,
+    /\b(?:bylaws?|constitution|edition|version|archive|document|minutes|record|stuff)\b.{0,48}\b(?:earliest|oldest)\b/i,
+];
+
 export function questionFocus(question: string): QuestionFocus {
-    if (
-        /\b(?:when (?:was|were|did|is the last)|last time|used to|previous|prior|history of|originally|first time|constitutional crisis|crisis|compar(?:e|ing|ed)|how has|what changed|between the)\b/i.test(
-            question,
-        )
-    ) {
-        return "historical";
+    return HISTORICAL_QUESTION.some((pattern) => pattern.test(question))
+        ? "historical"
+        : "current";
+}
+
+/**
+ * How a question was understood, before a model ran.
+ *
+ * These are detectors, not judgements. The answer shows which one fired, so
+ * a reader who asked about the earliest bylaws can see that older editions
+ * were left out because of the wording, not because the archive holds nothing
+ * earlier.
+ */
+export type QuestionReading = "current" | "historical" | "period" | "membership";
+
+/** The sentence under an answer that names the detector which ran. */
+export function describeQuestionReading(
+    reading: QuestionReading,
+    timeframe?: { label: string; outside: boolean } | null,
+): string {
+    switch (reading) {
+        case "membership":
+            return "This was read as a question about who holds a seat now, so it was answered from the contact list and roster, not from the constitution.";
+        case "period":
+            if (!timeframe) {
+                return "This was read as a question about a period, so the documents below are the ones dated in it.";
+            }
+            return timeframe.outside
+                ? `This was read as a question about ${timeframe.label}. The archive holds nothing dated in that period.`
+                : `This was read as a question about ${timeframe.label}, so the documents below are the ones dated in that period.`;
+        case "historical":
+            return "This was read as a question about how the rules used to be, so older editions were included.";
+        case "current":
+            return "This was read as a question about the rules now, so older editions were left out.";
     }
-    return "current";
 }
 
 /**

@@ -9,6 +9,7 @@ import {
     questionFocus,
     type MembershipBody,
     type QuestionFocus,
+    type QuestionReading,
     type SearchScope,
 } from "@/config/search";
 import { SESSION_NUMBER } from "@/config/sga";
@@ -114,6 +115,12 @@ export type MatchedDocument = {
     heading: string;
 };
 
+/** A document the model will be shown, for the question box's reading status. */
+export type ReadingDocument = {
+    id: string;
+    title: string;
+};
+
 /** The period a question named, resolved against today. */
 export type AnswerTimeframe = {
     /** How it reads back to the reader: "the past 7 days". */
@@ -136,6 +143,12 @@ export type QuestionAnswer = {
     scope: SearchScope;
     /** Whether the question was treated as about the rules now, or the past. */
     focus: QuestionFocus;
+    /**
+     * Which detector actually ran. Same information as focus/timeframe, named
+     * for the sentence shown to the reader — including membership, which is
+     * not a focus.
+     */
+    reading: QuestionReading;
     status: AnswerStatus;
     content: string;
     citations: AnswerCitation[];
@@ -624,7 +637,7 @@ export async function retrieve(
             return passage;
         });
 
-        if (isMembershipQuestion(question) && focus === "current") {
+        if (isMembershipQuestion(question)) {
             passages = [...(await rosterPassages(scope, terms)), ...passages];
         }
 
@@ -741,6 +754,146 @@ export async function retrievePassages(
     options: { scope?: SearchScope; limit?: number } = {},
 ): Promise<RetrievedPassage[]> {
     return (await retrieve(question, options)).passages;
+}
+
+/**
+ * How long a retrieval is held for a second caller, and how many are kept.
+ *
+ * The browser asks which documents are being read and for the answer itself
+ * in the same moment, and both need the same retrieval. Holding the in-flight
+ * promise makes that pair one pass over the index rather than two. The window
+ * only has to span the gap between the two calls, so it is short enough that
+ * nothing here can serve a stale reading of the archive.
+ */
+const SHARED_RETRIEVAL_MS = 15_000;
+const SHARED_RETRIEVAL_LIMIT = 32;
+
+const sharedRetrievals = new Map<
+    string,
+    { at: number; retrieval: Promise<Retrieval> }
+>();
+
+/**
+ * Retrieval for a question, shared with whoever else is asking for it now.
+ *
+ * Per-instance, like the rate limit in api/search.ts: a pair of calls that
+ * lands on two serverless instances simply retrieves twice, which is what it
+ * would have done anyway.
+ */
+function sharedRetrieval(
+    question: string,
+    options: { scope: SearchScope; focus: QuestionFocus; now: Date },
+): Promise<Retrieval> {
+    const key = `${options.scope}\u0000${options.focus}\u0000${question}`;
+    const startedAt = Date.now();
+
+    for (const [cached, entry] of sharedRetrievals) {
+        if (startedAt - entry.at > SHARED_RETRIEVAL_MS) sharedRetrievals.delete(cached);
+    }
+
+    const existing = sharedRetrievals.get(key);
+    if (existing) return existing.retrieval;
+
+    const retrieval = retrieve(question, options);
+    sharedRetrievals.set(key, { at: startedAt, retrieval });
+
+    // A failed retrieval is not worth remembering: the next caller should get
+    // a fresh attempt rather than the error this one hit.
+    retrieval.catch(() => sharedRetrievals.delete(key));
+
+    if (sharedRetrievals.size > SHARED_RETRIEVAL_LIMIT) {
+        const oldest = sharedRetrievals.keys().next().value;
+        if (oldest !== undefined) sharedRetrievals.delete(oldest);
+    }
+
+    return retrieval;
+}
+
+/**
+ * The documents a question will be answered from, before any model runs.
+ *
+ * Retrieval is cheap and usually returns in a moment. The written answer is
+ * not. The question box uses this list to say which files are being read, so
+ * a wait of tens of seconds is a report of progress rather than a blank pause.
+ *
+ * Every branch here mirrors one in answerQuestion, because a list naming
+ * documents the answer was not written from would be worse than no list.
+ */
+export async function sourceDocumentsForQuestion(
+    question: string,
+    options: { scope?: SearchScope; focus?: QuestionFocus; now?: Date } = {},
+): Promise<ReadingDocument[]> {
+    const scope = options.scope ?? "all";
+    const asked = question.trim().slice(0, MAX_QUESTION_CHARS);
+    const now = options.now ?? new Date();
+    const focus = options.focus ?? questionFocus(asked);
+
+    if (
+        !parseTimeframe(asked, now) &&
+        questionTerms(asked).length === 0 &&
+        !isMembershipQuestion(asked)
+    ) {
+        return [];
+    }
+
+    // Answering a roster question skips retrieval on purpose, so naming its
+    // sources must skip it too -- otherwise the status line pays for the
+    // full-text search that tryMembershipAnswer exists to avoid. The lookup
+    // does not depend on focus: isMembershipQuestion already means who sits
+    // now, even when the wording also contains "oldest" or "history".
+    if (!parseTimeframe(asked, now) && isMembershipQuestion(asked)) {
+        const roster = await rosterSourceDocuments();
+        if (roster.length > 0) return roster;
+    }
+
+    const { passages, matches } = await sharedRetrieval(asked, { scope, focus, now });
+
+    return documentsBeingRead(passages, matches);
+}
+
+/** The roster sheets a membership question is read from. */
+async function rosterSourceDocuments(): Promise<ReadingDocument[]> {
+    const rows = await prisma.document.findMany({
+        where: {
+            sessionNumber: SESSION_NUMBER,
+            kind: { in: ["directory", "attendance"] },
+        },
+        select: { id: true, kind: true, title: true, displayTitle: true },
+    });
+
+    return rows
+        .filter(isRosterSheet)
+        .map((row) => ({ id: row.id, title: row.displayTitle || row.title }));
+}
+
+/**
+ * Unique documents the model is shown, in the order they were retrieved.
+ *
+ * Passages first, because those are what generation actually reads. The listed
+ * matches are the fallback for a period that has files but no indexed text.
+ */
+export function documentsBeingRead(
+    passages: RetrievedPassage[],
+    matches: MatchedDocument[] = [],
+): ReadingDocument[] {
+    const documents: ReadingDocument[] = [];
+    const seen = new Set<string>();
+
+    for (const passage of passages) {
+        if (seen.has(passage.documentId)) continue;
+        seen.add(passage.documentId);
+        documents.push({ id: passage.documentId, title: passage.documentTitle });
+    }
+
+    if (documents.length > 0) return documents;
+
+    for (const match of matches) {
+        if (seen.has(match.id)) continue;
+        seen.add(match.id);
+        documents.push({ id: match.id, title: match.title });
+    }
+
+    return documents;
 }
 
 /** Best-scoring passages, capped per document so one file cannot crowd out. */
@@ -1281,6 +1434,7 @@ export async function answerQuestion(
         question: asked,
         scope,
         focus,
+        reading: focus,
         content: "",
         citations: [] as AnswerCitation[],
         matches: [] as MatchedDocument[],
@@ -1302,24 +1456,27 @@ export async function answerQuestion(
 
     // Roster questions are a lookup, not retrieval. Answer them from the
     // contact list before paying for a full-text search that ranks Article V
-    // of the constitution first.
-    if (focus === "current" && !parseTimeframe(asked, now) && isMembershipQuestion(asked)) {
+    // of the constitution first. isMembershipQuestion already means who sits
+    // now, so a historical cue in the same sentence ("the oldest sitting
+    // senator") must not skip the directory.
+    if (!parseTimeframe(asked, now) && isMembershipQuestion(asked)) {
         const membership = await tryMembershipAnswer(asked, {
             scope,
             force: options.force,
             key: questionKeyFor(asked, scope, focus, null),
-            base: { ...blank, timeframe: null },
+            base: { ...blank, timeframe: null, reading: "membership" },
         });
         if (membership) return membership;
     }
 
-    const { passages, matches, timeframe } = await retrieve(asked, {
+    const { passages, matches, timeframe } = await sharedRetrieval(asked, {
         scope,
         focus,
         now,
     });
     const key = questionKeyFor(asked, scope, focus, timeframe);
-    const base = { ...blank, timeframe };
+    const reading: QuestionReading = timeframe ? "period" : focus;
+    const base = { ...blank, timeframe, reading };
 
     if (passages.length === 0) {
         // "The documents do not say" and "the documents have not been read

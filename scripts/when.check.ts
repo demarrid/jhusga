@@ -13,6 +13,7 @@ import { questionTerms } from "../lib/terms";
 import {
     appendCitationMarkers,
     askedMembershipGroup,
+    describeQuestionReading,
     formatMembershipRoster,
     isMembershipQuestion,
     questionFocus,
@@ -117,10 +118,56 @@ function focusCheck(question: string, expected: "current" | "historical") {
 
 console.log("\nquestionFocus");
 focusCheck("how do I get a bill passed", "current");
+focusCheck("how do I change the bylaws", "current");
 focusCheck("what is the most recent constitution", "current");
+focusCheck("who is the oldest sitting senator", "current");
 focusCheck("when is the last time the constitution was updated", "historical");
 focusCheck("compare constitution 2026 april to constitution 2025 fall", "historical");
 focusCheck("why can't I find the constitutional crisis", "historical");
+focusCheck("how has the constitution changed", "historical");
+focusCheck("how have bylaws changed over time from the earliest stuff we have in archive", "historical");
+focusCheck("have the bylaws changed", "historical");
+focusCheck("bylaws over time", "historical");
+focusCheck("the earliest constitution we have", "historical");
+focusCheck("show me the earliest bylaws", "historical");
+
+console.log("\ndescribeQuestionReading");
+let readingCopyFailures = 0;
+function readingCopyCheck(
+    label: string,
+    actual: string,
+    expected: string,
+) {
+    const ok = actual === expected;
+    if (!ok) readingCopyFailures += 1;
+    console.log(`${ok ? "ok  " : "FAIL"} ${label}`);
+    if (!ok) console.log(`       expected ${expected}\n       actual   ${actual}`);
+}
+readingCopyCheck(
+    "current names the cut",
+    describeQuestionReading("current"),
+    "This was read as a question about the rules now, so older editions were left out.",
+);
+readingCopyCheck(
+    "historical names the older editions",
+    describeQuestionReading("historical"),
+    "This was read as a question about how the rules used to be, so older editions were included.",
+);
+readingCopyCheck(
+    "a period names the dates",
+    describeQuestionReading("period", { label: "the past 7 days", outside: false }),
+    "This was read as a question about the past 7 days, so the documents below are the ones dated in that period.",
+);
+readingCopyCheck(
+    "an empty period says so",
+    describeQuestionReading("period", { label: "the past 7 days", outside: true }),
+    "This was read as a question about the past 7 days. The archive holds nothing dated in that period.",
+);
+readingCopyCheck(
+    "membership names the roster",
+    describeQuestionReading("membership"),
+    "This was read as a question about who holds a seat now, so it was answered from the contact list and roster, not from the constitution.",
+);
 
 console.log("\nisMembershipQuestion");
 let membershipFailures = 0;
@@ -179,4 +226,4 @@ rosterCheck(
     "The current Judiciary is Tyler Turner (Chief Justice) and Felix Titre (Justice). [1]",
 );
 
-process.exitCode = failures + focusFailures + membershipFailures + groupFailures + rosterFailures > 0 ? 1 : 0;
+process.exitCode = failures + focusFailures + readingCopyFailures + membershipFailures + groupFailures + rosterFailures > 0 ? 1 : 0;

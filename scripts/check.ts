@@ -50,6 +50,7 @@ const SUITES = [
     "names",
     "newsletter",
     "passages",
+    "search",
     "summarize",
     "titles",
     "render",
