@@ -19,7 +19,6 @@ import { generateJson } from "@/lib/ai";
  *
  * The other half of the bargain is failing open. No API key, model down,
  * malformed reply, timeout: the submission goes up unscreened and says so.
- * Screening that breaks must not become screening that blocks everything.
  */
 
 export type ScreenVerdict = {

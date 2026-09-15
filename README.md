@@ -117,8 +117,7 @@ Two things withhold content and they are kept distinct by `hiddenBy`. A
 screening hold is a model's guess nobody has checked, so it stays out of the
 listing entirely. A moderator's decision has a person behind it, so it stays
 listed and readable behind a click, where it can be argued with. Every failure
-path in screening -- no key, model down, malformed reply -- posts unscreened,
-because screening that breaks must not become screening that blocks everything.
+path in screening -- no key, model down, malformed reply -- posts unscreened.
 
 There is no author-side delete, which is a rule and not a gap. Where nobody is
 named, withdrawing your own words means being able to say something about
@@ -284,7 +283,7 @@ thanks to cursor for aggressively trying to switch to grok
 
 thanks to archives for existing
 
-## Guideliens to Adhere To
+## Guidelines to Adhere To
 
 Automatic removal of Director of Communications if website maintenance fails on 4 instances.
 

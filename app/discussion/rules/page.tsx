@@ -70,8 +70,7 @@ export default function Rules() {
                 </p>
                 <p className={styles.muted}>
                     If the screening cannot run at all, submissions go up
-                    unscreened. Screening that breaks must not become screening
-                    that blocks everything.
+                    unscreened.
                 </p>
             </section>
 
