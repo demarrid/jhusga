@@ -1,0 +1,13 @@
+# This tree lives in WSL and is opened from Windows. Left to itself, Git for
+# Windows checks text out as CRLF while WSL git writes LF, and the two then
+# disagree about every line in every file -- which is how a stash of nothing
+# but line endings comes to report 35,000 changed lines. Pinning LF on both
+# sides is what stops that, and it is why `git stash` failed mid-pull.
+* text=auto eol=lf
+
+# Auto-detection usually gets these right, but one byte sequence that reads as
+# text is all it takes to rewrite a binary on checkout.
+*.png binary
+*.jpg binary
+*.ico binary
+*.mp4 binary
