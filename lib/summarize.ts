@@ -207,7 +207,7 @@ export async function summarizeDocument(
             kind: true,
             content: true,
             contentHash: true,
-            summary: { select: { id: true, status: true, promptHash: true } },
+            summary: { select: { id: true, status: true, promptHash: true, model: true } },
         },
     });
 
@@ -216,11 +216,28 @@ export async function summarizeDocument(
     const base = { documentId, title: document.title };
 
     if (!isSummarisable(document)) {
-        await record(documentId, {
+        // The same verdict this document already carries, reached the same way:
+        // no model was consulted then and none is being consulted now. Writing
+        // it again would only move the timestamp that says when the archive
+        // last looked, and would spend a slot in the run's budget on a document
+        // no model will ever be asked about.
+        const unchanged =
+            document.summary?.status === "empty" && document.summary.model === "";
+
+        if (!unchanged) {
+            await record(documentId, {
+                status: "empty",
+                error: "Too short or too templated to restate",
+            });
+        }
+
+        return {
+            ...base,
             status: "empty",
-            error: "Too short or too templated to restate",
-        });
-        return { ...base, status: "empty", skipped: false, citationsVerified: 0, citationsRejected: 0 };
+            skipped: unchanged,
+            citationsVerified: 0,
+            citationsRejected: 0,
+        };
     }
 
     const fingerprint = promptFingerprint(document.contentHash, document.kind);
@@ -403,9 +420,16 @@ export async function summarizeStaleDocuments(
             ...(options.force
                 ? {}
                 : {
+                    // "empty" is here as a backstop rather than because the
+                    // verdict is expected to change: recordDocument retires it
+                    // when the text changes, and this catches the rows that
+                    // went stale before it did so, or by a path that does not
+                    // run through it. It costs a row read each, not a model
+                    // call -- summarizeDocument reports an unrevised verdict as
+                    // skipped, so the budget is untouched.
                     OR: [
                         { summary: { is: null } },
-                        { summary: { status: { in: ["stale", "failed"] } } },
+                        { summary: { status: { in: ["stale", "failed", "empty"] } } },
                     ],
                 }),
         },

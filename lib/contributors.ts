@@ -202,6 +202,52 @@ function looksLikeOffice(prefix: string): boolean {
     return false;
 }
 
+/**
+ * Whether a line is an office title rather than a sentence that happens to
+ * mention one.
+ *
+ * `looksLikeOffice` is a word test, so "no single justice controls outcomes"
+ * matches on "justice". A slide writes the office on its own line in Title
+ * Case — "Chief Justice", "Justice" — and that is the only shape this treats
+ * as the office a name above it holds.
+ */
+function isOfficeLine(text: string): boolean {
+    const item = text.replace(/\s+/g, " ").trim();
+    if (!item || item.length > 40) return false;
+    const words = item.split(" ");
+    if (words.length > 4) return false;
+    if (/[0-9.?!]/.test(item)) return false;
+    if (
+        !words.every(
+            (word) =>
+                /^[A-Z][A-Za-z'’-]*$/.test(word) || /^(?:of|the|and|for)$/.test(word),
+        )
+    ) {
+        return false;
+    }
+    // NOTES, CSO, END match the 2–6 letter acronym test used for VPOTS, and
+    // they are headings, not an office a person holds.
+    if (OFFICE_ACRONYM.test(item)) return false;
+    if (!OFFICE_WORDS.test(item) && !/^(?:vpots|sbp|vpot?s)$/i.test(item)) {
+        return false;
+    }
+    const first = words[0] ?? "";
+    if (
+        !OFFICE_WORDS.test(first) &&
+        !/^(?:The|Vice|Co|Chief|Associate|Executive|Student|Senate)$/i.test(first)
+    ) {
+        return false;
+    }
+    // "Senator Tyler Turner" is a person. "Senator Chats" and "Vice Chair
+    // Elections" leave a leftover word that is not an office either.
+    const parsed = parsePersonToken(item);
+    if (parsed?.office && looksLikePersonName(parsed.name)) {
+        if (parsed.name.split(/\s+/).length >= 2) return false;
+        if (!/\bof\b/i.test(item) && !OFFICE_WORDS.test(parsed.name)) return false;
+    }
+    return true;
+}
+
 function tidyOffice(prefix: string): string {
     const collapsed = prefix.replace(/\s+/g, " ").trim();
     if (
@@ -837,9 +883,6 @@ function harvestConfirmation(
  */
 const LIST_ITEM = /^[ \t]*(?:[-*+\u2022]|\(?(?:[ivxlcdm]+|[a-z]|\d+)[.)])\s+/i;
 
-/** "Kai: do absences need to be supplemented with a reason (Yes)". */
-const SPEAKER_LINE = /^([^:]{2,40}?)\s*:\s*(\S.*)$/;
-
 /**
  * Somebody named as speaking, which in a set of minutes is often the only
  * record that they were in the room at all.
@@ -849,35 +892,342 @@ const SPEAKER_LINE = /^([^:]{2,40}?)\s*:\s*(\S.*)$/;
  * things. A parser that reads only labelled lists comes back from a full
  * meeting with two excused absences and nobody present.
  *
- * The shape is far too loose to be trusted on its own: "Venue: Levering
- * (Free)", "Timeline: no specific date was mentioned" and "Article I: Bill of
- * Rights" are the same handful of tokens as a senator making a point, and
- * across this archive there are five hundred distinct words in front of that
- * colon. So what is found here is marked `onlyIfKnown` and is thrown away
- * unless the name turns out to be somebody the archive already holds a full
- * name for. That is what lets this be generous about the shape and still not
- * seat a senator called Timeline.
+ * Two shapes, because the minutes are typed two ways. Structured minutes put
+ * each remark under a list marker (`1. Kai: do absences need…`). Hurried ones
+ * drop the marker and write `jazz: any questions?` as an ordinary paragraph,
+ * sometimes several speakers to a line, and sometimes the name alone above
+ * the bullets of what they said. The list form is read in every document; the
+ * paragraph form is only read in minutes, because that is also how a bill
+ * writes `Location: Levering` and a sheet writes `Variable type: …`.
+ *
+ * The shape is still far too loose to be trusted on its own: "Venue: Levering
+ * (Free)" and "Article I: Bill of Rights" are the same handful of tokens as a
+ * senator making a point. So what is found here is marked `onlyIfKnown` and
+ * is thrown away unless the name turns out to be somebody the archive already
+ * holds a full name for. That is what lets this be generous about the shape
+ * and still not seat a senator called Timeline.
  */
 function harvestSpeaker(
     found: Map<string, ExtractedContributor>,
     rawLine: string,
     line: string,
+    next: { raw: string; line: string } | null,
+    minutes: boolean,
 ): void {
-    if (!LIST_ITEM.test(rawLine)) return;
+    const inList = LIST_ITEM.test(rawLine);
+    if (!inList && !minutes) return;
 
-    const said = SPEAKER_LINE.exec(line.replace(ENUMERATOR, "").trim());
-    if (!said) return;
+    const text = line.replace(ENUMERATOR, "").trim();
+    harvestSpeakerAttributions(found, text);
 
-    const [, speaker, remark] = said;
+    if (!minutes || inList) return;
 
-    // A heading introducing people is not one of them: "Cabinet Reports:" and
-    // "Opposed: Jackson, damari" both run longer than anybody is named.
-    if (speaker!.split(/\s+/).length > 3) return;
+    // `charles:` on its own line, the remark wrapping onto the next. An empty
+    // colon followed by another attribution (`seconds:` then `point of
+    // information:`) is a heading, not a person speaking.
+    const hanging = /^([A-Za-z][A-Za-z'’.-]{1,}(?:\s+[A-Za-z][A-Za-z'’.-]{1,}){0,2})\s*:\s*$/.exec(
+        text,
+    );
+    if (hanging && next && !attributionStart(next.line) && /[a-z]/.test(next.line)) {
+        recordSpeaker(found, hanging[1]!, next.line, text);
+    }
 
-    // What was said, rather than a figure or a link the line is filed under.
-    if (!/[a-z]/.test(remark!)) return;
+    // `Felix` above a nested list of what he said. A heading like "ceremony"
+    // followed by a paragraph is not this: the next line has to be a bullet.
+    if (
+        next &&
+        LIST_ITEM.test(next.raw) &&
+        parsePersonToken(text) &&
+        looksLikePersonName(text)
+    ) {
+        recordSpeaker(found, text, next.line, text);
+    }
+}
 
-    recordPerson(found, speaker!, "interlocutor", line, undefined, true);
+/**
+ * Words that sit in front of a colon in the minutes without being a person:
+ * the seconder, the vote, the heading for a point of information. Read as
+ * names they would only ever be believed if the archive already held somebody
+ * called Aye, which it does not — but skipping them here keeps them off the
+ * resolver's desk.
+ */
+const SPEAKER_NOISE = new Set([
+    "second",
+    "seconds",
+    "aye",
+    "nay",
+    "abstain",
+    "passed",
+    "motion",
+    "poi",
+    "text",
+    "note",
+    "notes",
+    "process",
+    "summary",
+    "total",
+    "date",
+    "time",
+    "location",
+    "agenda",
+    "question",
+    "questions",
+    "someone",
+    "person",
+    "information",
+]);
+
+/**
+ * Headings the minutes write with a colon, which parse as a two-word name.
+ * "First Reading:" and "Action Items:" are the same tokens as "Grace Guan:".
+ */
+const SPEAKER_HEADING_WORDS = new Set([
+    "reading",
+    "items",
+    "item",
+    "meeting",
+    "business",
+    "follow-up",
+    "followup",
+    "findings",
+    "purpose",
+    "suggestion",
+    "initiatives",
+    "initiative",
+    "absences",
+    "absence",
+    "action",
+    "actions",
+    "announcements",
+    "adjournment",
+    "attendance",
+    "ceremony",
+    "estimates",
+    "readers",
+    "presentation",
+    "discussion",
+    "logistics",
+    "ideas",
+    "first",
+    "last",
+    "new",
+    "next",
+    "other",
+    "updates",
+    "update",
+    "report",
+    "reports",
+    "notetaker",
+    "venue",
+    "timeline",
+    "processes",
+    "passed",
+    "chief",
+    "medical",
+    "mental",
+    "health",
+    "operations",
+    "chats",
+    "giveaways",
+    "massage",
+]);
+
+function recordSpeaker(
+    found: Map<string, ExtractedContributor>,
+    speaker: string,
+    remark: string,
+    evidence: string,
+): void {
+    const name = speaker.trim();
+    if (SPEAKER_NOISE.has(name.toLowerCase())) return;
+    const keyParts = nameKey(name).split(" ").filter(Boolean);
+    if (keyParts.some((part) => SPEAKER_NOISE.has(part) || SPEAKER_HEADING_WORDS.has(part))) {
+        return;
+    }
+    if (name.includes(",")) return;
+    if (isStageDirection(remark)) return;
+    if (remarkAboutSomeoneAbsent(remark)) return;
+    // Hurried minutes name people in one or two words. Three is a heading:
+    // "Last Meeting Follow-up", "Academic Affairs Chair".
+    if (name.split(/\s+/).length > 2) return;
+    recordPerson(found, name, "interlocutor", evidence, undefined, true);
+}
+
+/** `<rises>`, `\<the script\>` — the minute-taker describing the room, not quoting it. */
+function isStageDirection(remark: string): boolean {
+    return /^\s*<[^>]{1,40}>\s*$/.test(remark.trim());
+}
+
+/**
+ * `tekeya: had a medical episode, that is why she is not here today`.
+ *
+ * The line is typed like every other attribution, but it is Charles telling
+ * the room what happened to her. First-person remarks that mention somebody
+ * else (`jackson: she thinks we should wait`) do not look like this: they do
+ * not announce that the named person is absent.
+ */
+function remarkAboutSomeoneAbsent(remark: string): boolean {
+    return /\b(?:s?he|they)\b.{0,60}\b(?:not here|isn['’]?t here|are not here|absent)\b/i.test(
+        remark,
+    );
+}
+
+function attributionStart(line: string): boolean {
+    const text = line.replace(ENUMERATOR, "").trim();
+    const colon = text.indexOf(":");
+    if (colon <= 0) return false;
+    return !!parsePersonToken(text.slice(0, colon).trim());
+}
+
+/**
+ * Every `Name: remark` on a line, not just the one it starts with.
+ *
+ * Hurried minutes run speakers together (`veda: … emin: we had 12 bushels`)
+ * and also bury a second colon inside a remark (`cole: 4.3.3.1.2: if member…`).
+ * The longest stretch of words immediately before each colon that parses as a
+ * person is the speaker; a figure (`4.3.3.1.2`) or a phrase (`point of
+ * information`) does not parse and is left as part of the previous remark.
+ */
+function harvestSpeakerAttributions(
+    found: Map<string, ExtractedContributor>,
+    text: string,
+): void {
+    const hits: { name: string; nameStart: number; remarkAt: number }[] = [];
+    let from = 0;
+
+    while (from < text.length) {
+        const colonAt = text.indexOf(":", from);
+        if (colonAt === -1) break;
+
+        const before = text.slice(0, colonAt).trimEnd();
+        const words = before.split(/\s+/).filter(Boolean);
+        let name: string | null = null;
+        for (let n = Math.min(3, words.length); n >= 1; n -= 1) {
+            const candidate = words.slice(-n).join(" ");
+            if (n > 1 && !/[A-Z]/.test(candidate)) {
+                // `account emin:` is a sentence with a name at the end, not
+                // somebody called Account Emin. A two-word name the line
+                // starts with (`grace guan:`) is still a name.
+                const prefix = words.slice(0, words.length - n).join(" ");
+                if (prefix && !/[.!?]$/.test(prefix)) continue;
+            }
+            if (parsePersonToken(candidate) && looksLikePersonName(candidate)) {
+                name = candidate;
+                break;
+            }
+        }
+
+        from = colonAt + 1;
+        if (!name) continue;
+        hits.push({
+            name,
+            nameStart: before.length - name.length,
+            remarkAt: colonAt + 1,
+        });
+    }
+
+    for (let i = 0; i < hits.length; i += 1) {
+        const hit = hits[i]!;
+        const until = i + 1 < hits.length ? hits[i + 1]!.nameStart : text.length;
+        const remark = text.slice(hit.remarkAt, until).trim();
+        if (!remark || !/[a-z]/.test(remark)) continue;
+        recordSpeaker(found, hit.name, remark, text);
+    }
+}
+
+/** The next line that still has text, skipping blanks the minute-taker left. */
+function peekNonEmpty(
+    lines: string[],
+    from: number,
+): { raw: string; line: string } | null {
+    for (let j = from + 1; j < lines.length; j += 1) {
+        if (!lines[j]!.trim()) continue;
+        return { raw: lines[j]!, line: toPlainText(lines[j]!) };
+    }
+    return null;
+}
+
+/**
+ * "Felix Titre" / "Chief Justice" — a name on its own line and the office
+ * they hold on the next, which is how a slide introduces the people on it.
+ *
+ * The same fact written on one line (`Felix Titre Chief Justice`) is read
+ * here too. Either way the name is a full given name and surname, so it is
+ * believed outright: these are the people the document is about, not a word
+ * that happened to sit in front of a colon.
+ */
+function harvestNamedOffice(
+    found: Map<string, ExtractedContributor>,
+    line: string,
+    next: { line: string } | null,
+    kind?: string,
+): void {
+    // Slides are the documents that introduce people this way. Minutes and
+    // bills write the same tokens as headings ("New Business" / "NOTES") and
+    // would mint a person for each pairing.
+    if (kind !== "presentation") return;
+
+    const text = line.replace(ENUMERATOR, "").trim();
+    if (!text) return;
+
+    const stacked = next?.line.replace(ENUMERATOR, "").trim() ?? "";
+    if (
+        stacked &&
+        isOfficeLine(stacked) &&
+        !isOfficeLine(text) &&
+        isStandalonePersonName(text)
+    ) {
+        recordPerson(found, text, "reporting", `${text}\n${stacked}`, stacked);
+        return;
+    }
+
+    const peeled = peelTrailingOffice(text);
+    if (peeled) {
+        recordPerson(found, peeled.name, "reporting", text, peeled.office);
+    }
+}
+
+/** A line that is only a given name and a surname, with nothing else on it. */
+function isStandalonePersonName(text: string): boolean {
+    const parts = text.split(/\s+/);
+    if (parts.length < 2 || parts.length > 4) return false;
+    if (
+        parts.some(
+            (part) =>
+                SPEAKER_HEADING_WORDS.has(part.toLowerCase()) ||
+                SPEAKER_NOISE.has(part.toLowerCase()) ||
+                PLACEHOLDER_WORDS.has(part.toLowerCase()),
+        )
+    ) {
+        return false;
+    }
+    const parsed = parsePersonToken(text);
+    return (
+        !!parsed &&
+        looksLikePersonName(parsed.name) &&
+        nameKey(parsed.name) === nameKey(text)
+    );
+}
+
+/**
+ * The office at the end of a titled line, and the name in front.
+ *
+ * Slides write the office after the person ("Katherine Zhu Justice") where
+ * bills write it before ("Finance Chair Peter Tarpley"). The name has to be
+ * at least two words, or "Justice" would be peeled off "Student Justice" and
+ * leave a given name that is really a body.
+ */
+function peelTrailingOffice(line: string): { name: string; office: string } | null {
+    const parts = line.split(/\s+/).filter(Boolean);
+    for (const length of [1, 2, 3]) {
+        if (parts.length - length < 2) continue;
+        const office = parts.slice(-length).join(" ");
+        const name = parts.slice(0, -length).join(" ");
+        if (!looksLikeOffice(office) || !isOfficeLine(office)) continue;
+        if (!isPlausibleName(name) || !looksLikePersonName(name)) continue;
+        return { name, office: tidyOffice(office) };
+    }
+    return null;
 }
 
 function harvestAttendanceTable(
@@ -934,8 +1284,14 @@ function indentOf(rawLine: string): number {
  *
  * Returns at most one entry per (name, role) pair.
  */
-export function extractContributors(markdown: string, title?: string): ExtractedContributor[] {
+export function extractContributors(
+    markdown: string,
+    title?: string,
+    kind?: string,
+): ExtractedContributor[] {
     const found = new Map<string, ExtractedContributor>();
+    const minutes = !!kind && kind.startsWith("minutes.");
+    const lines = markdown.split(/\r?\n/);
 
     // The report section being read, if any. Under one of these a bare name is
     // a person rather than a phrase that looks like one.
@@ -953,7 +1309,8 @@ export function extractContributors(markdown: string, title?: string): Extracted
     // name after the first.
     let carryingList: CarryingList | null = null;
 
-    for (const rawLine of markdown.split(/\r?\n/)) {
+    for (let i = 0; i < lines.length; i += 1) {
+        const rawLine = lines[i]!;
         if (rawLine.includes("|")) {
             harvestAttendanceTable(found, rawLine);
             carryingList = null;
@@ -1035,7 +1392,9 @@ export function extractContributors(markdown: string, title?: string): Extracted
             }
         }
 
-        harvestSpeaker(found, rawLine, line);
+        const next = peekNonEmpty(lines, i);
+        harvestNamedOffice(found, line, next, kind);
+        harvestSpeaker(found, rawLine, line, next, minutes);
     }
 
     if (title) harvestTitleAuthor(found, title);

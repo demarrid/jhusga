@@ -962,5 +962,176 @@ check(
     rolled,
 );
 
+// Hurried minutes drop the list markers and write `name: remark` as ordinary
+// paragraphs — and a slide names its people as a name on one line and their
+// office on the next.
+const hurried = [
+    "Felix",
+    "* main job",
+    "* comprised of 5 justices",
+    "",
+    "katherine",
+    "* sga can send a writ",
+    "",
+    "aryan",
+    "* internal accountability",
+    "",
+    "ceremony",
+    "",
+    "to be sworn in is not necessary, but is preferred",
+    "",
+    "felix: ok, do we have any class senators that need to be sworn in?",
+    "mamadou: <rises>",
+    "cole, andrei: <rise>",
+    "",
+    "jazz: executive reports",
+    "jason: we had jay games! saw some of you",
+    "sumi: same stuff, questions about buddy talk to me",
+    "amy: we have in the ballpark allocated 270k",
+    "grace guan: no attachments",
+    "andrei: i am senator of the arts",
+    "kayla: i am hispanic/latinx heritage senator",
+    "",
+    "charles:",
+    "",
+    "if you need to talk to me for whatever reason come see me",
+    "",
+    "tekeya: had a medical episode, that is why she is not here today, not well, but getting better",
+    "",
+    "veda: so did you take that into account emin: we had 12 bushels left over last time",
+].join("\n");
+const heard = extractContributors(hurried, undefined, "minutes.senate");
+const heardAs = (name: string) => heard.find((p) => p.name === name);
+
+check(
+    "a paragraph that attributes a remark is read as speech in the minutes",
+    ["Felix", "Jazz", "Jason", "Amy", "Andrei", "Kayla", "Charles"].every(
+        (name) => heardAs(name)?.role === "interlocutor",
+    ),
+    heard,
+);
+check(
+    "a two-word speaker is kept together",
+    heardAs("Grace Guan")?.role === "interlocutor",
+    heardAs("Grace Guan"),
+);
+check(
+    "two speakers on one line are both recorded",
+    heardAs("Veda")?.role === "interlocutor" && heardAs("Emin")?.role === "interlocutor",
+    heard,
+);
+check(
+    "a name above the bullets of what they said is the person speaking",
+    ["Katherine", "Aryan"].every((name) => heardAs(name)?.role === "interlocutor"),
+    heard,
+);
+check(
+    "a heading that is not a name is not a speaker, even in the minutes",
+    !heard.some((p) => /ceremony/i.test(p.name)),
+    heard,
+);
+check(
+    "a stage direction is not a remark",
+    !heard.some((p) => /Mamadou|Cole/.test(p.name)),
+    heard,
+);
+check(
+    "a line that talks about someone who is not in the room is not them speaking",
+    !heard.some((p) => /tekeya/i.test(p.name)),
+    heard,
+);
+check(
+    "a remark is still only believed once the archive recognises the speaker",
+    heard.filter((p) => p.role === "interlocutor").every((p) => p.onlyIfKnown),
+    heard,
+);
+check(
+    "a header field outside a list is still not a speaker on a bill",
+    extractContributors("Venue: Levering (free) or the Rec Center").length === 0,
+);
+
+const deck = [
+    "The Judiciary",
+    "Felix Titre",
+    "Chief Justice",
+    "",
+    "Aryan Gautam",
+    "Justice",
+    "",
+    "Katherine Zhu",
+    "Justice",
+    "",
+    "What do we do?",
+    "Review Formal Complaints",
+].join("\n");
+const justices = extractContributors(deck, undefined, "presentation");
+const justice = (name: string) => justices.find((p) => p.name === name);
+
+check(
+    "a slide that names someone and then their office records the person",
+    ["Felix Titre", "Aryan Gautam", "Katherine Zhu"].every(
+        (name) => justice(name)?.role === "reporting" && justice(name)?.onlyIfKnown === false,
+    ),
+    justices,
+);
+check(
+    "the office on the following line is kept",
+    justice("Felix Titre")?.office === "Chief Justice" &&
+    justice("Aryan Gautam")?.office === "Justice" &&
+    justice("Katherine Zhu")?.office === "Justice",
+    justices,
+);
+check(
+    "the heading above the names is not a person",
+    !justices.some((p) => /Judiciary|Complaints/i.test(p.name)),
+    justices,
+);
+check(
+    "a sentence that mentions an office is not the office a name holds",
+    !extractContributors(
+        "Internal Accountability\nAll members participate, so no single justice controls outcomes.",
+    ).some((p) => /Internal|Accountability|members/i.test(p.name)),
+);
+check(
+    "the same office written after the name on one line is still an office",
+    extractContributors("Katherine Zhu Justice", undefined, "presentation").some(
+        (p) => p.name === "Katherine Zhu" && p.office === "Justice",
+    ),
+);
+check(
+    "a slide-style name is not read off a bill or a set of minutes",
+    extractContributors("Felix Titre\nChief Justice").length === 0 &&
+    extractContributors("Felix Titre\nChief Justice", undefined, "minutes.senate")
+        .length === 0,
+);
+check(
+    "a committee heading sitting above NOTES is not a person",
+    extractContributors("New Business\nNOTES", undefined, "presentation").length === 0,
+);
+check(
+    "a slide heading above a phrase that merely contains an office word is not a person",
+    extractContributors("Plant Giveaways\nMassage Chairs", undefined, "presentation")
+        .length === 0,
+);
+check(
+    "Let’s Connect above Senator Chats is not two people",
+    extractContributors("Let’s Connect\nSenator Chats", undefined, "presentation")
+        .length === 0,
+);
+check(
+    "a section heading in the minutes is not someone speaking",
+    !extractContributors(
+        "First Reading:\nthe bills below\nAction Items:\n- follow up with dining",
+        undefined,
+        "minutes.senate",
+    ).some((p) => /First|Reading|Action|Items/i.test(p.name)),
+);
+check(
+    "a leading office is still peeled from the front, not the back",
+    extractContributors("Sponsored by: Finance Chair Peter Tarpley").some(
+        (p) => p.name === "Peter Tarpley" && p.office === "Finance Chair",
+    ),
+);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

@@ -353,6 +353,16 @@ export type SummaryCitation = {
 export type DocumentRestatement = {
     content: string;
     status: SectionStatus;
+    /**
+     * Whether a model ever read the document.
+     *
+     * Only interesting alongside an empty status, where it separates the two
+     * ways of having nothing to say: refused before it was sent, because there
+     * was barely any text to send, or read and found to state nothing a
+     * restatement would add. One sentence for both told readers that a full set
+     * of minutes was a template.
+     */
+    readByModel: boolean;
     generatedAt: Date | null;
     citations: SummaryCitation[];
 };
@@ -567,6 +577,7 @@ export async function getDocument(
             ? {
                 content: document.summary.content,
                 status: normaliseStatus(document.summary.status),
+                readByModel: document.summary.model !== "",
                 generatedAt: document.summary.generatedAt,
                 citations: document.summary.citations.map((citation) => ({
                     annotationId: citation.annotationId,

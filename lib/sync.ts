@@ -530,7 +530,7 @@ export async function recordContributors(
         },
     });
 
-    const parsed = extractContributors(content, document?.title);
+    const parsed = extractContributors(content, document?.title, document?.kind);
 
     await prisma.documentContributor.deleteMany({
         where: { documentId, source: "parsed" },
@@ -874,8 +874,16 @@ export async function ingestFile(
 
     // The summary restates the whole document, so any change to the text dates
     // it -- not just a change to a quoted passage.
+    //
+    // "empty" as much as "fresh". Finding nothing to restate is a reading of
+    // the text like any other, so new text retires it too. Exempting it is what
+    // left a set of minutes still calling itself a stub a week after it was
+    // written up: the secretary opens "MINUTES 4" in Drive before the meeting,
+    // it syncs at a few hundred characters, and that verdict then outlived
+    // every word typed into it. "failed" is left as it is, because the queue
+    // already comes back for it and the record of the failure is worth keeping.
     await prisma.documentSummary.updateMany({
-        where: { documentId: document.id, status: "fresh" },
+        where: { documentId: document.id, status: { in: ["fresh", "empty"] } },
         data: { status: "stale" },
     });
     return true;

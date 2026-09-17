@@ -17,15 +17,19 @@ export default function DocumentRestatement({
 }: {
     restatement: Restatement | null;
 }) {
-    // "Empty" is a decision and not a gap: the document was read and found to
-    // be a template or a stub, and saying "not yet" about it would promise a
-    // summary that is never coming.
+    // "Empty" is a decision and not a gap, and saying "not yet" about it would
+    // promise a summary that is never coming. But it is reached two ways, and
+    // one sentence for both called a full set of minutes a template: a document
+    // no model was sent is being judged on its length, while one a model read
+    // is being judged on what it says.
     if (!restatement || !restatement.content) {
         return (
             <p className={styles.muted}>
-                {restatement?.status === "empty"
-                    ? "This document is a template or a stub, so there is nothing to restate."
-                    : "No plain-language summary yet. The nightly sync writes one."}
+                {restatement?.status !== "empty"
+                    ? "No plain-language summary yet. The nightly sync writes one."
+                    : restatement.readByModel
+                        ? "This document was read, and it states nothing a restatement would add."
+                        : "There is too little text here to restate — a stub, or a template nobody has filled in."}
             </p>
         );
     }

@@ -102,6 +102,7 @@ export function demoDocument(documentId: string) {
         restatement: {
             content: document.summary,
             status: "fresh" as const,
+            readByModel: true,
             generatedAt: date(document.driveModifiedTime),
             citations: document.summaryQuotes.map((quote, index) => ({
                 annotationId: summaryAnnotations[index]!.id,

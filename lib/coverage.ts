@@ -302,8 +302,10 @@ async function storeArticle(
 
     summary.articlesUpdated += 1;
     await reanchorDocument(document.id, content);
+    // Including "empty", for the reason given where recordDocument does the
+    // same: a verdict of nothing-to-restate was a reading of the old text.
     await prisma.documentSummary.updateMany({
-        where: { documentId: document.id, status: "fresh" },
+        where: { documentId: document.id, status: { in: ["fresh", "empty"] } },
         data: { status: "stale" },
     });
 
