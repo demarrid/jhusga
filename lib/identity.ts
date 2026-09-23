@@ -407,6 +407,10 @@ function readsAsByline(line: string): boolean {
  * drafted over a fortnight is a date the document never claims. Lines that
  * disagree date nothing, since a document that opens by naming two days is
  * dating something other than itself.
+ *
+ * A line carrying a bill number is a caption, not a byline, even when it is
+ * short enough to pass for one: "S-B.114.09.08.2026-1 | The Accountability
+ * Act" near the top of an agenda is a bill up for a reading.
  */
 function bylineDate(content: string): Date | null {
     const dates = new Set<string>();
@@ -420,6 +424,8 @@ function bylineDate(content: string): Date | null {
 
     for (const line of lines) {
         if (line.length > BYLINE_CHARS || !readsAsByline(line)) continue;
+        // `search` ignores the global flag's lastIndex, which `test` would not.
+        if (line.search(BILL_NUMBER) !== -1 || line.search(BILL_NUMBER_DATED) !== -1) continue;
         const iso = meetingDate(line);
         if (iso) dates.add(iso);
     }
