@@ -85,7 +85,7 @@ export default async function About() {
             Outside of hosting public Senate, Committee, Executive, and Judicial
             meetings, as well as funding Registered Student Organizations
             (RSOs), consulting faculty, and recordkeeping, some examples of the
-            most impactful work of the SGA is:
+            most impactful work of the SGA are:
           </p>
 
           <ol className={styles.impactList}>
