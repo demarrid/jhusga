@@ -346,13 +346,19 @@ function agreedDate(dates: Date[]): Date | null {
  */
 export function dateFromDocument(input: IdentityInput): Date | null {
     const text = header(input.title, input.content);
+    return dateFromClauses(text) ?? dateFromBillNumbers(text);
+}
 
+function dateFromClauses(text: string): Date | null {
     const clauses = datesFromDayOfClauses(text);
     for (const rank of [...clauses.keys()].sort((a, b) => b - a)) {
         const agreed = agreedDate(clauses.get(rank)!);
         if (agreed) return agreed;
     }
+    return null;
+}
 
+function dateFromBillNumbers(text: string): Date | null {
     return (
         agreedDate(datesFromDatedBillNumbers(text)) ??
         agreedDate(datesFromBillNumbers(text))
@@ -427,14 +433,18 @@ function bylineDate(content: string): Date | null {
 /**
  * The date to file a document under, or null if it names none.
  *
- * `dateFromDocument` is the document arguing about itself in a clause written
- * to be quoted, and wins. A meeting does not: it states its date in its title
- * and nowhere else, which is why that is read next. Without it most of the
- * archive is undated, since minutes and agendas are most of what the archive
- * holds -- and a reader asking what happened last week is asking about exactly
- * those. A byline is read last, being the weakest of the three: it is a line
- * that happens to sit where a date belongs rather than a date that says what
- * it is for.
+ * A "day of" clause is the document arguing about itself in words written to
+ * be quoted, and wins. A bill number in the title is the document's own
+ * caption, and a meeting states its date in its title when it states one at
+ * all; both are read next. Without those most of the archive is undated,
+ * since minutes and agendas are most of what the archive holds -- and a reader
+ * asking what happened last week is asking about exactly those. A byline
+ * follows, being a line that happens to sit where a date belongs rather than
+ * a date that says what it is for.
+ *
+ * A bill number in the body comes last. On a bill it is the caption, but on an
+ * agenda it is a bill up for a reading: "S-B.114.09.08.2026-1" on the GBM #4
+ * agenda is when the Accountability Act was introduced, not when GBM #4 met.
  *
  * Drive's createdTime is deliberately not a fallback here. It is the day
  * somebody copied a template, and a caller that wants it should say so.
@@ -444,8 +454,11 @@ export function documentDate(input: {
     content?: string;
     driveCreatedTime?: Date | null;
 }): Date | null {
-    const stated = dateFromDocument(input);
-    if (stated) return stated;
+    const clause = dateFromClauses(header(input.title, input.content));
+    if (clause) return clause;
+
+    const captioned = dateFromBillNumbers(toPlainText(input.title));
+    if (captioned) return captioned;
 
     const meeting = meetingDate(input.title, input.driveCreatedTime ?? null);
     if (meeting) {
@@ -454,7 +467,21 @@ export function documentDate(input: {
         if (dated) return dated;
     }
 
-    return input.content ? bylineDate(input.content) : null;
+    const byline = input.content ? bylineDate(input.content) : null;
+    if (byline) return byline;
+
+    return dateFromBillNumbers(header(input.title, input.content));
+}
+
+/**
+ * The date a meeting document prints in its own header, or null.
+ *
+ * Narrower than `documentDate` on purpose: it is used to date a meeting for its
+ * title, and minutes that cite a bill number must not be retitled with the day
+ * that bill was introduced.
+ */
+export function meetingHeaderDate(content: string | undefined): Date | null {
+    return content ? bylineDate(content) : null;
 }
 
 /**

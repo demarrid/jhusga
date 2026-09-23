@@ -102,8 +102,8 @@ export default async function About() {
           <p className={styles.lead}>
             Mirroring the federal government of the United States, the majority
             of SGA positions are in the Executive, Legislative, and Judicial
-            branches. Two further bodies sit outside them: the Committee on
-            Student Elections, which runs the elections, and the Programming
+            branches. Two bodies are subsidiary to them: the Judiciary Branch includes the Committee on
+            Student Elections, which runs the elections, and the Executive Branch includes theProgramming
             Councils, which run each class&apos;s events.
           </p>
 

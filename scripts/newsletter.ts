@@ -1,7 +1,7 @@
 /**
  * Ingest The Johns Hopkins News-Letter's coverage of the SGA.
  *
- *   npm run newsletter                  -- the last two years, as a manual sync and the cron do
+ *   npm run newsletter                  -- the last three days, as a manual sync and the cron do
  *   npm run newsletter -- --backfill    -- every year since 2001, until budget
  *   npm run newsletter -- --year 2015   -- one year; repeatable
  *   npm run newsletter -- --dry         -- search only, fetch and store nothing
@@ -44,7 +44,9 @@ async function main() {
     const {
         MAX_ARTICLES_PER_RUN,
         MAX_SEARCH_PAGES_PER_WINDOW,
+        NEWSLETTER_EARLIEST_YEAR,
         NEWSLETTER_PHRASES,
+        NEWSLETTER_ROUTINE_SEARCH_PHRASES,
         NEWSLETTER_REQUEST_DELAY_MS,
     } = await import("../config/newsletter");
 
@@ -52,7 +54,9 @@ async function main() {
     const limit = Number(value(argv, "--limit")) || MAX_ARTICLES_PER_RUN;
 
     if (args.has("--dry")) {
-        const { searchYear } = await import("../lib/newsletter");
+        const { recentNewsletterSearchWindow, searchWindow, searchYear } = await import(
+            "../lib/newsletter"
+        );
         const { prisma } = await import("../lib/prisma");
         const { NEWSLETTER_FILE_PREFIX } = await import("../lib/newsletter");
 
@@ -65,16 +69,53 @@ async function main() {
             ).map((document) => document.driveFileId),
         );
 
-        const searchYears = chosen.length ? chosen : [new Date().getUTCFullYear()];
+        const backfill = args.has("--backfill");
+        const phrases =
+            backfill || chosen.length ? NEWSLETTER_PHRASES : NEWSLETTER_ROUTINE_SEARCH_PHRASES;
         const candidates = new Map<string, { headline: string; phrase: string }>();
 
-        for (const year of searchYears) {
-            for (const phrase of NEWSLETTER_PHRASES) {
-                const results = await searchYear(phrase, year, {
+        if (chosen.length || backfill) {
+            const thisYear = new Date().getUTCFullYear();
+            const searchYears = chosen.length
+                ? chosen
+                : (() => {
+                      const years: number[] = [];
+                      for (let year = NEWSLETTER_EARLIEST_YEAR; year <= thisYear; year += 1) {
+                          years.push(year);
+                      }
+                      return years;
+                  })();
+
+            for (const year of searchYears) {
+                for (const phrase of phrases) {
+                    const results = await searchYear(phrase, year, {
+                        maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
+                        onPage: (page, found, reported) =>
+                            console.log(
+                                `search ${year} "${phrase}" page ${page}: ${found} result(s)` +
+                                `${reported === null ? "" : ` of ${reported} reported`}`,
+                            ),
+                    });
+
+                    for (const result of results) {
+                        if (candidates.has(result.fileId)) continue;
+                        candidates.set(result.fileId, {
+                            headline: result.headline,
+                            phrase,
+                        });
+                    }
+                }
+            }
+        } else {
+            const window = recentNewsletterSearchWindow();
+            const logYear = window.to.year;
+
+            for (const phrase of phrases) {
+                const results = await searchWindow(phrase, window, {
                     maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
                     onPage: (page, found, reported) =>
                         console.log(
-                            `search ${year} "${phrase}" page ${page}: ${found} result(s)` +
+                            `search ${logYear} "${phrase}" page ${page}: ${found} result(s)` +
                             `${reported === null ? "" : ` of ${reported} reported`}`,
                         ),
                 });

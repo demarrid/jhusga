@@ -325,6 +325,43 @@ check(
     [pair.get("agenda"), pair.get("minutes")],
 );
 
+const gbm4 = standardTitles([
+    {
+        id: "gbm4-agenda",
+        title: "SGA GBM Agenda #4",
+        folderPath: GBM_AGENDAS,
+        sessionNumber: 114,
+        driveCreatedTime: on("2026-04-02"),
+        content:
+            "**Senate General Body Meeting #4**\n" +
+            "*September 15th, 2026 | 07:00 PM EST | BSC 404*\n\n" +
+            "Second Reading\nS-B.114.09.08.2026-1 | The Accountability Act",
+    },
+]);
+
+check(
+    "an agenda title carries the meeting date from its header",
+    gbm4.get("gbm4-agenda") === "Senate General Body Meeting #4 — Agenda (09/15/26)",
+    gbm4.get("gbm4-agenda"),
+);
+
+const citing = standardTitles([
+    {
+        id: "gbm5-minutes",
+        title: "MINUTES of Senate GBM #5",
+        folderPath: GBM_MINUTES,
+        sessionNumber: 114,
+        driveCreatedTime: on("2026-09-22"),
+        content: "Present: everyone\n\nThe Senate passed S-B.114.09.08.2026-1 | The Accountability Act.",
+    },
+]);
+
+check(
+    "a bill number cited in minutes does not date the meeting",
+    citing.get("gbm5-minutes") === "Senate General Body Meeting #5 — Minutes (09/22/26)",
+    citing.get("gbm5-minutes"),
+);
+
 console.log("\ncollisions");
 
 const documents = [

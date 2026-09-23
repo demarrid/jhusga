@@ -11,10 +11,10 @@
  * wrong trade. `--refetch` is how somebody who wants that asks for it.
  *
  * What that leaves is the search itself, which is why searches are fenced to a
- * calendar year. A routine run reads two years, six pages, sixty seconds; a
- * backfill reads every year since 2001 and stops when it runs out of budget,
- * and the next run picks up where it left off because everything it stored is
- * now something it skips.
+ * calendar year or a short recent window. A routine run reads the last few
+ * days for two phrases, a couple of requests; a backfill reads every year
+ * since 2001 and stops when it runs out of budget, and the next run picks up
+ * where it left off because everything it stored is now something it skips.
  *
  * The filtering rule is the one worth stating plainly: the paper's search
  * decides what gets fetched and this module decides what gets kept. An article
@@ -29,7 +29,7 @@ import {
     MAX_SEARCH_PAGES_PER_WINDOW,
     NEWSLETTER_EARLIEST_YEAR,
     NEWSLETTER_PHRASES,
-    NEWSLETTER_RECENT_YEARS,
+    NEWSLETTER_ROUTINE_SEARCH_PHRASES,
     NEWSLETTER_RUN_BUDGET_MS,
     NEWSLETTER_SEARCH_RESULT_CAP,
 } from "@/config/newsletter";
@@ -46,7 +46,10 @@ import {
     articleMarkdown,
     fetchArticle,
     matchedPhrases,
+    recentNewsletterSearchWindow,
+    searchWindow,
     searchYear,
+    type CalendarDay,
 } from "@/lib/newsletter";
 import { prisma } from "@/lib/prisma";
 import { indexDocumentPassages } from "@/lib/search";
@@ -128,16 +131,22 @@ function publishedAt(article: NewsletterArticle): Date | null {
     return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 }
 
+type CoverageSearchPass =
+    | { mode: "years"; years: number[] }
+    | { mode: "recent"; window: { from: CalendarDay; to: CalendarDay } };
+
 /**
- * The years a run searches, in the order it searches them.
+ * What a run searches, in the order it searches it.
  *
  * A backfill goes forwards from 2001, so that a run cut short by its budget
  * leaves the archive complete up to a date rather than patchy throughout, and
  * so the next run's resume point is a year rather than a guess. A routine run
- * goes backwards from now, because that is where anything new is.
+ * fences to the last few days, because that is where anything new is.
  */
-function yearsToSearch(options: CoverageOptions): number[] {
-    if (options.years?.length) return options.years;
+function searchPasses(options: CoverageOptions): CoverageSearchPass[] {
+    if (options.years?.length) {
+        return [{ mode: "years", years: options.years }];
+    }
 
     const thisYear = new Date().getUTCFullYear();
 
@@ -146,15 +155,29 @@ function yearsToSearch(options: CoverageOptions): number[] {
         for (let year = NEWSLETTER_EARLIEST_YEAR; year <= thisYear; year += 1) {
             years.push(year);
         }
-        return years;
+        return [{ mode: "years", years }];
     }
 
-    const years: number[] = [];
-    for (let back = 0; back < NEWSLETTER_RECENT_YEARS; back += 1) {
-        const year = thisYear - back;
-        if (year >= NEWSLETTER_EARLIEST_YEAR) years.push(year);
-    }
-    return years;
+    return [{ mode: "recent", window: recentNewsletterSearchWindow() }];
+}
+
+function phrasesToSearch(options: CoverageOptions): readonly string[] {
+    if (options.backfill || options.years?.length) return NEWSLETTER_PHRASES;
+    return NEWSLETTER_ROUTINE_SEARCH_PHRASES;
+}
+
+function calendarDayKey(day: CalendarDay): number {
+    return day.year * 10_000 + day.month * 100 + day.day;
+}
+
+function listedOnInWindow(listedOn: string | null, window: { from: CalendarDay; to: CalendarDay }): boolean {
+    if (!listedOn) return true;
+
+    const [year, month, day] = listedOn.split("-").map(Number);
+    if (!year || !month || !day) return true;
+
+    const key = calendarDayKey({ year, month, day });
+    return key >= calendarDayKey(window.from) && key <= calendarDayKey(window.to);
 }
 
 /**
@@ -360,27 +383,9 @@ export async function ingestNewsletterCoverage(
     let fetched = 0;
     const seen = new Set<string>();
 
-    for (const year of yearsToSearch(options)) {
-        const candidates = new Map<string, SearchResult>();
+    const phrases = phrasesToSearch(options);
 
-        for (const phrase of NEWSLETTER_PHRASES) {
-            const results = await searchYear(phrase, year, {
-                maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
-                onPage: (page, found, reported) => {
-                    summary.searchesRun += 1;
-                    if (
-                        reported === NEWSLETTER_SEARCH_RESULT_CAP &&
-                        !summary.truncatedYears.includes(year)
-                    ) {
-                        summary.truncatedYears.push(year);
-                    }
-                    options.onSearch?.(phrase, year, page, found);
-                },
-            });
-
-            for (const result of results) candidates.set(result.fileId, result);
-        }
-
+    const workCandidates = async (candidates: Map<string, SearchResult>): Promise<boolean> => {
         for (const fileId of candidates.keys()) {
             if (!seen.has(fileId)) summary.candidatesFound += 1;
         }
@@ -402,7 +407,7 @@ export async function ingestNewsletterCoverage(
 
             if (fetched >= limit || Date.now() >= deadline) {
                 summary.budgetReached = true;
-                return summary;
+                return true;
             }
 
             fetched += 1;
@@ -422,6 +427,63 @@ export async function ingestNewsletterCoverage(
             }
 
             options.onEvent?.(await storeArticle(article, summary));
+        }
+
+        return false;
+    };
+
+    for (const pass of searchPasses(options)) {
+        if (pass.mode === "recent") {
+            const candidates = new Map<string, SearchResult>();
+            const logYear = pass.window.to.year;
+
+            for (const phrase of phrases) {
+                const results = await searchWindow(phrase, pass.window, {
+                    maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
+                    onPage: (page, found, reported) => {
+                        summary.searchesRun += 1;
+                        if (
+                            reported === NEWSLETTER_SEARCH_RESULT_CAP &&
+                            !summary.truncatedYears.includes(logYear)
+                        ) {
+                            summary.truncatedYears.push(logYear);
+                        }
+                        options.onSearch?.(phrase, logYear, page, found);
+                    },
+                });
+
+                for (const result of results) {
+                    if (!listedOnInWindow(result.listedOn, pass.window)) continue;
+                    candidates.set(result.fileId, result);
+                }
+            }
+
+            if (await workCandidates(candidates)) return summary;
+            continue;
+        }
+
+        for (const year of pass.years) {
+            const candidates = new Map<string, SearchResult>();
+
+            for (const phrase of phrases) {
+                const results = await searchYear(phrase, year, {
+                    maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
+                    onPage: (page, found, reported) => {
+                        summary.searchesRun += 1;
+                        if (
+                            reported === NEWSLETTER_SEARCH_RESULT_CAP &&
+                            !summary.truncatedYears.includes(year)
+                        ) {
+                            summary.truncatedYears.push(year);
+                        }
+                        options.onSearch?.(phrase, year, page, found);
+                    },
+                });
+
+                for (const result of results) candidates.set(result.fileId, result);
+            }
+
+            if (await workCandidates(candidates)) return summary;
         }
     }
 

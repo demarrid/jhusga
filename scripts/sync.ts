@@ -61,7 +61,7 @@ async function main() {
                 ? "\nNews-Letter coverage would be skipped."
                 : newsletterBackfill
                     ? "\nA live sync would then search the News-Letter from 2001 to now."
-                    : "\nA live sync would then search the News-Letter for new coverage (last two years).",
+                    : "\nA live sync would then search the News-Letter for new coverage (last three days).",
         );
         return;
     }
@@ -99,7 +99,7 @@ async function main() {
         console.log(
             `\ncrawling the News-Letter at ${NEWSLETTER_REQUEST_DELAY_MS / 1000}s between requests,` +
             ` up to ${MAX_ARTICLES_PER_RUN} article(s)` +
-            (newsletterBackfill ? ", every year since 2001" : ", last two years") +
+            (newsletterBackfill ? ", every year since 2001" : ", last three days") +
             "\n",
         );
 

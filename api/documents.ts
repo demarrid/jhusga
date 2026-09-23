@@ -3,6 +3,7 @@
 import { SESSION_NUMBER } from "@/config/sga";
 import { sheetDelimiter } from "@/lib/csv";
 import { byNewestFirst } from "@/lib/dates";
+import { documentFindRank } from "@/lib/document-find";
 import { heldNotice } from "@/lib/integrity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
@@ -161,33 +162,48 @@ export async function getDocuments(filters: {
                 orderBy: { hopkinsAffiliate: { name: "asc" } },
             },
         },
-        // A tiebreak only. The order readers see is by date, and the date a
-        // document is filed under is read out of the document rather than
-        // stored, so it cannot be an ORDER BY -- see byNewestFirst below.
+        // A tiebreak only. The order readers see is by relevance when a query
+        // is typed and by date otherwise, and neither can be an ORDER BY --
+        // see the sort below.
         orderBy: [{ sessionNumber: "desc" }, { title: "asc" }],
     });
 
-    return documents
-        .map((document) => ({
-            ...document,
-            title: document.displayTitle || document.title,
-            driveTitle: document.title,
-            kind: isDocumentKind(document.kind) ? document.kind : "unknown",
-            // A failed or empty summary is no summary. A stale one is the last
-            // reading of a document that has since changed, which is worth
-            // more in a list of results than nothing at all.
-            summary:
-                document.summary &&
-                    (document.summary.status === "fresh" || document.summary.status === "stale")
-                    ? document.summary.content
-                    : "",
-            contributors: document.contributors.map((entry) => ({
-                id: entry.hopkinsAffiliate.id,
-                name: entry.hopkinsAffiliate.name,
-                role: entry.role,
-            })),
-        }))
-        .sort(byNewestFirst);
+    const ranked = documents.map((document) => {
+        const title = document.displayTitle || document.title;
+        const summary =
+            document.summary &&
+                (document.summary.status === "fresh" || document.summary.status === "stale")
+                ? document.summary.content
+                : "";
+
+        return {
+            document: {
+                ...document,
+                title,
+                driveTitle: document.title,
+                kind: isDocumentKind(document.kind) ? document.kind : "unknown",
+                summary,
+                contributors: document.contributors.map((entry) => ({
+                    id: entry.hopkinsAffiliate.id,
+                    name: entry.hopkinsAffiliate.name,
+                    role: entry.role,
+                })),
+            },
+            findRank: query
+                ? documentFindRank(
+                      { title, description: document.description, summary },
+                      query,
+                  )
+                : 0,
+        };
+    });
+
+    ranked.sort((left, right) => {
+        if (right.findRank !== left.findRank) return right.findRank - left.findRank;
+        return byNewestFirst(left.document, right.document);
+    });
+
+    return ranked.map((entry) => entry.document);
 }
 
 /** People named anywhere in the archive, for the person filter. */

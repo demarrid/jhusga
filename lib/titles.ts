@@ -30,6 +30,7 @@
  */
 
 import { formatDateNumeric } from "@/lib/dates";
+import { meetingHeaderDate } from "@/lib/identity";
 import { isSecondaryKind } from "@/lib/kinds";
 import { meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
 import { sessionOrdinal } from "@/config/session";
@@ -231,29 +232,49 @@ export type TitleInput = {
  * agenda and the minutes of one meeting on two different dates, which is
  * exactly the sort of thing a reader reads as two meetings.
  *
- * The minutes win, being the half written while the meeting was happening.
+ * A date printed in either half's header beats Drive, whose createdTime is
+ * the day somebody copied the template -- GBM #4's agenda and minutes were
+ * both made in April for a meeting held in September. Among printed dates and
+ * among Drive dates alike, the minutes win, being the half written while the
+ * meeting was happening.
  */
 function meetingDates(documents: TitleInput[]): Map<string, Date> {
-    const seen = new Map<string, { minutes: Date | null; earliest: Date | null }>();
+    const seen = new Map<
+        string,
+        { minutes: Date | null; agenda: Date | null; minutesDrive: Date | null; earliest: Date | null }
+    >();
 
     for (const document of documents) {
-        const created = document.driveCreatedTime;
-        if (!created) continue;
-
         const meeting = meetingFor(document);
         if (!meeting.key) continue;
 
-        const entry = seen.get(meeting.key) ?? { minutes: null, earliest: null };
-        if (meeting.role === "minutes" && (!entry.minutes || created < entry.minutes)) {
-            entry.minutes = created;
+        const stated = meetingHeaderDate(document.content);
+        const created = document.driveCreatedTime ?? null;
+
+        const entry = seen.get(meeting.key) ?? {
+            minutes: null,
+            agenda: null,
+            minutesDrive: null,
+            earliest: null,
+        };
+
+        if (meeting.role === "minutes") {
+            if (stated && (!entry.minutes || stated < entry.minutes)) entry.minutes = stated;
+            if (created && (!entry.minutesDrive || created < entry.minutesDrive)) {
+                entry.minutesDrive = created;
+            }
         }
-        if (!entry.earliest || created < entry.earliest) entry.earliest = created;
+        if (meeting.role === "agenda" && stated && (!entry.agenda || stated < entry.agenda)) {
+            entry.agenda = stated;
+        }
+        if (created && (!entry.earliest || created < entry.earliest)) entry.earliest = created;
         seen.set(meeting.key, entry);
     }
 
     const dates = new Map<string, Date>();
     for (const [key, entry] of seen) {
-        const date = entry.minutes ?? entry.earliest;
+        const date =
+            entry.minutes ?? entry.agenda ?? entry.minutesDrive ?? entry.earliest;
         if (date) dates.set(key, date);
     }
 

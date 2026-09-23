@@ -32,6 +32,20 @@ export const NEWSLETTER_PHRASES = [
 export type NewsletterPhrase = (typeof NEWSLETTER_PHRASES)[number];
 
 /**
+ * Phrases handed to the paper's search on a routine run (cron, sync, or
+ * `npm run newsletter` without `--backfill`).
+ *
+ * "student council" is omitted here because pre-2008 coverage is what
+ * backfill is for; the nightly job only needs to notice new pieces about the
+ * body under its current names. Articles are still kept when the fetched text
+ * matches any phrase in NEWSLETTER_PHRASES.
+ */
+export const NEWSLETTER_ROUTINE_SEARCH_PHRASES = [
+    "sga",
+    "student government",
+] as const satisfies readonly NewsletterPhrase[];
+
+/**
  * Who this is, in a header a sysadmin reading their logs can act on.
  *
  * A few thousand requests from an unexplained client is how an archive gets
@@ -118,14 +132,14 @@ export const NEWSLETTER_RUN_BUDGET_MS = Number(
 );
 
 /**
- * How many calendar years back a routine run searches.
+ * How far back a routine run searches, in whole calendar days.
  *
- * New coverage only ever appears in the current year or, in January, the one
- * before it, so a nightly run and a manual `npm run sync` read two years and
- * cost six search requests. Reaching the rest of the archive is what
- * `--backfill` is for.
+ * New coverage is published in the last few days, so the cron and a manual
+ * `npm run sync` fence search to this window and only issue two queries
+ * (NEWSLETTER_ROUTINE_SEARCH_PHRASES). Reaching the rest of the archive is
+ * what `--backfill` is for.
  */
-export const NEWSLETTER_RECENT_YEARS = 2;
+export const NEWSLETTER_RECENT_DAYS = 3;
 
 /**
  * The most results the paper's search will report for one query, ever.

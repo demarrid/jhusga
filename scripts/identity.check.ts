@@ -287,6 +287,42 @@ check(
     ),
 );
 check(
+    "an agenda is dated by its meeting header, not a bill number on it",
+    isoDay(
+        documentDate({
+            title: "SGA GBM Agenda #4",
+            content:
+                "**Senate General Body Meeting #4**\n" +
+                "*September 15th, 2026 | 07:00 PM EST | BSC 404*\n\n" +
+                "Second Reading\nS-B.114.09.08.2026-1 | The Accountability Act",
+        }),
+    ) === "2026-09-15",
+    isoDay(
+        documentDate({
+            title: "SGA GBM Agenda #4",
+            content:
+                "**Senate General Body Meeting #4**\n" +
+                "*September 15th, 2026 | 07:00 PM EST | BSC 404*\n\n" +
+                "Second Reading\nS-B.114.09.08.2026-1 | The Accountability Act",
+        }),
+    ),
+);
+check(
+    "a bill's own number in its title still beats a date line in its body",
+    isoDay(
+        documentDate({
+            title: "S-B.114.09.08.2026-1 | The Accountability Act",
+            content: "The Accountability Act\nSeptember 1, 2026",
+        }),
+    ) === "2026-09-08",
+    isoDay(
+        documentDate({
+            title: "S-B.114.09.08.2026-1 | The Accountability Act",
+            content: "The Accountability Act\nSeptember 1, 2026",
+        }),
+    ),
+);
+check(
     "a title that dates the meeting still wins over the body",
     isoDay(
         documentDate({

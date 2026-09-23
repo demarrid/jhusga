@@ -31,6 +31,7 @@ import {
     NEWSLETTER_MAX_RETRIES,
     NEWSLETTER_ORIGIN,
     NEWSLETTER_PHRASES,
+    NEWSLETTER_RECENT_DAYS,
     NEWSLETTER_REQUEST_DELAY_MS,
     NEWSLETTER_RESULTS_PER_PAGE,
     NEWSLETTER_RETRY_BASE_MS,
@@ -249,12 +250,37 @@ export function matchedPhrases(text: string): NewsletterPhrase[] {
 // Searching
 // ---------------------------------------------------------------------------
 
+export type CalendarDay = { year: number; month: number; day: number };
+
+export type SearchRange = { from: CalendarDay; to: CalendarDay };
+
+function utcCalendarDay(instant: Date): CalendarDay {
+    return {
+        year: instant.getUTCFullYear(),
+        month: instant.getUTCMonth() + 1,
+        day: instant.getUTCDate(),
+    };
+}
+
+/** Every day of one calendar year. */
+export function yearRange(year: number): SearchRange {
+    return { from: { year, month: 1, day: 1 }, to: { year, month: 12, day: 31 } };
+}
+
+/** The inclusive range a routine run searches: today and the few days before. */
+export function recentNewsletterSearchWindow(now = new Date()): SearchRange {
+    const start = new Date(now);
+    start.setUTCDate(start.getUTCDate() - NEWSLETTER_RECENT_DAYS);
+    return { from: utcCalendarDay(start), to: utcCalendarDay(now) };
+}
+
 /**
- * The advanced-search URL for one phrase in one calendar year.
+ * The advanced-search URL for one phrase over one date range.
  *
  * The date fence is what keeps the query under the engine's 1000-hit cap; see
- * NEWSLETTER_SEARCH_RESULT_CAP. `o=date` orders newest first, which matters
- * only in that it makes a truncated page's contents predictable.
+ * NEWSLETTER_SEARCH_RESULT_CAP. A backfill fences to a calendar year and a
+ * routine run to the last few days. `o=date` orders newest first, which
+ * matters only in that it makes a truncated page's contents predictable.
  *
  * Deliberately not `tg=archives`. That tag is the digitised print section,
  * whose newest entry is from 2012, so restricting to it would drop every
@@ -263,19 +289,21 @@ export function matchedPhrases(text: string): NewsletterPhrase[] {
  */
 export function searchUrl(input: {
     phrase: string;
-    year: number;
     page: number;
+    range: SearchRange;
 }): string {
+    const { from, to } = input.range;
+
     const params = new URLSearchParams({
         a: "1",
         s: input.phrase,
         ti: "",
-        ts_month: "1",
-        ts_day: "1",
-        ts_year: String(input.year),
-        te_month: "12",
-        te_day: "31",
-        te_year: String(input.year),
+        ts_month: String(from.month),
+        ts_day: String(from.day),
+        ts_year: String(from.year),
+        te_month: String(to.month),
+        te_day: String(to.day),
+        te_year: String(to.year),
         au: "",
         ty: "0",
         o: "date",
@@ -646,9 +674,9 @@ export async function fetchPage(url: string): Promise<string | null> {
  * a page two that comes back empty. The page cap above is a guard, not the
  * expected exit.
  */
-export async function searchYear(
+export async function searchWindow(
     phrase: string,
-    year: number,
+    range: SearchRange,
     options: {
         maxPages: number;
         /** `reported` is the engine's own hit count, which may be its cap. */
@@ -658,7 +686,7 @@ export async function searchYear(
     const found = new Map<string, SearchResult>();
 
     for (let page = 1; page <= options.maxPages; page += 1) {
-        const html = await fetchPage(searchUrl({ phrase, year, page }));
+        const html = await fetchPage(searchUrl({ phrase, page, range }));
         if (html === null) break;
 
         const results = parseSearchResults(html);
@@ -669,6 +697,18 @@ export async function searchYear(
     }
 
     return [...found.values()];
+}
+
+export async function searchYear(
+    phrase: string,
+    year: number,
+    options: {
+        maxPages: number;
+        /** `reported` is the engine's own hit count, which may be its cap. */
+        onPage?: (page: number, found: number, reported: number | null) => void;
+    },
+): Promise<SearchResult[]> {
+    return searchWindow(phrase, yearRange(year), options);
 }
 
 /** One article, parsed, or null when the page is gone or unreadable. */

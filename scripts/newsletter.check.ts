@@ -12,7 +12,11 @@
  * `creator` are all as the CMS emits them. No network: a check that needs the
  * site to be up is a check that fails when the site is down.
  */
-import { NEWSLETTER_PHRASES } from "../config/newsletter";
+import {
+    NEWSLETTER_PHRASES,
+    NEWSLETTER_RECENT_DAYS,
+    NEWSLETTER_ROUTINE_SEARCH_PHRASES,
+} from "../config/newsletter";
 import { documentKindLabel, isSecondaryKind, isDocumentKind, AUTHORITATIVE_KINDS, COMPARABLE_KINDS } from "../lib/kinds";
 import { sessionForDate } from "../lib/identity";
 import { meetingFor, meetingLog } from "../lib/meetings";
@@ -25,7 +29,9 @@ import {
     parseArticle,
     parseResultCount,
     parseSearchResults,
+    recentNewsletterSearchWindow,
     searchUrl,
+    yearRange,
 } from "../lib/newsletter";
 import { summaryPromptVersion, summarySystemPrompt } from "../lib/summary-prompt";
 import { canonicalTitle, standardTitles } from "../lib/titles";
@@ -333,7 +339,7 @@ check(
 check("the reported hit count is read", parseResultCount(SEARCH_PAGE) === 46);
 check("a page with no count reads null", parseResultCount("<p>nothing</p>") === null);
 
-const url = searchUrl({ phrase: "student government", year: 2015, page: 3 });
+const url = searchUrl({ phrase: "student government", range: yearRange(2015), page: 3 });
 check(
     "a search is fenced to one calendar year",
     url.includes("ts_year=2015") && url.includes("te_year=2015") &&
@@ -346,6 +352,34 @@ check(
     url,
 );
 check("the page and page size are asked for", url.includes("page=3") && url.includes("per_page=200"));
+
+const recent = recentNewsletterSearchWindow(new Date("2026-03-02T15:00:00Z"));
+check(
+    "a routine run searches today and the three days before, across a month end",
+    JSON.stringify(recent) ===
+    JSON.stringify({
+        from: { year: 2026, month: 2, day: 27 },
+        to: { year: 2026, month: 3, day: 2 },
+    }),
+    recent,
+);
+
+const recentUrl = searchUrl({ phrase: "sga", page: 1, range: recent });
+check(
+    "a routine search is fenced to that range",
+    recentUrl.includes("ts_year=2026") &&
+    recentUrl.includes("ts_month=2") &&
+    recentUrl.includes("ts_day=27") &&
+    recentUrl.includes("te_month=3") &&
+    recentUrl.includes("te_day=2"),
+    recentUrl,
+);
+check(
+    "routine ingest searches fewer phrases than backfill",
+    NEWSLETTER_ROUTINE_SEARCH_PHRASES.join() === "sga,student government" &&
+    NEWSLETTER_RECENT_DAYS === 3,
+    [NEWSLETTER_ROUTINE_SEARCH_PHRASES.join(), NEWSLETTER_RECENT_DAYS],
+);
 check(
     // Digitised print is tagged Archives and ends around 2012. Restricting
     // to that tag would drop every article published online since.

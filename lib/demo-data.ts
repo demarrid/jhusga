@@ -6,6 +6,7 @@ import { renderDocument } from "@/lib/render";
 import { questionFocus } from "@/config/search";
 import { collapseUnchanged, diffLines } from "@/lib/diff";
 import { byNewestFirst, listedDate } from "@/lib/dates";
+import { documentFindRank } from "@/lib/document-find";
 import { parseTimeframe } from "@/lib/when";
 
 type RawDocument = (typeof site.documents)[number];
@@ -35,8 +36,20 @@ export function demoDocuments(filters: {
         .filter((document) => !filters.role || document.contributors.some((person) => person.role === filters.role))
         .filter((document) => !filters.officeId || document.contributors.some((person) => person.id === officePersonId))
         .filter((document) => !query || `${document.title} ${document.description} ${document.content} ${document.contributors.map((person) => person.name).join(" ")}`.toLowerCase().includes(query))
-        .map(toListing)
-        .sort(byNewestFirst);
+        .map((document) => ({
+            listing: toListing(document),
+            findRank: query
+                ? documentFindRank(
+                      { title: document.title, description: document.description, summary: document.summary },
+                      query,
+                  )
+                : 0,
+        }))
+        .sort((left, right) => {
+            if (right.findRank !== left.findRank) return right.findRank - left.findRank;
+            return byNewestFirst(left.listing, right.listing);
+        })
+        .map((entry) => entry.listing);
 }
 
 function officeHolder(officeId: string): string | undefined {

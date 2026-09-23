@@ -87,6 +87,7 @@ export default function DocumentSearch({
     return (
         <form
             className={styles.form}
+            autoComplete="off"
             // Enter should apply what has been typed now rather than waiting
             // out the timer, but without the full page load a GET would do.
             onSubmit={(event) => {
@@ -102,10 +103,14 @@ export default function DocumentSearch({
                     <span className={styles.hiddenLabel}>Search documents and people</span>
                     <input
                         ref={queryInput}
-                        type="search"
+                        type="text"
                         name="q"
                         defaultValue={query}
                         placeholder="Title, keyword, or person"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                         onChange={(event) => applyQuery(event.target.value)}
                     />
                     <button
