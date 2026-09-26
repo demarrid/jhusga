@@ -22,6 +22,9 @@ import { syncMasterFolder } from "@/lib/sync";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+/** Three and a half minutes in, against the five-minute maxDuration above. */
+const MODEL_WORK_CUTOFF_MS = 210_000;
+
 function isAuthorised(request: Request): boolean {
     const secret = process.env.CRON_SECRET;
     if (!secret) return false;
@@ -62,25 +65,40 @@ export async function GET(request: Request) {
         return Response.json({ error: "Unauthorised" }, { status: 401 });
     }
 
+    const startedAt = Date.now();
+    // No model call is started after this point. One already running is let
+    // finish, and a single call can take tens of seconds, so the margin
+    // against maxDuration is wide.
+    const modelDeadline = startedAt + MODEL_WORK_CUTOFF_MS;
+
     try {
         const sync = await syncMasterFolder({ trigger: "cron" });
 
-        // Only worth spending model calls when something actually changed.
-        const documentsChanged = sync.documentsCreated + sync.documentsUpdated;
-        const sections =
-            documentsChanged > 0 ? await generateStaleSections() : [];
+        // Every run, not only when this sync changed something: a section
+        // whose sources are unchanged is skipped without a model call, and a
+        // run that hit the deadline last night leaves sections to finish.
+        const sectionsStarted = Date.now();
+        const sections = await generateStaleSections({ deadline: modelDeadline });
+        const sectionsMs = Date.now() - sectionsStarted;
+        console.log(`sync phase sections: ${sectionsMs}ms`);
 
-        // Not gated on this sync having changed anything, unlike the sections
-        // above. A document with no summary is one nothing has been spent on
-        // yet, which is the state every new document arrives in and stays in
-        // until a run gets to it -- so a quiet night is when the backlog moves.
+        // A document with no summary is one nothing has been spent on yet,
+        // which is the state every new document arrives in and stays in until
+        // a run gets to it -- so a quiet night is when the backlog moves.
+        const summariesStarted = Date.now();
         const summaries = await summarizeStaleDocuments({
             limit: SUMMARY_RUN_BUDGET,
+            deadline: modelDeadline,
         });
+        const summariesMs = Date.now() - summariesStarted;
+        console.log(`sync phase summaries: ${summariesMs}ms`);
 
         // Expired sessions, sign-in codes and rate buckets. Nothing reads them
         // once their clock has run out; this is so they are not kept anyway.
         const pruned = await pruneEphemeral();
+
+        const totalMs = Date.now() - startedAt;
+        console.log(`sync total: ${totalMs}ms`);
 
         return Response.json({
             ok: true,
@@ -88,6 +106,12 @@ export async function GET(request: Request) {
             sections,
             summaries: summarised(summaries),
             pruned,
+            timings: {
+                ...sync.timings,
+                sections: sectionsMs,
+                summaries: summariesMs,
+                total: totalMs,
+            },
         });
     } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause);

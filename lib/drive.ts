@@ -271,6 +271,29 @@ export async function getFile(fileId: string): Promise<DriveFile | null> {
     return toDriveFile((await response.json()) as RawFile);
 }
 
+/** Drive requests the walk keeps in flight at once. */
+const WALK_CONCURRENCY = 8;
+
+/** `items.map(work)`, in order, with at most `limit` running at a time. */
+async function mapConcurrently<T, R>(
+    items: T[],
+    limit: number,
+    work: (item: T) => Promise<R>,
+): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let nextIndex = 0;
+
+    async function worker() {
+        while (nextIndex < items.length) {
+            const index = nextIndex++;
+            results[index] = await work(items[index]!);
+        }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return results;
+}
+
 function isExcluded(folderName: string): boolean {
     return EXCLUDED_FOLDER_PATTERNS.some((pattern) => pattern.test(folderName));
 }
@@ -322,8 +345,24 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
     while (queue.length > 0) {
         const next: QueuedFolder[] = [];
 
-        for (const folder of queue) {
-            const children = await listFolderChildren(folder.id);
+        // One level at a time, listed concurrently. The walk was one request
+        // after another, which made it the second-slowest phase of the sync.
+        // Results are still read in queue order, so the walk's output and its
+        // visited-set decisions do not depend on which request came back first.
+        const listings = await mapConcurrently(queue, WALK_CONCURRENCY, (folder) =>
+            listFolderChildren(folder.id),
+        );
+        const shortcutTargets = await mapConcurrently(
+            listings.flat().filter(
+                (child) => child.shortcutTo && child.shortcutTo.mimeType !== FOLDER_MIME,
+            ),
+            WALK_CONCURRENCY,
+            async (child) => [child.id, await getFile(child.shortcutTo!.id)] as const,
+        );
+        const resolved = new Map(shortcutTargets);
+
+        for (const [index, folder] of queue.entries()) {
+            const children = listings[index]!;
 
             for (const child of children) {
                 const target = child.shortcutTo;
@@ -354,7 +393,7 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
                 // modifiedTime to skip an unchanged export by, no owner, no
                 // sharing -- so the target is fetched and the shortcut
                 // discarded. It is the target that gets exported and stored.
-                const file = target ? await getFile(target.id) : child;
+                const file = target ? resolved.get(child.id) ?? null : child;
                 if (!file) continue;
 
                 if (found.length >= MAX_FILES_PER_SYNC) {

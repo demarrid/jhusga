@@ -398,6 +398,11 @@ export async function summarizeStaleDocuments(
         session?: number;
         /** Stop after this many model calls. */
         limit?: number;
+        /**
+         * Epoch milliseconds after which no further document is started. A
+         * document already being summarised is finished, so leave a margin.
+         */
+        deadline?: number;
         onResult?: (result: SummarizeResult) => void;
     } = {},
 ): Promise<SummarizeResult[]> {
@@ -442,6 +447,7 @@ export async function summarizeStaleDocuments(
 
     for (const document of documents) {
         if (options.limit !== undefined && calls >= options.limit) break;
+        if (options.deadline !== undefined && Date.now() >= options.deadline) break;
 
         let result: SummarizeResult;
         try {

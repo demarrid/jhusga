@@ -66,9 +66,22 @@ async function main() {
         return;
     }
 
+    const startedAt = Date.now();
+    const timings: Record<string, number> = {};
+    async function phase<T>(name: string, work: () => Promise<T>): Promise<T> {
+        const started = Date.now();
+        try {
+            return await work();
+        } finally {
+            timings[name] = Date.now() - started;
+        }
+    }
+
     const { syncMasterFolder } = await import("../lib/sync");
     const summary = await syncMasterFolder({ trigger: "manual", force });
-    console.log("sync:", summary);
+    Object.assign(timings, summary.timings);
+    const { timings: _driveTimings, ...counts } = summary;
+    console.log("sync:", counts);
 
     if (summary.documentsHeld > 0) {
         console.log(
@@ -77,13 +90,15 @@ async function main() {
         );
     }
 
-    if (summary.documentsCreated + summary.documentsUpdated > 0 || force) {
-        const { generateStaleSections } = await import("../lib/generate");
-        for (const result of await generateStaleSections({ force })) {
-            console.log("section:", result);
-        }
-    } else {
-        console.log("sections: nothing changed, skipped generation");
+    // Every run, as the cron does: an unchanged section is skipped without a
+    // model call.
+    const { generateStaleSections } = await import("../lib/generate");
+    const sections = await phase("sections", () => generateStaleSections({ force }));
+    for (const result of sections) {
+        console.log(
+            `section: ${result.key} ${result.skipped ? "unchanged" : result.status}` +
+            (result.error ? ` (${result.error})` : ""),
+        );
     }
 
     // After Drive, before summaries, so an article this run stored is restated
@@ -103,19 +118,21 @@ async function main() {
             "\n",
         );
 
-        const newsletter = await ingestNewsletterCoverage({
-            backfill: newsletterBackfill,
-            // A manual run is not a serverless function. Bound by the article
-            // budget, not the four-minute wall the cron uses.
-            runBudgetMs: Number.POSITIVE_INFINITY,
-            onSearch: (phrase, year, page, found) =>
-                console.log(`search ${year} "${phrase}" page ${page}: ${found} result(s)`),
-            onEvent: (event) =>
-                console.log(
-                    `${event.status.padEnd(10)} ${(event.publishedOn ?? "undated").padEnd(10)}` +
-                    ` ${event.headline}`,
-                ),
-        });
+        const newsletter = await phase("newsletter", () =>
+            ingestNewsletterCoverage({
+                backfill: newsletterBackfill,
+                // A manual run is not a serverless function. Bound by the article
+                // budget, not the four-minute wall the cron uses.
+                runBudgetMs: Number.POSITIVE_INFINITY,
+                onSearch: (phrase, year, page, found) =>
+                    console.log(`search ${year} "${phrase}" page ${page}: ${found} result(s)`),
+                onEvent: (event) =>
+                    console.log(
+                        `${event.status.padEnd(10)} ${(event.publishedOn ?? "undated").padEnd(10)}` +
+                        ` ${event.headline}`,
+                    ),
+            }),
+        );
 
         console.log("newsletter:", newsletter);
 
@@ -156,15 +173,31 @@ async function main() {
     const { SUMMARY_RUN_BUDGET, summarizeStaleDocuments } = await import(
         "../lib/summarize"
     );
-    const summaries = await summarizeStaleDocuments({
-        limit: SUMMARY_RUN_BUDGET,
-        onResult: (result) =>
-            console.log(`summary: ${result.status.padEnd(7)} ${result.title}`),
-    });
-    if (summaries.length === SUMMARY_RUN_BUDGET) {
+    const summaries = await phase("summaries", () =>
+        summarizeStaleDocuments({
+            limit: SUMMARY_RUN_BUDGET,
+            // Rechecked verdicts that cost no model call are not worth a line each.
+            onResult: (result) => {
+                if (!result.skipped) {
+                    console.log(`summary: ${result.status.padEnd(7)} ${result.title}`);
+                }
+            },
+        }),
+    );
+    const modelCalls = summaries.filter((result) => !result.skipped).length;
+    console.log(
+        `summaries: ${modelCalls} written or attempted, ${summaries.length - modelCalls} rechecked without a model call`,
+    );
+    if (modelCalls >= SUMMARY_RUN_BUDGET) {
         console.log(
             `\nStopped after ${SUMMARY_RUN_BUDGET} summaries. Run \`npm run summarize\` for the rest.`,
         );
+    }
+
+    timings.total = Date.now() - startedAt;
+    console.log("\ntime per phase (seconds):");
+    for (const [name, ms] of Object.entries(timings)) {
+        console.log(`  ${name.padEnd(14)} ${(ms / 1000).toFixed(1).padStart(7)}`);
     }
 }
 

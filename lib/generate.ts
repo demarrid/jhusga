@@ -354,12 +354,17 @@ export async function generateSection(
 
 /** Regenerate every section that is stale, failed, or never generated. */
 export async function generateStaleSections(
-    options: { force?: boolean } = {},
+    options: {
+        force?: boolean;
+        /** Epoch milliseconds after which no further section is started. */
+        deadline?: number;
+    } = {},
 ): Promise<GenerateSectionResult[]> {
     const { SECTION_KEYS } = await import("@/lib/sections");
     const results: GenerateSectionResult[] = [];
 
     for (const key of SECTION_KEYS) {
+        if (options.deadline !== undefined && Date.now() >= options.deadline) break;
         try {
             results.push(await generateSection(key, options));
         } catch (cause) {

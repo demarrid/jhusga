@@ -82,7 +82,31 @@ export type SyncSummary = {
     meetingsPaired: number;
     /** Drive accounts resolved onto a known person. */
     driveAccountsLinked: number;
+    /** Sessions with at least one document whose published text changed. */
+    sessionsChanged: number[];
+    /**
+     * Milliseconds each phase took, in the order they ran. The cron has a
+     * five-minute ceiling and this is how to see which phase is eating it.
+     */
+    timings: Record<string, number>;
 };
+
+async function timed<T>(
+    summary: SyncSummary,
+    phase: string,
+    work: () => Promise<T>,
+): Promise<T> {
+    const started = Date.now();
+    try {
+        return await work();
+    } finally {
+        summary.timings[phase] = Date.now() - started;
+        // Logged as it happens rather than returned at the end: a run the
+        // platform kills at its time limit returns nothing, and the last
+        // line in the log is then the last phase that finished.
+        console.log(`sync phase ${phase}: ${summary.timings[phase]}ms`);
+    }
+}
 
 /**
  * Re-locate every citation into a document whose text just changed.
@@ -456,9 +480,13 @@ export async function recordDriveAccounts(): Promise<number> {
         },
     });
 
-    await prisma.documentContributor.deleteMany({ where: { source: "drive" } });
-
-    let linked = 0;
+    const rows: {
+        documentId: string;
+        hopkinsAffiliateId: string;
+        role: string;
+        source: string;
+        evidence: string;
+    }[] = [];
 
     for (const document of documents) {
         const accounts = [
@@ -480,28 +508,25 @@ export async function recordDriveAccounts(): Promise<number> {
             const match = matchAccount(account, people);
             if (!match) continue;
 
-            await prisma.documentContributor.upsert({
-                where: {
-                    documentId_hopkinsAffiliateId_role: {
-                        documentId: document.id,
-                        hopkinsAffiliateId: match.person.id,
-                        role: account.role,
-                    },
-                },
-                create: {
-                    documentId: document.id,
-                    hopkinsAffiliateId: match.person.id,
-                    role: account.role,
-                    source: "drive",
-                    evidence: match.evidence,
-                },
-                update: { source: "drive", evidence: match.evidence },
+            rows.push({
+                documentId: document.id,
+                hopkinsAffiliateId: match.person.id,
+                role: account.role,
+                source: "drive",
+                evidence: match.evidence,
             });
-            linked += 1;
         }
     }
 
-    return linked;
+    // One transaction rather than a round trip per document, which is what
+    // made this one of the slowest phases of the sync. The roles here are
+    // Drive's own, so no parser row can already hold the same key.
+    await prisma.$transaction([
+        prisma.documentContributor.deleteMany({ where: { source: "drive" } }),
+        prisma.documentContributor.createMany({ data: rows, skipDuplicates: true }),
+    ]);
+
+    return rows.length;
 }
 
 /**
@@ -715,11 +740,13 @@ export async function ingestFile(
 ): Promise<boolean> {
     const existing = await prisma.document.findUnique({
         where: { driveFileId: file.id },
+        // Not `content`: most files are unchanged and take the cheap path
+        // below, and reading every document's full text to compare dates was
+        // a large part of what the walk cost. It is fetched once it is needed.
         select: {
             id: true,
             contentHash: true,
             driveModifiedTime: true,
-            content: true,
             kind: true,
             reviewState: true,
             rejectedContentHash: true,
@@ -805,10 +832,19 @@ export async function ingestFile(
         heldAt: null,
     };
 
+    const before = existing
+        ? (
+              await prisma.document.findUnique({
+                  where: { id: existing.id },
+                  select: { content: true },
+              })
+          )?.content ?? ""
+        : "";
+
     const verdict = assessChange({
         kind: metadata.kind,
         anyoneCanEdit: file.anyoneCanEdit,
-        before: existing?.content ?? "",
+        before,
         after: content,
     });
 
@@ -861,6 +897,9 @@ export async function ingestFile(
     await indexDocumentPassages(document.id, content);
 
     if (sessionNumber !== SESSION_NUMBER) summary.documentsArchived += 1;
+    if (!summary.sessionsChanged.includes(sessionNumber)) {
+        summary.sessionsChanged.push(sessionNumber);
+    }
 
     if (!existing) {
         summary.documentsCreated += 1;
@@ -1103,15 +1142,17 @@ export async function syncMasterFolder(
         referencesLinked: 0,
         meetingsPaired: 0,
         driveAccountsLinked: 0,
+        sessionsChanged: [],
+        timings: {},
     };
 
     try {
-        const files = await walkFolder(MASTER_FOLDER_ID);
+        const files = await timed(summary, "walk", () => walkFolder(MASTER_FOLDER_ID));
 
         // A first name is read against who currently holds a seat, so the
         // aliases the archive has outgrown go first and the cached list of
         // people is rebuilt after.
-        await pruneStaleAliases();
+        await timed(summary, "aliases", () => pruneStaleAliases());
         resetNameResolverCache();
 
         // Google Docs and PDFs, plus the few sheets that say who the SGA is:
@@ -1128,34 +1169,51 @@ export async function syncMasterFolder(
         );
         summary.filesSeen = files.length;
 
-        for (const file of docs) {
-            await ingestFile(file, "walk", options, summary);
-        }
+        await timed(summary, "ingest", async () => {
+            for (const file of docs) {
+                await ingestFile(file, "walk", options, summary);
+            }
+        });
 
         // Note: documents removed from Drive are intentionally left in place
         // rather than deleted, so existing citations do not break. They stop
         // having their lastSyncedAt refreshed, which is how to spot them.
 
-        summary.documentsLinkedIn = await followLinks(options, summary);
+        summary.documentsLinkedIn = await timed(summary, "links", () =>
+            followLinks(options, summary),
+        );
 
-        await recordAllDirectories();
+        // A past session's directory is rebuilt only when one of its documents
+        // changed: its rosters are years old and rebuilding every session on
+        // every run was the slowest phase of the sync. `--force` rebuilds all.
+        await timed(summary, "directories", () =>
+            recordAllDirectories(
+                options.force ? {} : { pastSessions: summary.sessionsChanged },
+            ),
+        );
 
         // Whole-corpus passes. Each of these needs every document to exist
         // before it can be right, so they run once at the end rather than per
         // document inside the walk.
-        await recordSessions();
-        summary.meetingsPaired = (await recordMeetings()).paired;
+        await timed(summary, "sessions", () => recordSessions());
+        summary.meetingsPaired = (
+            await timed(summary, "meetings", () => recordMeetings())
+        ).paired;
         // Titles depend on the meeting keys the pass above just wrote.
-        await recordTitles();
-        await recordKinds();
-        summary.documentsDated = await recordDates();
-        summary.referencesLinked = await rebuildReferences();
-        summary.driveAccountsLinked = await recordDriveAccounts();
+        await timed(summary, "titles", () => recordTitles());
+        await timed(summary, "kinds", () => recordKinds());
+        summary.documentsDated = await timed(summary, "dates", () => recordDates());
+        summary.referencesLinked = await timed(summary, "references", () =>
+            rebuildReferences(),
+        );
+        summary.driveAccountsLinked = await timed(summary, "driveAccounts", () =>
+            recordDriveAccounts(),
+        );
 
         // Catches documents ingested before the search index existed, and any
         // whose passages were lost. Documents that already have them cost
         // nothing here, because they are not selected.
-        await rebuildPassages();
+        await timed(summary, "passages", () => rebuildPassages());
 
         await prisma.syncRun.update({
             where: { id: syncRun.id },

@@ -1314,8 +1314,13 @@ export async function recordDirectory(
 /**
  * Record every session's directory, oldest first, so a seat held years ago
  * is still a term and the current slate is the one left open.
+ *
+ * `pastSessions` narrows which prior sessions are re-recorded; the current
+ * session always is. Omit it to re-record every session.
  */
-export async function recordAllDirectories(): Promise<{
+export async function recordAllDirectories(
+    options: { pastSessions?: number[] } = {},
+): Promise<{
     sessions: number;
     members: number;
     emails: number;
@@ -1338,6 +1343,7 @@ export async function recordAllDirectories(): Promise<{
 
     for (const session of numbers) {
         if (session === SESSION_NUMBER) continue;
+        if (options.pastSessions && !options.pastSessions.includes(session)) continue;
         const recorded = await recordDirectory(session);
         members += recorded.members;
         emails += recorded.emails;
