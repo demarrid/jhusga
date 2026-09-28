@@ -96,6 +96,36 @@ function apiKey(): string {
 }
 
 /**
+ * The 403 reasons that are about the key rather than about a file.
+ *
+ * Drive answers 403 to both "this file is not shared with you" and "this key
+ * may not call Drive at all", and the two want opposite handling. The per-file
+ * paths below deliberately swallow the first, so without this they swallow the
+ * second too -- a key with an application restriction on it then produces a
+ * clean sync in which every linked file is missing and every PDF is blank.
+ */
+const KEY_REJECTED =
+    /API_KEY_(HTTP_REFERRER_BLOCKED|IP_ADDRESS_BLOCKED|ANDROID_APP_BLOCKED|IOS_APP_BLOCKED|SERVICE_BLOCKED|INVALID)|SERVICE_DISABLED/;
+
+/**
+ * Drive refused the key itself, so every other call in the sync will fail too.
+ *
+ * Its own type because the "Drive will not give us this one file" paths have
+ * to let it through instead of recording an empty document.
+ */
+export class DriveKeyError extends Error {
+    constructor(body: string) {
+        super(
+            "Drive rejected GOOGLE_API_KEY itself, so no file can load: " +
+            `${body.slice(0, 300)} -- the key must carry no application ` +
+            "restriction, since server-side calls send no Referer and " +
+            "serverless IPs are not fixed. Restrict it to the Drive API only.",
+        );
+        this.name = "DriveKeyError";
+    }
+}
+
+/**
  * Drive is rate limited per key, and a full sync is a few hundred calls, so
  * retry the failures that are worth retrying and fail fast on the rest.
  */
@@ -112,7 +142,10 @@ async function driveFetch(url: string, attempt = 0): Promise<Response> {
     }
 
     // Drive puts a useful reason in the body; surface it rather than a bare code.
+    // The status is not worth checking here -- a referrer-blocked key is a 403
+    // but a malformed one is a 400, and both want the same explanation.
     const body = await response.text().catch(() => "");
+    if (KEY_REJECTED.test(body)) throw new DriveKeyError(body);
     throw new Error(
         `Drive API ${response.status} ${response.statusText}: ${body.slice(0, 500)}`,
     );
@@ -259,8 +292,15 @@ export async function getFile(fileId: string): Promise<DriveFile | null> {
 
     // 404 is what Drive returns for both "no such file" and "not shared with
     // you"; 403 is the quota and permission family. Neither is worth failing a
-    // sync over, and neither is worth retrying.
-    if (response.status === 404 || response.status === 403) return null;
+    // sync over, and neither is worth retrying -- unless the 403 is about the
+    // key, in which case the next few hundred calls are all going to fail the
+    // same way and the walk should say so on the first one.
+    if (response.status === 404) return null;
+    if (response.status === 403) {
+        const body = await response.text().catch(() => "");
+        if (KEY_REJECTED.test(body)) throw new DriveKeyError(body);
+        return null;
+    }
     if (!response.ok) {
         const body = await response.text().catch(() => "");
         throw new Error(
@@ -527,6 +567,7 @@ async function downloadFile(fileId: string): Promise<Uint8Array | null> {
             `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?${params.toString()}`,
         );
     } catch (cause) {
+        if (cause instanceof DriveKeyError) throw cause;
         if (cause instanceof Error && /Drive API (403|404)\b/.test(cause.message)) {
             return null;
         }
