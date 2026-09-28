@@ -344,6 +344,31 @@ check(
     classifyDocument({ name: rulesTitle, folderPath: "" }) === "bill.senate_rules",
 );
 check(
+    "notes in a member's own folder inside a committee are not committee minutes",
+    classifyDocument({
+        name: "9/25 - Meeting w/ Prof Brodsky",
+        folderPath: "Senate/Committees/Internal Affairs/Shreemann's Folder",
+    }) === "unknown",
+    classifyDocument({
+        name: "9/25 - Meeting w/ Prof Brodsky",
+        folderPath: "Senate/Committees/Internal Affairs/Shreemann's Folder",
+    }),
+);
+check(
+    "a committee meeting in the committee's minutes folder still is",
+    classifyDocument({
+        name: "08.04.2026 Internal Affairs Committee Meeting",
+        folderPath: "Senate/Committees/Internal Affairs/Committee Minutes",
+    }) === "minutes.committee",
+);
+check(
+    "and so is one filed straight in the committee's folder",
+    classifyDocument({
+        name: "CE June 15 2026 Meeting",
+        folderPath: "Senate/Committees/Civic Engagement",
+    }) === "minutes.committee",
+);
+check(
     "a writ of certiorari is a judicial filing",
     classifyDocument({
         name: "Writ of Certiorari — Student Body President",

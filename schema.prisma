@@ -507,7 +507,7 @@ model SyncRun {
     // "running" | "success" | "error"
     status         String  @default("running")
     masterFolderId String  @default("")
-    trigger        String  @default("manual") // "cron" | "manual"
+    trigger        String  @default("manual") // "cron" | "manual" | "button"
     error          String?
 
     filesSeen           Int @default(0)

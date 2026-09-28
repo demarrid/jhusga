@@ -237,6 +237,7 @@ They are still attributed as reporting, never as an SGA record.
 | `api/` | Server actions the pages read: `documents`, `sections`, `archive`, `search`, `community`, `auth`, `forum`. |
 | `app/(components)/` | `SourceChip`, `DocumentViewer`, `DocumentDiff`, `CitedProse`, `NaturalLanguageSearch`, `SignIn`, `NewPostForm`, `ReplyForm`, `ModerationControls`. |
 | `app/api/cron/sync/` | The daily job, guarded by `CRON_SECRET`. Scheduled in `vercel.json`. |
+| `app/api/sync/` | The same job, started by the Request sync button on the documents page. Off with `MANUAL_SYNC_ENABLED=false`; one run at a time, a cooldown after each, and a per-network limit. |
 | `app/api/cron/newsletter/` | The daily News-Letter pass, same guard. Separate because it is budgeted, not finite. |
 | `scripts/` | `sync` (manual run: Drive, then recent News-Letter coverage; supports `--dry`), `newsletter`, `review`, `prune`, `seed.demo`, and the `*.check.ts` suites. |
 

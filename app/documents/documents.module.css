@@ -25,6 +25,12 @@
   text-transform: uppercase;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .pageHeader h1 {
   margin: 0;
   font-family: var(--font-source-serif-4), Georgia, serif;

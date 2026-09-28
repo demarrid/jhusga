@@ -1,0 +1,81 @@
+.wrap {
+  display: inline-flex;
+  flex: none;
+}
+
+.button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #dcecf9;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.button:hover:not(:disabled) {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.button:focus-visible {
+  outline: 2px solid #68ace5;
+  outline-offset: 3px;
+}
+
+.button:disabled {
+  cursor: progress;
+}
+
+.icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.running .icon {
+  animation: spin 900ms linear infinite;
+}
+
+.done {
+  border-color: #9fd8a8;
+  color: #9fd8a8;
+}
+
+.error {
+  border-color: #f2a7a7;
+  color: #f2a7a7;
+}
+
+.hiddenStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Slowed rather than stopped: the spin is the only sign the sync is running. */
+@media (prefers-reduced-motion: reduce) {
+  .running .icon {
+    animation-duration: 3s;
+  }
+
+  .button {
+    transition: none;
+  }
+}

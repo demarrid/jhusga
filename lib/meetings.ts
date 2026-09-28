@@ -21,7 +21,7 @@
  * around; a wrong pair asserts that a meeting decided something it did not.
  */
 
-import { isSecondaryKind } from "@/lib/kinds";
+import { isCommitteeRecordsFolder, isSecondaryKind } from "@/lib/kinds";
 
 export const MEETING_ROLES = ["agenda", "minutes"] as const;
 
@@ -59,15 +59,16 @@ const NO_MEETING: Meeting = { key: "", role: "" };
 const NOT_A_MEETING = /\btemplate\b|^\s*copy of\b/i;
 
 /**
- * Meetings the Executive Board holds with somebody from outside the SGA: the
- * advisors, the deans, the University President, the trustees. They are
- * minuted into the same folder as the Board's own meetings but are not part of
- * that numbered series, and folding them in would file "March 10 2025 Exec x
- * Advisor Meeting" as an ordinary Executive Board meeting -- losing the one
- * thing the filename was written to say.
+ * Meetings an SGA body holds with somebody from outside it: the advisors, the
+ * deans, the provost, a professor, the University President, the trustees.
+ * They are minuted into the same folders as the body's own meetings but are
+ * not part of its numbered series, and folding them in would file "March 10
+ * 2025 Exec x Advisor Meeting" as an ordinary Executive Board meeting, or
+ * "9/25 - Meeting w/ Prof Brodsky" as one of Internal Affairs -- losing the
+ * one thing the filename was written to say.
  */
 const EXTERNAL_MEETING =
-    /\badvisors?\b|\badvisers?\b|\bdeans?\b|president daniels|board of trustees/i;
+    /\badvisors?\b|\badvisers?\b|\bdeans?\b|\bprovost\b|\bprof(?:essor)?s?\b|president daniels|board of trustees/i;
 
 /** "113th", "1st" -- the session, never the meeting number. */
 const SESSION_ORDINAL = /\b\d{1,3}(?:st|nd|rd|th)\b/gi;
@@ -240,9 +241,10 @@ function roleFor(title: string, folderPath: string): MeetingRole | "" {
     // which is the gap between Internal Affairs' dated series and Civic
     // Engagement's leftover filenames. Restricted to titles that already
     // look like a meeting, so a working document in the same folder is not
-    // renamed into one.
+    // renamed into one, and to the committee's own record folders, so a
+    // member's personal folder inside it is not either.
     if (
-        committeeFrom(folderPath) &&
+        isCommitteeRecordsFolder(folderPath) &&
         (meetingDate(title) || meetingNumber(title) || /\bmeetings?\b/i.test(title))
     ) {
         return "minutes";

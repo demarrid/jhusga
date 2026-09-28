@@ -12,7 +12,9 @@ import {
   type DocumentListing,
 } from "@/api/documents";
 import ArchiveSearch from "@/app/(components)/ArchiveSearch";
+import SyncButton from "@/app/(components)/SyncButton";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
+import { manualSyncEnabled } from "@/config/sync";
 import { proseLine } from "@/lib/cite";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
@@ -88,7 +90,10 @@ export default async function Documents({
       <header className={styles.pageHeader}>
         <p>The {sessionOrdinal(SESSION_NUMBER)} session</p>
         <div>
-          <h1>Documents</h1>
+          <div className={styles.titleRow}>
+            {manualSyncEnabled() && <SyncButton />}
+            <h1>Documents</h1>
+          </div>
           <p>Search meetings, legislation, governing documents, and the public record of the SGA.</p>
         </div>
       </header>

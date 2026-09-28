@@ -652,7 +652,10 @@ export async function recordContributors(
     return linked;
 }
 
-type SyncOptions = { trigger?: "cron" | "manual"; force?: boolean };
+/** "button" is a reader pressing Request sync on the documents page. */
+export type SyncTrigger = "cron" | "manual" | "button";
+
+type SyncOptions = { trigger?: SyncTrigger; force?: boolean };
 
 async function exportIngestible(file: WalkedFile): Promise<string | null> {
     if (isSharePointFileId(file.id)) {

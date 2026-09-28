@@ -110,6 +110,8 @@ export const RATE_LIMITS = {
     /** Replies, which should be freer than threads. */
     reply: [20, 60 * 60],
     reply_daily: [80, 24 * 60 * 60],
+    /** Pressing Request sync on the documents page. */
+    sync_request: [4, 60 * 60],
 } as const satisfies Record<string, readonly [number, number]>;
 
 export type RateLimitAction = keyof typeof RATE_LIMITS;

@@ -237,6 +237,31 @@ function isPresentation(mimeType: string | undefined, titled: string, path = "")
     return false;
 }
 
+/** Folder names a committee keeps its meeting records under. */
+const COMMITTEE_RECORD_FOLDER =
+    /minutes|\bmins\b|meetings?|notes|agendas?|fall|spring|summer|winter|(?:19|20)\d{2}/i;
+
+/**
+ * Whether a file sits where a committee keeps its own meeting records: in the
+ * committee's folder itself, or below it only through folders named for
+ * meetings or a term ("Committee Minutes", "Fall 2026").
+ *
+ * A member's own folder inside the committee's is their paperwork, not the
+ * committee's. "9/25 - Meeting w/ Prof Brodsky" in a personal folder under
+ * Internal Affairs is one senator's notes from a meeting with a professor;
+ * read as the committee's minutes, it was titled and filed as a meeting of
+ * Internal Affairs that never happened.
+ */
+export function isCommitteeRecordsFolder(folderPath: string): boolean {
+    const segments = folderPath.split("/");
+    const at = segments.findIndex((segment) => /^committees$/i.test(segment.trim()));
+    if (at === -1 || at + 1 >= segments.length) return false;
+
+    return segments
+        .slice(at + 2)
+        .every((segment) => COMMITTEE_RECORD_FOLDER.test(segment));
+}
+
 /**
  * Whether this is a meeting record, including files the SGA never titled
  * "minutes" or "agenda" -- "Senate GBM #15", "Exec Minutes 4/1", a committee
@@ -244,11 +269,12 @@ function isPresentation(mimeType: string | undefined, titled: string, path = "")
  */
 function looksLikeMinutes(titled: string, path: string, haystack: string): boolean {
     if (/minutes|agenda|\bmins\b|\bgbm\b|general body/.test(titled)) return true;
-    if (/meeting/.test(titled) && /committees\//i.test(path)) return true;
-    if (/meeting/.test(titled) && (minutesKind(titled) !== null || minutesKind(haystack) !== null)) {
-        return true;
-    }
-    return false;
+    if (!/meeting/.test(titled)) return false;
+    if (minutesKind(titled) !== null) return true;
+    // Under a committee, the folder says "committee" whatever the file is,
+    // so only the committee's own record folders count as evidence.
+    if (/(?:^|\/)committees\//i.test(path)) return isCommitteeRecordsFolder(path);
+    return minutesKind(haystack) !== null;
 }
 
 /**

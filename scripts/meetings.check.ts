@@ -261,6 +261,33 @@ check(
     at("CE Meeting Minutes - 14 September", CE, 113, new Date("2026-03-01T00:00:00Z")),
 );
 
+console.log("\ncommittee folders");
+
+// A real file: one senator's notes from a meeting with a professor, kept in
+// their own folder inside Internal Affairs'.
+check(
+    "a member's personal folder inside a committee is not the committee's minutes",
+    at("9/25 - Meeting w/ Prof Brodsky", `${IA}/Shreemann's Folder`, 114, new Date("2026-09-25T15:00:00Z"))
+        .key === "",
+    at("9/25 - Meeting w/ Prof Brodsky", `${IA}/Shreemann's Folder`, 114, new Date("2026-09-25T15:00:00Z")),
+);
+check(
+    "a meeting with a professor is not the committee's own, even in its folder",
+    at("9/25 - Meeting w/ Prof Brodsky", IA, 114, new Date("2026-09-25T15:00:00Z")).key === "",
+    at("9/25 - Meeting w/ Prof Brodsky", IA, 114, new Date("2026-09-25T15:00:00Z")),
+);
+check(
+    "a dated committee meeting in a term folder is still the committee's",
+    at("CE June 15 2026 Meeting", `${CE}/Summer 2026`, 114).key ===
+    "114:committee:civic engagement:2026-06-15",
+    at("CE June 15 2026 Meeting", `${CE}/Summer 2026`, 114),
+);
+check(
+    "a personal folder does not hide minutes that say so in the title",
+    at("IA Meeting Minutes 09.22.2026", `${IA}/Shreemann's Folder`, 114).role === "minutes",
+    at("IA Meeting Minutes 09.22.2026", `${IA}/Shreemann's Folder`, 114),
+);
+
 console.log("\nrunning logs");
 
 // Several committees type every meeting of the year into one file, which names
