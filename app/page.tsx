@@ -69,7 +69,7 @@ export default function Home() {
           </li>
           <li>
             <Link href="/contact#funding">
-              <span className={styles.quickLinkName}>Club Funding</span>
+              <span className={styles.quickLinkName}>RSO Funding</span>
               <span className={styles.arrow} aria-hidden="true">↗</span>
               <span className={styles.quickLinkNote}>
                 How a Registered Student Organization (RSO) can request funding from SGA.

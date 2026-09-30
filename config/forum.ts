@@ -35,34 +35,28 @@ export const FORUM_CATEGORIES: ForumCategorySeed[] = [
     {
         slug: "academics",
         name: "Academics",
-        description: "Courses, advising, registration, grading, and the libraries.",
+        description: "Courses, advising, registration, grading, etc.",
     },
     {
         slug: "campus-life",
-        name: "Campus life",
-        description: "Housing, dining, transport, facilities, and everything around them.",
-    },
-    {
-        slug: "money",
-        name: "Money",
-        description:
-            "Club funding, the student activities fee, financial aid, and the cost of being here.",
+        name: "Campus Life",
+        description: "Housing, dining, transport, facilities, etc.",
     },
     {
         slug: "safety",
-        name: "Safety and wellbeing",
-        description: "Public safety, health services, accessibility, and mental health.",
+        name: "Safety and Health",
+        description: "Public safety, health services, accessibility, etc.",
     },
     {
         slug: "sga",
-        name: "The SGA itself",
+        name: "SGA",
         description:
-            "What the SGA is doing, what it should be doing, and how it runs. Elections go here.",
+            "What the SGA is doing, what it should be doing, etc.",
     },
     {
         slug: "other",
-        name: "Anything else",
-        description: "Things the categories above do not cover.",
+        name: "Anything Else",
+        description: "Miscellaneous topics.",
     },
 ];
 
