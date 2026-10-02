@@ -36,7 +36,7 @@ export default function Home() {
         <div className={styles.introductionCopy}>
           <p>
             The Student Government Association (SGA) at Johns Hopkins University
-            is the representative body of undergraduate students. It is a
+            is the primary representative body of undergraduate students. It is a
             student-run organization that is responsible for representing the
             interests of the student body to the University&apos;s administration.
           </p>

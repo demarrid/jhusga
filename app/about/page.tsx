@@ -63,7 +63,7 @@ export default async function About() {
             The Student Government Association (SGA) at Johns Hopkins
             University is an official representative body of the undergraduate
             student body. Through elections and appointments, SGA members are
-            tasked with advocating for students with University administration.
+            responsible for advocating student interests to University administration.
           </p>
         </div>
       </section>
@@ -92,6 +92,10 @@ export default async function About() {
             <li><span>01</span>Lowering Bloomberg Student Center (BSC) dining prices</li>
             <li><span>02</span>Adding a Boba shop to Levering Hall dining</li>
             <li><span>03</span>Making iClicker free for students (in classes which require it)</li>
+            <li><span>04</span>The existence of construction maps from
+              <Link target="_blank" href="https://jhfre.jhu.edu/">JHFRE <span aria-hidden="true">↗</span>
+              </Link>
+            </li>
           </ol>
         </div>
       </section>
@@ -102,9 +106,9 @@ export default async function About() {
           <p className={styles.lead}>
             Mirroring the federal government of the United States, the SGA is comprised of
             the Executive, Legislative, and Judicial branches. While the Legislative Branch
-             contains many different Committees, 
+            contains many different Legislative Committees,
             the Executive Branch only oversees the Programming Councils, which run each
-            class&apos;s events, while the Judiciary Branch only handles appeals to
+            class&apos; events, while the Judiciary Branch only oversees appeals to
             the Committee on Student Elections (CSE), which runs elections.
           </p>
 
