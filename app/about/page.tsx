@@ -102,7 +102,7 @@ export default async function About() {
           <p className={styles.lead}>
             Mirroring the federal government of the United States, the majority
             of SGA positions are in the Executive, Legislative, and Judicial
-            branches. While the Legislative Nranch contains many different Committees, 
+            branches. While the Legislative Branch contains many different Committees, 
             the Executive Branch only oversees the Programming Councils, which run each
             class&apos;s events, while the Judiciary Branch only handles appeals to
             the Committee on Student Elections (CSE), which runs elections.
