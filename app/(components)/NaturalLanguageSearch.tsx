@@ -44,7 +44,7 @@ import styles from "./NaturalLanguageSearch.module.css";
 const EXAMPLES = [
     "What happened last week?",
     "How many Caucus Senators can there be?",
-    "What does it take to amend the constitution?",
+    "What does it take to amend the Constitution?",
     "How is a funding bill passed?",
     "What are the current initiatives?",
     "Who is currently in the Judiciary branch?",

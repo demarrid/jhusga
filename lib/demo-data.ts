@@ -5,7 +5,7 @@ import { isComparableKind, isDocumentKind, type DocumentKind } from "@/lib/kinds
 import { renderDocument } from "@/lib/render";
 import { questionFocus } from "@/config/search";
 import { collapseUnchanged, diffLines } from "@/lib/diff";
-import { byNewestFirst, listedDate } from "@/lib/dates";
+import { byRecentlyUpdatedFirst, listedDate } from "@/lib/dates";
 import { documentFindRank } from "@/lib/document-find";
 import { parseTimeframe } from "@/lib/when";
 
@@ -47,7 +47,7 @@ export function demoDocuments(filters: {
         }))
         .sort((left, right) => {
             if (right.findRank !== left.findRank) return right.findRank - left.findRank;
-            return byNewestFirst(left.listing, right.listing);
+            return byRecentlyUpdatedFirst(left.listing, right.listing);
         })
         .map((entry) => entry.listing);
 }

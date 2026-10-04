@@ -79,19 +79,31 @@ export function listedDate(document: DatedDocument): Date | null {
 }
 
 /**
- * Newest first, which is the order a record is read in.
+ * The date a document was last touched.
  *
- * Someone opening the listing wants this week's meeting, not the constitution
- * that has sat at the top of the alphabet since 2019. Documents the archive
- * cannot date sink below the ones it can, rather than being dated zero and
- * taking the bottom of the list in a random order.
+ * Drive's modified time first here, the opposite way round from `listedDate`:
+ * a bill filed in September and amended last night is news last night, even
+ * though it is still filed under September. Documents Drive has never
+ * reported a modification for fall back to the date they are filed under.
  */
-export function byNewestFirst<T extends DatedDocument & { title: string }>(
+export function updatedDate(document: DatedDocument): Date | null {
+    return document.driveModifiedTime ?? listedDate(document);
+}
+
+/**
+ * Most recently updated first, which is the order a record is read in.
+ *
+ * Someone opening the listing wants what has moved this week, not the
+ * constitution that has sat at the top of the alphabet since 2019. Documents
+ * the archive cannot date sink below the ones it can, rather than being dated
+ * zero and taking the bottom of the list in a random order.
+ */
+export function byRecentlyUpdatedFirst<T extends DatedDocument & { title: string }>(
     left: T,
     right: T,
 ): number {
-    const a = listedDate(left);
-    const b = listedDate(right);
+    const a = updatedDate(left);
+    const b = updatedDate(right);
 
     if (a && b && a.getTime() !== b.getTime()) return b.getTime() - a.getTime();
     if (a && !b) return -1;

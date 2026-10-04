@@ -52,22 +52,22 @@ export default function ArchiveSearch(props: ArchiveSearchProps) {
           <button
             type="button"
             role="tab"
-            id="ask-question-tab"
-            aria-selected={mode === "ask"}
-            aria-controls="ask-question-panel"
-            onClick={() => selectMode("ask")}
-          >
-            Ask a question
-          </button>
-          <button
-            type="button"
-            role="tab"
             id="find-documents-tab"
             aria-selected={mode === "find"}
             aria-controls="find-documents-panel"
             onClick={() => selectMode("find")}
           >
             Find documents
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="ask-question-tab"
+            aria-selected={mode === "ask"}
+            aria-controls="ask-question-panel"
+            onClick={() => selectMode("ask")}
+          >
+            Ask a question
           </button>
         </div>
       </header>

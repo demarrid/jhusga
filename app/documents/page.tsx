@@ -79,11 +79,9 @@ export default async function Documents({
 
   const resultLabel = `${documents.length} document${documents.length === 1 ? "" : "s"} found in ${sessionScope}`;
 
-  // Filtered and lineage links are document-finding actions; an explicit mode
-  // wins so a visitor can still switch tabs without losing active filters.
-  const hasDocumentIntent = Boolean(q || kind || person || role || office || archive || lineage);
-  const initialSearchMode =
-    mode === "find" || mode === "ask" ? mode : hasDocumentIntent ? "find" : "ask";
+  // Finding documents is the page's own job, so it opens there; an explicit
+  // mode wins so a visitor can still switch tabs without losing active filters.
+  const initialSearchMode = mode === "ask" ? "ask" : "find";
 
   return (
     <main className={styles.page}>

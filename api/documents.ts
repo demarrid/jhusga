@@ -2,7 +2,7 @@
 
 import { SESSION_NUMBER } from "@/config/sga";
 import { sheetDelimiter } from "@/lib/csv";
-import { byNewestFirst } from "@/lib/dates";
+import { byRecentlyUpdatedFirst } from "@/lib/dates";
 import { documentFindRank } from "@/lib/document-find";
 import { heldNotice } from "@/lib/integrity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
@@ -163,8 +163,8 @@ export async function getDocuments(filters: {
             },
         },
         // A tiebreak only. The order readers see is by relevance when a query
-        // is typed and by date otherwise, and neither can be an ORDER BY --
-        // see the sort below.
+        // is typed and by last update otherwise, and neither can be an
+        // ORDER BY -- see the sort below.
         orderBy: [{ sessionNumber: "desc" }, { title: "asc" }],
     });
 
@@ -200,7 +200,7 @@ export async function getDocuments(filters: {
 
     ranked.sort((left, right) => {
         if (right.findRank !== left.findRank) return right.findRank - left.findRank;
-        return byNewestFirst(left.document, right.document);
+        return byRecentlyUpdatedFirst(left.document, right.document);
     });
 
     return ranked.map((entry) => entry.document);

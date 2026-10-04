@@ -67,9 +67,9 @@ export const SUMMARY_RUN_BUDGET = 25;
  * 2. `datedAt`, newest first -- the date the document states about itself
  *    (`documentDate` in lib/identity.ts). It is the one date both sources have
  *    and mean the same thing by: the day a bill was read, the byline over an
- *    article. It is also what the listing orders by (`listedDate` in
- *    lib/dates.ts), so the queue works in the order the site presents, which
- *    is the order documents actually get opened in.
+ *    article. It is also the date the listing files a document under
+ *    (`listedDate` in lib/dates.ts), so the queue works close to the order the
+ *    site presents, which is the order documents actually get opened in.
  * 3. `driveModifiedTime`, newest first, to separate the documents that state
  *    no date of their own -- a roster or a tracker is a living file rather
  *    than a dated event, so the useful question about it is when it last
