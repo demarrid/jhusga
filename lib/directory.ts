@@ -1,5 +1,5 @@
 import { SESSION_NUMBER, sessionEndDate, sessionStartDate } from "@/config/session";
-import { isAttendanceSheet, parseAttendanceSheet } from "@/lib/attendance";
+import { COMMITTEE_CODES, isAttendanceSheet, parseAttendanceSheet } from "@/lib/attendance";
 import { nameKey } from "@/lib/contributors";
 import { parseCsvLine } from "@/lib/csv";
 import { resolveAffiliates } from "@/lib/names";
@@ -16,6 +16,12 @@ import { prisma } from "@/lib/prisma";
  * officer block), then from the roster only for people already on the list.
  * Every office and email keeps the passage it was read from, so a stale
  * claim is inspectable.
+ *
+ * All of that is overruled by a positions document when the session has one:
+ * a directory Doc laid out as an outline of branch, seat, holder, and what
+ * the holder sits on. It is the roll and the only source of offices, because
+ * it is written to be the answer while every other source disagrees with it
+ * somewhere. The email lists then only supply addresses, for people it names.
  *
  * The email list is a Google Doc whose table export jams every name into one
  * cell and every address into another, so names and emails are paired by the
@@ -989,20 +995,295 @@ function rosterEvidence(person: DirectoryMember): string {
     return `${person.name}, ${office}`.replace(/\s+/g, " ").trim();
 }
 
+type OutlineNode = { text: string; children: OutlineNode[] };
+
+/** A list item of any marker, nested by indentation. */
+const OUTLINE_ITEM = /^([ \t]*)(?:\d+[.)]|[-*+])(?:\s+(.*))?$/;
+
+/**
+ * The document's nested list as a tree. Depth is read off the indentation
+ * relative to the items around it rather than a fixed width, because "10."
+ * pushes its children two columns further in than "9." does.
+ */
+function parseOutline(markdown: string): OutlineNode[] {
+    const roots: OutlineNode[] = [];
+    const stack: { indent: number; node: OutlineNode }[] = [];
+
+    for (const raw of markdown.split(/\r?\n/)) {
+        const item = OUTLINE_ITEM.exec(raw);
+        if (!item) continue;
+
+        const indent = item[1]!.replace(/\t/g, "    ").length;
+        const node: OutlineNode = {
+            text: toPlainText(item[2] ?? "").replace(/\s+/g, " ").trim(),
+            children: [],
+        };
+        while (stack.length > 0 && stack[stack.length - 1]!.indent >= indent) stack.pop();
+        (stack[stack.length - 1]?.node.children ?? roots).push(node);
+        stack.push({ indent, node });
+    }
+
+    return roots;
+}
+
+const BRANCH_HEADING = /^(?:executive|legislative|judicia(?:l|ry))\s+branch$/i;
+
+/**
+ * A directory document laid out as branches of the association. Two branch
+ * headings, so a document that merely lists "Executive Branch" once among
+ * other things is not mistaken for one.
+ */
+export function isPositionsDocument(document: DirectoryDocument): boolean {
+    if (!isDirectoryDocument(document)) return false;
+    const branches = parseOutline(document.content).filter((node) =>
+        BRANCH_HEADING.test(node.text),
+    );
+    return branches.length >= 2;
+}
+
+const OUTLINE_ROLE_WORD =
+    /\b(?:senators?|president|vice|chair|co-chair|justices?|chief|committees?|councils?|class|branch|school|caucus|representatives?|secretary|treasurer|director|members?|board|programming|executive|legislative|judiciary|senate|officers?|elections)\b/i;
+
+function isOutlineName(text: string): boolean {
+    if (OUTLINE_ROLE_WORD.test(text)) return false;
+    const tokens = text.split(/\s+/);
+    if (tokens.length < 2 || tokens.length > 4) return false;
+    return tokens.every((token) => /^[A-Z][A-Za-z'’.-]*$/.test(token));
+}
+
+/**
+ * Whether an item is a person rather than a heading over people. "Cultural
+ * Identity" and "Student Athlete" are shaped like names, and what gives them
+ * away is that a name sits underneath them.
+ */
+function isOutlinePerson(node: OutlineNode): boolean {
+    return isOutlineName(node.text) && !node.children.some((child) => isOutlineName(child.text));
+}
+
+function outlineText(nodes: OutlineNode[]): string[] {
+    return nodes.flatMap((node) => [node.text, ...outlineText(node.children)]);
+}
+
+type OutlineSeat = { position: string; group: DirectoryGroup; subgroup: string | null };
+
+/** The seat a person holds, from the headings above them. */
+function outlineSeat(context: string[]): OutlineSeat {
+    const branch = context[0] ?? "";
+    const headings = context.slice(1);
+    const nearest = headings[headings.length - 1] ?? "";
+    const singular = nearest.replace(/\b(Senator|Justice|Representative|Member)s\b/i, "$1");
+
+    if (/^executive/i.test(branch)) {
+        return { position: nearest, group: "executive", subgroup: null };
+    }
+    if (/^judicia/i.test(branch)) {
+        if (/student elections/i.test(nearest)) {
+            return { position: "Committee on Student Elections", group: "cse", subgroup: null };
+        }
+        return { position: "Justice", group: "judiciary", subgroup: null };
+    }
+    if (/^legislative/i.test(branch)) {
+        const year = classSubgroup(nearest);
+        if (year) return { position: `${year} Senator`, group: "senate", subgroup: year };
+        if (/krieger|arts and sciences|\bksas\b/i.test(nearest)) {
+            return { position: "KSAS Senator", group: "senate", subgroup: "KSAS" };
+        }
+        if (/whiting|engineering|\bwse\b/i.test(nearest)) {
+            return { position: "WSE Senator", group: "senate", subgroup: "WSE" };
+        }
+        if (headings.slice(0, -1).some((heading) => /representative|\brso\b/i.test(heading))) {
+            return { position: `${nearest} Senator`, group: "senate", subgroup: "RSO" };
+        }
+        return { position: singular, group: "senate", subgroup: null };
+    }
+    return { position: singular, group: "other", subgroup: null };
+}
+
+/** "No committees", "Committees: None", and the "." left in an empty slot. */
+const OUTLINE_NOTHING =
+    /^(?:[.…\s]*|no\s+(?:committees?|councils?)|(?:committees?|councils?)\s*:\s*none)$/i;
+
+const OUTLINE_SEAT_ROLE = /^(co-?chair|vice[- ]?chair|chair|member)\s+of\s+(?:the\s+)?(.+)$/i;
+
+/** "Commitee on Student Services", "Finance Committee" -> the bylaws' name. */
+function committeeName(text: string): string {
+    const name = text
+        .replace(/\bcommit+e+\s+(?:ofon|on|of)\s+/i, "")
+        .replace(/\s*\bcommit+e+\b\s*/i, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const known = Object.values(COMMITTEE_CODES).find(
+        (committee) => nameKey(committee) === nameKey(name),
+    );
+    return known ?? name;
+}
+
+function seatRoleLabel(role: string): string {
+    if (/^co/i.test(role)) return "Co-Chair";
+    if (/^vice/i.test(role)) return "Vice Chair";
+    return "Chair";
+}
+
+/**
+ * The roll and every office, read from a positions document alone.
+ *
+ * What sits under a holder is what else they hold: "Chief Justice" replaces
+ * the Justice seat it refines, "Chair" under the elections committee is that
+ * committee's chair, "Member of Committee on X" is a committee, and anything
+ * else ("Vice President of the Senate") is an office as written.
+ */
+function readPositionsDocument(document: DirectoryDocument): Map<string, MutableMember> {
+    const current = new Map<string, MutableMember>();
+
+    const visit = (nodes: OutlineNode[], context: string[]) => {
+        for (const node of nodes) {
+            if (!isOutlinePerson(node)) {
+                visit(node.children, [...context, node.text]);
+                continue;
+            }
+
+            const seat = outlineSeat(context);
+            const source = citationFrom(document, `${context.slice(1).join(", ")}: ${node.text}`);
+            let seatPosition = seat.position;
+            const offices: string[] = [];
+            const committees: string[] = [];
+
+            for (const detail of outlineText(node.children)) {
+                if (OUTLINE_NOTHING.test(detail)) continue;
+
+                if (seat.group === "judiciary" && /^chief justice$/i.test(detail)) {
+                    seatPosition = "Chief Justice";
+                    continue;
+                }
+                if (seat.group === "cse" && !/\bof\b/i.test(detail)) {
+                    seatPosition = `${detail} of the Committee on Student Elections`;
+                    continue;
+                }
+
+                const role = OUTLINE_SEAT_ROLE.exec(detail);
+                if (role && /programming council/i.test(role[2]!)) {
+                    const year = classSubgroup(
+                        role[2]!.replace(/\b(Senior|Junior|Sophomore|Freshman)\s+(?!Class\b)/i, "$1 Class "),
+                    );
+                    offices.push(year ? `${year} Programming Council` : "Programming Council");
+                    continue;
+                }
+                if (role && /commit+e+/i.test(role[2]!)) {
+                    const committee = committeeName(role[2]!);
+                    if (!committees.includes(committee)) committees.push(committee);
+                    if (!/^member$/i.test(role[1]!)) {
+                        offices.push(`${seatRoleLabel(role[1]!)} of the Committee on ${committee}`);
+                    }
+                    continue;
+                }
+
+                offices.push(detail);
+            }
+
+            const key = nameKey(node.text);
+            const member =
+                current.get(key) ?? blankMember({ name: node.text, email: null, group: seat.group });
+            current.set(key, member);
+
+            member.subgroup = member.subgroup ?? seat.subgroup;
+            for (const office of [seatPosition, ...offices]) {
+                if (office) addPosition(member, office, source, seat.group);
+            }
+            for (const committee of committees) {
+                if (!member.committees.includes(committee)) member.committees.push(committee);
+            }
+            if (committees.length > 0) member.committeeSource = source;
+        }
+    };
+
+    visit(parseOutline(document.content), []);
+    return current;
+}
+
+/**
+ * Addresses for people already on the roll. Nobody is added: a name only an
+ * email list carries is not a member when a positions document says who is.
+ */
+function attachListedEmails(
+    current: Map<string, MutableMember>,
+    emailDocs: DirectoryDocument[],
+): void {
+    for (const document of emailDocs) {
+        for (const person of parseEmailList(document.content)) {
+            if (!person.email) continue;
+            const member = findCurrentMember(current, person);
+            if (!member || member.email) continue;
+            member.email = person.email;
+            member.emailSource = citationFrom(document, `${person.name} ${person.email}`);
+        }
+    }
+}
+
+/** Remaining addresses, then the published, ordered roll. */
+function publishDirectory(
+    current: Map<string, MutableMember>,
+    emailDocs: DirectoryDocument[],
+    sources: DirectoryDocument[],
+): { members: DirectoryMember[]; sources: DirectorySource[] } {
+    assignLeftoverEmails(
+        [...current.values()],
+        emailDocs.flatMap((document) => extractEmails(document.content)),
+    );
+    for (const member of current.values()) {
+        if (member.email && !member.emailSource && emailDocs[0]) {
+            member.emailSource = citationFrom(
+                emailDocs[0],
+                `${member.name} ${member.email}`,
+            );
+        }
+    }
+
+    return {
+        members: [...current.values()].map(publishedMember).sort((a, b) => {
+            const group = groupRank(a.group) - groupRank(b.group);
+            if (group !== 0) return group;
+            const sub =
+                subgroupRank(a.group, a.subgroup ?? null) -
+                subgroupRank(b.group, b.subgroup ?? null);
+            if (sub !== 0) return sub;
+            const seat = seatRank(a.positions) - seatRank(b.positions);
+            if (seat !== 0) return seat;
+            return a.name.localeCompare(b.name);
+        }),
+        sources: sources
+            .filter((document, index, all) => all.findIndex((other) => other.id === document.id) === index)
+            .map((document) => ({ id: document.id, title: document.title })),
+    };
+}
+
 /**
  * Current-session contact roll, with offices from recent minutes first and
- * the roster only as a chipped fallback for people still on the list.
+ * the roster only as a chipped fallback for people still on the list -- or,
+ * where the session has one, from the positions document and nothing else.
  */
 export function buildSessionDirectory(documents: DirectoryDocument[]): {
     members: DirectoryMember[];
     sources: DirectorySource[];
 } {
-    const directoryDocs = documents.filter(isDirectoryDocument);
+    const positionsDoc = documents
+        .filter(isPositionsDocument)
+        .sort((a, b) => modifiedAt(b) - modifiedAt(a))[0];
+
+    const directoryDocs = documents.filter(
+        (document) => isDirectoryDocument(document) && document.id !== positionsDoc?.id,
+    );
     const emailDocs = directoryDocs.filter((document) => {
         const title = document.title.toLowerCase();
         if (/roster/.test(title)) return false;
         return /email list|contact list/.test(title) || extractEmails(document.content).length > 0;
     });
+
+    if (positionsDoc) {
+        const current = readPositionsDocument(positionsDoc);
+        attachListedEmails(current, emailDocs);
+        return publishDirectory(current, emailDocs, [positionsDoc, ...emailDocs]);
+    }
+
     const rosterDocs = directoryDocs.filter((document) => {
         const title = document.title.toLowerCase();
         return /roster/.test(title) || /^name,/im.test(document.content);
@@ -1114,42 +1395,12 @@ export function buildSessionDirectory(documents: DirectoryDocument[]): {
         }
     }
 
-    assignLeftoverEmails(
-        [...current.values()],
-        emailDocs.flatMap((document) => extractEmails(document.content)),
-    );
-    for (const member of current.values()) {
-        if (member.email && !member.emailSource && emailDocs[0]) {
-            member.emailSource = citationFrom(
-                emailDocs[0],
-                `${member.name} ${member.email}`,
-            );
-        }
-    }
-
-    const sources = [...emailDocs, ...attendanceDocs, ...rosterDocs, ...officerDocs.filter((document) =>
-        extractOfficerAssignments(document.content).length > 0,
-    )].filter(
-        (document, index, all) => all.findIndex((other) => other.id === document.id) === index,
-    );
-
-    return {
-        members: [...current.values()].map(publishedMember).sort((a, b) => {
-            const group = groupRank(a.group) - groupRank(b.group);
-            if (group !== 0) return group;
-            const sub =
-                subgroupRank(a.group, a.subgroup ?? null) -
-                subgroupRank(b.group, b.subgroup ?? null);
-            if (sub !== 0) return sub;
-            const seat = seatRank(a.positions) - seatRank(b.positions);
-            if (seat !== 0) return seat;
-            return a.name.localeCompare(b.name);
-        }),
-        sources: sources.map((document) => ({
-            id: document.id,
-            title: document.title,
-        })),
-    };
+    return publishDirectory(current, emailDocs, [
+        ...emailDocs,
+        ...attendanceDocs,
+        ...rosterDocs,
+        ...officerDocs.filter((document) => extractOfficerAssignments(document.content).length > 0),
+    ]);
 }
 
 /**

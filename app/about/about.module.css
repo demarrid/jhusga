@@ -14,6 +14,13 @@
   color: #ffffff;
 }
 
+.hero a {
+  color: #b9daf6;
+  text-decoration: underline;
+  text-decoration-color: #b9daf6;
+  text-underline-offset: 0.3em;
+}
+
 .heroLabel {
   align-self: start;
   padding-top: 0.75rem;

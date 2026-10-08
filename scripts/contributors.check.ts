@@ -1049,6 +1049,13 @@ check(
     "a header field outside a list is still not a speaker on a bill",
     extractContributors("Venue: Levering (free) or the Rec Center").length === 0,
 );
+check(
+    // Resolved as a one-letter slip, "Committees" became somebody called
+    // Programming Committee.
+    "a field listing bodies is not somebody speaking",
+    extractContributors("1. Sienna Sian Kim\n   1. Committees: None\n   2. Councils: none").length === 0,
+    extractContributors("1. Sienna Sian Kim\n   1. Committees: None\n   2. Councils: none"),
+);
 
 const deck = [
     "The Judiciary",

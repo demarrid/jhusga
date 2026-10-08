@@ -284,6 +284,130 @@ check(
 );
 check("WSE is a separate subsection", senate?.subgroups.some((sub) => sub.key === "WSE") === true);
 
+console.log("\npositions document");
+const positions = [
+    "1. Executive Branch",
+    "   1. Treasurer",
+    "      1. Amy Xu",
+    "         1. Co-Chair of Finance Committee",
+    "   2. Chair of Programming",
+    "      1. Grace Guan",
+    "         1. No committees",
+    "         2. Member of Junior Class Programming Council",
+    "   3. Director of Communications",
+    "      1. Sienna Sian Kim",
+    "         1. Committees: None",
+    "   4. President of the Senate",
+    "      1. Jazzlyn Fernandez",
+    "         1. No councils",
+    "2. Legislative Branch",
+    "   1. Sophomore Class Senators",
+    "      1. Veda Kommineni",
+    "         1. Sophomore Class President",
+    "         2. Chair of Commitee on Student Services",
+    "      2. Kai Martin",
+    "         1. .",
+    "      3. …",
+    "   2. Academic Senators",
+    "      1. Krieger School of Arts and Sciences",
+    "         1. Boyi Chen",
+    "            1. Member of Committee on Internal Affairs",
+    "            2. Member of Committee ofon Academic Affairs",
+    "      2. Whiting School of Engineering",
+    "         1. Paul Woo",
+    "   3. Representative Senators",
+    "      1. Cultural Identity",
+    "         1. Arjun Jasuja",
+    "      10. First-Generation Limited Income",
+    "          1. Jazzlyn Fernandez",
+    "3. Judiciary Branch",
+    "   1. Justices",
+    "      1. Felix Titre",
+    "         1. Chief Justice",
+    "      2. Katherine Zhu",
+    "   2. Committee on Student Elections",
+    "      1. Sajiv Harikrishnar",
+    "         1. Chair",
+    "      2.",
+].join("\n");
+
+const fromPositions = buildSessionDirectory([
+    { id: "positions", title: "114th SGA Roster", content: positions, driveModifiedTime: "2026-10-08T00:00:00Z" },
+    { id: "email", title: "114th email list", content: jammed, driveModifiedTime: "2026-09-01T00:00:00Z" },
+    { id: "roster", title: "114th SGA Roster", content: roster, driveModifiedTime: "2026-04-03T00:00:00Z" },
+    {
+        id: "minutes",
+        title: "MINUTES #2",
+        kind: "minutes.senate",
+        content: "1. Student Body Vice President \\- *Sumire Sumi*\n2. Treasurer \\- *Vishnu Dontu*",
+        driveModifiedTime: "2026-09-02T00:00:00Z",
+    },
+]);
+const held = (name: string) => fromPositions.members.find((person) => person.name === name);
+
+check("a nested branch outline is a positions document", fromPositions.sources[0]?.id === "positions", fromPositions.sources);
+check(
+    "only the positions document and the email list are read",
+    fromPositions.sources.map((source) => source.id).join() === "positions,email",
+    fromPositions.sources,
+);
+check(
+    "the email list adds an address but not a member",
+    held("Amy Xu")?.email === "axu22@jh.edu" && !held("Sumire Sumi") && !held("Jessica Snell"),
+    fromPositions.members.map((person) => person.name),
+);
+check(
+    "minutes cannot hand an office to someone else",
+    !held("Vishnu Dontu") && held("Amy Xu")?.positions[0] === "Treasurer",
+    held("Amy Xu"),
+);
+check(
+    "a committee chair is an office and a committee",
+    held("Amy Xu")?.positions.includes("Co-Chair of the Committee on Finance") === true &&
+        held("Amy Xu")?.committees?.join() === "Finance",
+    held("Amy Xu"),
+);
+check(
+    "misspelled committee names land on the bylaws' names",
+    held("Veda Kommineni")?.committees?.join() === "Student Services" &&
+        held("Boyi Chen")?.committees?.join() === "Internal Affairs,Academic Affairs",
+    [held("Veda Kommineni"), held("Boyi Chen")],
+);
+check("No committees and . are not offices", held("Kai Martin")?.positions.join() === "Sophomore Class Senator", held("Kai Martin"));
+check("Committees: None is not an office", held("Sienna Sian Kim")?.positions.join() === "Director of Communications", held("Sienna Sian Kim"));
+check(
+    "a council membership is an office",
+    held("Grace Guan")?.positions.join() === "Chair of Programming,Junior Class Programming Council",
+    held("Grace Guan"),
+);
+check("a school heading is the school seat", held("Boyi Chen")?.subgroup === "KSAS" && held("Paul Woo")?.positions.join() === "WSE Senator");
+check(
+    "a constituency shaped like a name is a heading, not a person",
+    !held("Cultural Identity") && held("Arjun Jasuja")?.positions.join() === "Cultural Identity Senator",
+    fromPositions.members.map((person) => person.name),
+);
+check(
+    "one person under two seats holds both",
+    held("Jazzlyn Fernandez")?.positions.join() === "President of the Senate,First-Generation Limited Income Senator" &&
+        held("Jazzlyn Fernandez")?.group === "executive",
+    held("Jazzlyn Fernandez"),
+);
+check("Chief Justice refines the Justice seat", held("Felix Titre")?.positions.join() === "Chief Justice", held("Felix Titre"));
+check("a justice with no detail is a Justice", held("Katherine Zhu")?.positions.join() === "Justice");
+check(
+    "an elections committee chair is that committee's chair",
+    held("Sajiv Harikrishnar")?.positions.join() === "Chair of the Committee on Student Elections" &&
+        held("Sajiv Harikrishnar")?.group === "cse",
+    held("Sajiv Harikrishnar"),
+);
+check(
+    "a roster spreadsheet is not mistaken for one",
+    buildSessionDirectory([
+        { id: "email", title: "114th email list", content: jammed },
+        { id: "roster", title: "114th SGA Roster", content: roster },
+    ]).sources.some((source) => source.id === "roster"),
+);
+
 console.log("\ngroup inboxes");
 const inboxes = extractGroupInboxes([
     {
