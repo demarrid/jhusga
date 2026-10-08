@@ -1,13 +1,24 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getViewer } from "@/api/auth";
 import NewPostForm from "@/app/(components)/NewPostForm";
+import { pageMetadata } from "@/lib/seo";
 
 import DiscussionHeader from "../DiscussionHeader";
 import styles from "../discussion.module.css";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = pageMetadata({
+    title: "Start a thread",
+    description:
+        "Start an anonymous thread on the SGA discussion forum. Requires signing in " +
+        "with a Hopkins address; nothing stored links the post back to you.",
+    path: "/discussion/new",
+    noIndex: true,
+});
 
 export default async function NewPost() {
     const viewer = await getViewer();

@@ -1,9 +1,21 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ALLOWED_EMAIL_DOMAINS, SESSION_DAYS } from "@/config/forum";
+import { pageMetadata } from "@/lib/seo";
 
 import DiscussionHeader from "../DiscussionHeader";
 import styles from "../discussion.module.css";
+
+export const metadata: Metadata = pageMetadata({
+    title: "How the discussion works",
+    description:
+        "The rules of the SGA discussion forum: posts are anonymous unless an " +
+        "officeholder chooses otherwise, posting needs a Hopkins address that is " +
+        "hashed and dropped, submissions are screened for malice and flooding, " +
+        "posts are permanent, and every moderation action is logged in public.",
+    path: "/discussion/rules",
+});
 
 /**
  * How the forum works, written out in full.

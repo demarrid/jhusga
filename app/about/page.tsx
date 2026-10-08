@@ -1,14 +1,29 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getSections, type Section } from "@/api/sections";
 import GeneratedProse from "@/app/(components)/GeneratedProse";
 import { getSessionString } from "@/app/utils";
 import { SECTION_KEYS } from "@/lib/sections";
+import { pageMetadata } from "@/lib/seo";
 
 import styles from "./about.module.css";
 
 // Read on request so a daily document sync appears without a redeploy.
 export const dynamic = "force-dynamic";
+
+/** The paragraph the page opens with, and so what a link to it should show. */
+const ABOUT_INTRO =
+  "The Student Government Association (SGA) at Johns Hopkins University is an " +
+  "official representative body of the undergraduate student body. Through " +
+  "elections and appointments, SGA members are responsible for advocating " +
+  "student interests to University administration.";
+
+export const metadata: Metadata = pageMetadata({
+  title: "About the SGA",
+  description: ABOUT_INTRO,
+  path: "/about",
+});
 
 /**
  * One office described directly from the constitution and bylaws. Keeping
@@ -59,12 +74,7 @@ export default async function About() {
             About
             <span>the SGA</span>
           </h1>
-          <p>
-            The Student Government Association (SGA) at Johns Hopkins
-            University is an official representative body of the undergraduate
-            student body. Through elections and appointments, SGA members are
-            responsible for advocating student interests to University administration.
-          </p>
+          <p>{ABOUT_INTRO}</p>
         </div>
       </section>
 

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -18,11 +19,57 @@ import { manualSyncEnabled } from "@/config/sync";
 import { proseLine } from "@/lib/cite";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
-import { documentKindLabel } from "@/lib/kinds";
+import { documentKindLabel, isDocumentKind } from "@/lib/kinds";
+import { SESSION_LABEL, pageMetadata } from "@/lib/seo";
 
 import styles from "./documents.module.css";
 
 export const dynamic = "force-dynamic";
+
+const DOCUMENTS_DESCRIPTION =
+  `Every public record of the SGA at Johns Hopkins, searchable in full: meeting ` +
+  `agendas and minutes, legislation, the constitution and bylaws, and reports ` +
+  `from the ${SESSION_LABEL} and the sessions before it.`;
+
+/**
+ * A search is worth sharing as a search. The query or kind goes in the title
+ * so a pasted link reads as "Senate minutes" rather than as the archive's
+ * front page; everything else is the same description, because the filters
+ * do not change what the page is for.
+ */
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; kind?: string; archive?: string }>;
+}): Promise<Metadata> {
+  const { q, kind, archive } = await searchParams;
+  const query = q?.trim();
+  const kindLabel = kind && isDocumentKind(kind) ? documentKindLabel(kind) : null;
+  const scope = archive === "1" ? "the archive" : `the ${SESSION_LABEL}`;
+
+  if (query) {
+    return pageMetadata({
+      title: `“${query}” · Documents`,
+      description: `Documents in ${scope} of the SGA at Johns Hopkins matching “${query}”. ${DOCUMENTS_DESCRIPTION}`,
+      path: `/documents?q=${encodeURIComponent(query)}`,
+      noIndex: true,
+    });
+  }
+
+  if (kindLabel) {
+    return pageMetadata({
+      title: `${kindLabel} · Documents`,
+      description: `${kindLabel} from ${scope} of the SGA at Johns Hopkins. ${DOCUMENTS_DESCRIPTION}`,
+      path: `/documents?kind=${encodeURIComponent(kind!)}`,
+    });
+  }
+
+  return pageMetadata({
+    title: "Documents",
+    description: DOCUMENTS_DESCRIPTION,
+    path: "/documents",
+  });
+}
 
 export default async function Documents({
   searchParams,

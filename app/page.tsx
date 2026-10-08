@@ -1,7 +1,22 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import HeroBackground from "@/app/(components)/HeroBackground";
 import styles from "@/app/home.module.css";
+import { pageMetadata } from "@/lib/seo";
+
+/** The same paragraph the page opens with under "About the SGA". */
+const ABOUT_THE_SGA =
+  "The Student Government Association (SGA) at Johns Hopkins University is the " +
+  "primary representative body of undergraduate students. It is a student-run " +
+  "organization that is responsible for representing the interests of the " +
+  "student body to the University's administration.";
+
+// No title: the home page carries the site's full name from the root layout.
+export const metadata: Metadata = pageMetadata({
+  description: ABOUT_THE_SGA,
+  path: "/",
+});
 
 export default function Home() {
   return (
@@ -34,12 +49,7 @@ export default function Home() {
         </div>
 
         <div className={styles.introductionCopy}>
-          <p>
-            The Student Government Association (SGA) at Johns Hopkins University
-            is the primary representative body of undergraduate students. It is a
-            student-run organization that is responsible for representing the
-            interests of the student body to the University&apos;s administration.
-          </p>
+          <p>{ABOUT_THE_SGA}</p>
           <Link href="/about">
             Learn how the SGA works <span aria-hidden="true">→</span>
           </Link>

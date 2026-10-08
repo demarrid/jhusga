@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getContactDirectory } from "@/api/contact";
@@ -10,10 +11,20 @@ import {
   type DirectoryCitation,
   type GroupInbox,
 } from "@/lib/directory";
+import { SESSION_LABEL, pageMetadata } from "@/lib/seo";
 
 import styles from "./contact.module.css";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Contact",
+  description:
+    `Contact directory for the ${SESSION_LABEL} of the SGA at Johns Hopkins: ` +
+    "emails for executives, senators, and committee chairs, shared inboxes, " +
+    "office hours, and how a Registered Student Organization requests funding.",
+  path: "/contact",
+});
 
 const FUNDING_GUIDE_URL =
   "https://jhu.campusgroups.com/get_file?eid=c53d17eb5f9e16b199c8d0db55a27983";

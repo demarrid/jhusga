@@ -1,19 +1,72 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
-import { getDocument } from "@/api/documents";
+import { getDocument, type DocumentDetail } from "@/api/documents";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentViewer from "@/app/(components)/DocumentViewer";
 import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
+import { proseLine } from "@/lib/cite";
 import { contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
 import { formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
+import { pageMetadata } from "@/lib/seo";
 
 import styles from "../document-detail.module.css";
 
 export const dynamic = "force-dynamic";
+
+// One read per request, shared between the metadata and the page.
+const loadDocument = cache(getDocument);
+
+/**
+ * A shared link to a document shows the document's name and its summary.
+ *
+ * The summary is the restatement written beside the document, flattened to a
+ * line with its citation markers dropped, exactly as the listing shows it.
+ * Where none has been written yet the Drive description stands in, and
+ * failing that a sentence saying what kind of record this is and when.
+ */
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ documentId: string }>;
+}): Promise<Metadata> {
+    const { documentId } = await params;
+    const document = await loadDocument(documentId);
+    if (!document) notFound();
+
+    return pageMetadata({
+        title: document.title,
+        description: describeDocument(document),
+        path: `/documents/${document.id}`,
+        type: "article",
+    });
+}
+
+function describeDocument(document: DocumentDetail): string {
+    const summary = document.restatement?.content
+        ? proseLine(document.restatement.content, 300)
+        : "";
+    if (summary) return summary;
+
+    if (document.description.trim()) return document.description;
+
+    const when = document.datedAt ?? document.driveCreatedTime;
+    const parts = [
+        isSecondaryKind(document.kind)
+            ? `${documentKindLabel(document.kind)} about the SGA at Johns Hopkins`
+            : `${documentKindLabel(document.kind)} of the SGA at Johns Hopkins`,
+        document.sessionNumber !== null &&
+            `${sessionOrdinal(document.sessionNumber)} session`,
+        when && formatDate(when),
+    ].filter(Boolean);
+
+    return `${parts.join(" · ")}.`;
+}
 
 export default async function DocumentPage({
     params,
@@ -22,7 +75,7 @@ export default async function DocumentPage({
     params: Promise<{ documentId: string }>;
 }) {
     const { documentId } = await params;
-    const document = await getDocument(documentId);
+    const document = await loadDocument(documentId);
 
     if (!document) notFound();
 

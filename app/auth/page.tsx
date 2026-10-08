@@ -1,12 +1,25 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getViewer } from "@/api/auth";
 import SignIn from "@/app/(components)/SignIn";
 import SignOutButton from "@/app/(components)/SignOutButton";
+import { pageMetadata } from "@/lib/seo";
 
 import styles from "./auth.module.css";
 
 export const dynamic = "force-dynamic";
+
+// A form, not a page worth a search result; still described for anyone who
+// pastes the link.
+export const metadata: Metadata = pageMetadata({
+  title: "Sign in",
+  description:
+    "Sign in with a Hopkins email address to post or reply on the SGA discussion " +
+    "forum. Everything on the site is readable without an account.",
+  path: "/auth",
+  noIndex: true,
+});
 
 /**
  * The only page on the site that asks who you are, and the only thing it does

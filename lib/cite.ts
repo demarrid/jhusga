@@ -115,6 +115,9 @@ export function remapCitedContent(content: string, remap: Map<number, number>): 
 export function proseLine(content: string, max: number): string {
     const lines = content
         .replace(MARKER, "")
+        // A marker sat between a word and its full stop; closing the gap it
+        // leaves is what keeps "a funding bill ." out of a listing.
+        .replace(/ +([.,;:!?])/g, "$1")
         .split("\n")
         .map((line) => line.trim().replace(/^[-*•]\s+/, ""))
         .filter(Boolean);

@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
 import {
     compareDocuments,
@@ -11,11 +13,56 @@ import DocumentDiff from "@/app/(components)/DocumentDiff";
 import { sessionOrdinal } from "@/config/session";
 import { formatMonthYear } from "@/lib/dates";
 import { documentKindLabel } from "@/lib/kinds";
+import { pageMetadata } from "@/lib/seo";
 import { documentEdition } from "@/lib/titles";
 
 import styles from "../../document-detail.module.css";
 
 export const dynamic = "force-dynamic";
+
+// One read per request, shared between the metadata and the page.
+const loadOptions = cache(getComparisonOptions);
+
+/**
+ * Named for the document being compared, and for the edition it is compared
+ * against when the link carries one, so "Compare editions" does not stand on
+ * its own in a chat with no hint of which constitution.
+ */
+export async function generateMetadata({
+    params,
+    searchParams,
+}: {
+    params: Promise<{ documentId: string }>;
+    searchParams: Promise<{ against?: string }>;
+}): Promise<Metadata> {
+    const { documentId } = await params;
+    const { against } = await searchParams;
+
+    const options = await loadOptions(documentId);
+    if (!options) notFound();
+
+    const { document, otherSessions } = options;
+    const other = otherSessions.find((member) => member.id === against);
+
+    // Standardised titles already name their session; only add it when not.
+    const subject =
+        document.sessionNumber !== null &&
+        !document.title.includes(sessionOrdinal(document.sessionNumber))
+            ? `${document.title} (${sessionOrdinal(document.sessionNumber)} session)`
+            : document.title;
+
+    return pageMetadata({
+        title: `Compare editions · ${document.title}`,
+        description: other
+            ? `Line-by-line differences between ${subject} and the ${versionLabel(other)} edition, ` +
+              `with the amendments adopted between them.`
+            : `Compare ${subject} against every other edition the SGA at Johns Hopkins has ` +
+              `adopted, to see what was amended between sessions.`,
+        path: other
+            ? `/documents/${document.id}/compare?against=${other.id}`
+            : `/documents/${document.id}/compare`,
+    });
+}
 
 export default async function ComparePage({
     params,
@@ -27,7 +74,7 @@ export default async function ComparePage({
     const { documentId } = await params;
     const { against } = await searchParams;
 
-    const options = await getComparisonOptions(documentId);
+    const options = await loadOptions(documentId);
     if (!options) notFound();
 
     const { document, comparable, otherSessions } = options;

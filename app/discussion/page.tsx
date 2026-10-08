@@ -1,13 +1,49 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { getViewer } from "@/api/auth";
 import { getCategories, getPosts, type ForumPostSummary } from "@/api/forum";
+import { FORUM_CATEGORIES } from "@/config/forum";
 import { formatDateShort } from "@/lib/dates";
+import { pageMetadata } from "@/lib/seo";
 
 import DiscussionHeader from "./DiscussionHeader";
 import styles from "./discussion.module.css";
 
 export const dynamic = "force-dynamic";
+
+const FORUM_DESCRIPTION =
+    "An anonymous public forum for Hopkins undergraduates to raise issues with " +
+    "the SGA and with each other. Anyone can read; posting needs a Hopkins " +
+    "address. Every moderation decision is published in a public log.";
+
+/**
+ * A category filter is its own page as far as a shared link is concerned, so
+ * it gets the category's name and blurb. Read from config rather than the
+ * database: it is what the category is for, and costs nothing.
+ */
+export async function generateMetadata({
+    searchParams,
+}: {
+    searchParams: Promise<{ category?: string }>;
+}): Promise<Metadata> {
+    const { category } = await searchParams;
+    const selected = FORUM_CATEGORIES.find((entry) => entry.slug === category);
+
+    if (!selected) {
+        return pageMetadata({
+            title: "Discussion",
+            description: FORUM_DESCRIPTION,
+            path: "/discussion",
+        });
+    }
+
+    return pageMetadata({
+        title: `${selected.name} · Discussion`,
+        description: `${selected.description} Threads from Hopkins undergraduates in the SGA's anonymous public forum.`,
+        path: `/discussion?category=${selected.slug}`,
+    });
+}
 
 /**
  * The forum's front page.

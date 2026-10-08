@@ -1,16 +1,54 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
 import { getViewer } from "@/api/auth";
 import { getPost, type ForumAuthor } from "@/api/forum";
 import ModerationControls from "@/app/(components)/ModerationControls";
 import ReplyForm from "@/app/(components)/ReplyForm";
 import { formatDateShort } from "@/lib/dates";
+import { pageMetadata } from "@/lib/seo";
 
 import DiscussionHeader from "../DiscussionHeader";
 import styles from "../discussion.module.css";
 
 export const dynamic = "force-dynamic";
+
+// One read per request, shared between the metadata and the page.
+const loadPost = cache(getPost);
+
+/**
+ * The embed for a thread is the thread's own title and its opening lines,
+ * which is what a reader following the link would see first anyway.
+ *
+ * A hidden thread's text stays on the page behind a click and nowhere else:
+ * the description says it was hidden and why, and the page is kept out of
+ * search results, because a moderator's decision should not be undone by
+ * whatever crawled the page before they made it.
+ */
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ postId: string }>;
+}): Promise<Metadata> {
+    const { postId } = await params;
+    const post = await loadPost(postId);
+    if (!post) notFound();
+
+    const description = post.hidden
+        ? `${post.hiddenBy === "screen" ? "Held for review" : "Hidden by a moderator"}: ${post.hiddenReason} ` +
+          `The text is still readable on the page, and the decision is in the moderation log.`
+        : post.body;
+
+    return pageMetadata({
+        title: post.title,
+        description,
+        path: `/discussion/${post.id}`,
+        type: "article",
+        noIndex: post.hidden,
+    });
+}
 
 /**
  * One thread.
@@ -26,7 +64,7 @@ export default async function Thread({
     params: Promise<{ postId: string }>;
 }) {
     const { postId } = await params;
-    const [viewer, post] = await Promise.all([getViewer(), getPost(postId)]);
+    const [viewer, post] = await Promise.all([getViewer(), loadPost(postId)]);
 
     if (!post) notFound();
 

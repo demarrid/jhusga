@@ -1,14 +1,52 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { cache } from "react";
 
 import { getViewer } from "@/api/auth";
 import { getHeldQueue, getModerationLog } from "@/api/forum";
 import ModerationControls from "@/app/(components)/ModerationControls";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
+import { pageMetadata } from "@/lib/seo";
 
 import DiscussionHeader from "../DiscussionHeader";
 import styles from "../discussion.module.css";
 
 export const dynamic = "force-dynamic";
+
+// Read once per request, shared between the metadata and the page.
+const loadLog = cache(getModerationLog);
+const loadHeld = cache(getHeldQueue);
+
+/**
+ * The numbers are the page. "3 submissions held, 12 actions logged" tells a
+ * reader in a chat whether anything is happening before they click, and it
+ * is the same figure the heading on the page gives them.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+    const [entries, held] = await Promise.all([loadLog(), loadHeld()]);
+
+    const heldLine =
+        held.length === 0
+            ? "Nothing is being held."
+            : held.length === 1
+                ? "1 submission is being held for review."
+                : `${held.length} submissions are being held for review.`;
+
+    const actionLine =
+        entries.length === 0
+            ? "Nothing has been moderated yet."
+            : entries.length === 1
+                ? "1 moderation action on record."
+                : `${entries.length} moderation actions on record.`;
+
+    return pageMetadata({
+        title: "Moderation log",
+        description:
+            `Every moderation action on the SGA discussion forum, in public: what was ` +
+            `hidden or held, when, by whom, and why. ${heldLine} ${actionLine}`,
+        path: "/discussion/moderation",
+    });
+}
 
 /**
  * Every moderation action, in public, to anybody who asks.
@@ -26,8 +64,8 @@ export const dynamic = "force-dynamic";
 export default async function ModerationLog() {
     const [viewer, entries, held] = await Promise.all([
         getViewer(),
-        getModerationLog(),
-        getHeldQueue(),
+        loadLog(),
+        loadHeld(),
     ]);
 
     const moderating = viewer?.role === "moderator";
