@@ -103,7 +103,7 @@ export default async function Contact() {
           <OfficeHours />
 
           {directorySections.length === 0 ? (
-            <p className={styles.emptyState}>
+            <p className={styles.muted}>
               No {session} contact list is on file yet. 
               {/* Run <code>npm run sync</code> if the archive has one. */}
             </p>
@@ -114,11 +114,17 @@ export default async function Contact() {
                   <h3>{section.label}</h3>
 
                   {section.subgroups.map((subgroup) => (
-                    <div className={styles.subgroup} key={subgroup.key ?? section.group}>
-                      {subgroup.label && <h4>{subgroup.label}</h4>}
+                    <div className={styles.subgroup} key={subgroup.key || section.group}>
+                      {subgroup.headings.map((heading) =>
+                        heading.depth === 0 ? (
+                          <h4 key={heading.text}>{heading.text}</h4>
+                        ) : (
+                          <h5 key={heading.text}>{heading.text}</h5>
+                        ),
+                      )}
                       <ul>
-                        {subgroup.members.map((member) => (
-                          <li className={styles.member} key={member.name}>
+                        {subgroup.rows.map(({ member, title, offices, committees }) => (
+                          <li className={styles.member} key={`${member.name}-${title ?? ""}`}>
                             <div className={styles.memberIdentity}>
                               {member.id ? (
                                 <Link href={`/documents?mode=find&person=${member.id}`}>
@@ -139,14 +145,14 @@ export default async function Contact() {
                             <div className={styles.memberDetails}>
                               {/* Roles stay plain; the member name already links to their records. */}
                               <div className={styles.positions}>
-                                {member.positions.map((position) => (
+                                {[title, ...offices].filter(Boolean).map((position) => (
                                   <span key={`${member.name}-${position}`}>{position}</span>
                                 ))}
                               </div>
 
-                              {member.committees && member.committees.length > 0 && (
+                              {committees.length > 0 && (
                                 <p className={styles.committees}>
-                                  Committees: {member.committees.join(", ")}
+                                  Committees: {committees.join(", ")}
                                 </p>
                               )}
                             </div>
@@ -191,7 +197,7 @@ function FinanceYourClub() {
       <SectionLabel number="01" title="Finance your club" />
       <div className={styles.chapterContent}>
         <p className={styles.lead}>
-          Registered Student Organizations request funding through Hopkins Groups.
+          Registered Student Organizations (RSOs) request funding through Hopkins Groups.
         </p>
         <p>
           SGA votes on the funding request. After approval, submit a separate

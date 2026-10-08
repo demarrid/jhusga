@@ -131,7 +131,7 @@ export default async function ModerationLog() {
             <h2 className={styles.recordHeading}>What has been done</h2>
 
             {entries.length === 0 ? (
-                <p className={styles.emptyState}>
+                <p className={styles.muted}>
                     Nothing has been moderated. This page will fill itself in if
                     that changes.
                 </p>

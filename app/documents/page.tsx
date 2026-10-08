@@ -189,7 +189,7 @@ export default async function Documents({
           </div>
 
           {documents.length === 0 ? (
-            <p className={styles.emptyState}>
+            <p className={styles.muted}>
               {activePerson
                 ? `${activePerson.name} is not named in any documents${
                     session === "all"

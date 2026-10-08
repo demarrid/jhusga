@@ -275,14 +275,19 @@ const senate = membersByGroup([
         subgroup: "Sophomore Class",
     },
 ]).find((section) => section.group === "senate");
-const sophomores = senate?.subgroups.find((sub) => sub.key === "Sophomore Class")?.members ?? [];
+const sophomores =
+    senate?.subgroups.find((sub) => sub.key === "Sophomore Class Senators")?.rows.map((row) => row.member) ?? [];
 check(
     "class senators sit in one subsection, president first",
     sophomores.map((person) => person.name).join() ===
         "Jason Yu,Caraline Sommer,Kevin Xu",
     sophomores.map((person) => person.name),
 );
-check("WSE is a separate subsection", senate?.subgroups.some((sub) => sub.key === "WSE") === true);
+check(
+    "WSE is a separate subsection",
+    senate?.subgroups.some((sub) => sub.key === "Whiting School of Engineering Senators") === true,
+    senate?.subgroups.map((sub) => sub.key),
+);
 
 console.log("\npositions document");
 const positions = [
@@ -400,6 +405,141 @@ check(
         held("Sajiv Harikrishnar")?.group === "cse",
     held("Sajiv Harikrishnar"),
 );
+
+console.log("\npositions document as the contact page lists it");
+const laidOut = [
+    "1. Executive Branch",
+    "   1. Student Body President",
+    "      1. Jason Yu",
+    "   2. Chair of Programming",
+    "      1. Grace Guan",
+    "         1. Member of Junior Class Programming Council",
+    "   3. President of the Senate",
+    "      1. Jazzlyn Fernandez",
+    "         1. First-Generation Limited Income Students Caucus Senator",
+    "   4. Programming Council",
+    "      1. Senior Class",
+    "         1. Tyler Runer",
+    "         2. Elizabeth Abatan",
+    "      2. Junior Class",
+    "         1. Kekeli Woyome",
+    "         2. Grace Guan",
+    "2. Legislative Branch",
+    "   1. Freshman Class Senators",
+    "      1. Royce Willis",
+    "         1. Freshman Class President",
+    "      2. Zoe Adams",
+    "      3. Ben Carter",
+    "   2. Academic Senators",
+    "      1. Whiting School of Engineering",
+    "         1. Paul Woo",
+    "         2. Luke Holmes",
+    "   3. Registered Student Organization Senators",
+    "      1. Special Interest and Hobby",
+    "         1. Peter Tarpley",
+    "      2. Religious and Spiritual Life",
+    "         1. Cole Liazos-Coffey",
+    "   4. Caucus Senators",
+    "      1. Disabled Students",
+    "         1. Jackson Morris",
+    "      2. First-Generation Limited Income Students",
+    "         1. Jazzlyn Fernandez",
+    "3. Judiciary Branch",
+    "   1. Justices",
+    "      1. Felix Titre",
+    "         1. Chief Justice",
+    "      2. Katherine Zhu",
+    "      3. Aryun Guatam",
+    "   2. Committee on Student Elections",
+    "      1. Sajiv Harikrishnar",
+    "         1. Chair",
+    "      2. Alysa Peng",
+    "         1. Financial Chair",
+].join("\n");
+const listing = membersByGroup(
+    buildSessionDirectory([
+        { id: "positions", title: "114th SGA Roster", content: laidOut, driveModifiedTime: "2026-10-08T00:00:00Z" },
+    ]).members,
+);
+const sectionOf = (group: string) => listing.find((section) => section.group === group);
+const rowsUnder = (group: string, key: string) =>
+    sectionOf(group)?.subgroups.find((sub) => sub.key === key)?.rows ?? [];
+const describe = (rows: { member: { name: string }; title: string | null; offices: string[] }[]) =>
+    rows.map((row) => [row.member.name, row.title, ...row.offices].filter(Boolean).join(": "));
+
+check(
+    "the Programming Council is listed inside Executive",
+    !sectionOf("programming") &&
+        sectionOf("executive")?.subgroups.map((sub) => sub.key).join(" | ") ===
+            " | Programming Council / Senior Class | Programming Council / Junior Class",
+    sectionOf("executive")?.subgroups.map((sub) => sub.key),
+);
+check(
+    "the council heading opens once, its classes beneath it",
+    JSON.stringify(sectionOf("executive")?.subgroups.map((sub) => sub.headings)) ===
+        JSON.stringify([
+            [],
+            [
+                { text: "Programming Council", depth: 0 },
+                { text: "Senior Class", depth: 1 },
+            ],
+            [{ text: "Junior Class", depth: 1 }],
+        ]),
+    sectionOf("executive")?.subgroups.map((sub) => sub.headings),
+);
+check(
+    "distinct offices keep the document's order",
+    describe(rowsUnder("executive", "")).join(" | ") ===
+        "Jason Yu: Student Body President | Grace Guan: Chair of Programming | Jazzlyn Fernandez: President of the Senate",
+    describe(rowsUnder("executive", "")),
+);
+check(
+    "one council's members are by surname",
+    describe(rowsUnder("executive", "Programming Council / Senior Class")).join() === "Elizabeth Abatan,Tyler Runer",
+    describe(rowsUnder("executive", "Programming Council / Senior Class")),
+);
+check(
+    "a class president is listed as that class's senator, first",
+    describe(rowsUnder("senate", "Freshman Class Senators")).join(" | ") ===
+        "Royce Willis: Freshman Class President (Senator) | Zoe Adams | Ben Carter",
+    describe(rowsUnder("senate", "Freshman Class Senators")),
+);
+check(
+    "a school's senators are under the school, without the seat repeated",
+    describe(rowsUnder("senate", "Whiting School of Engineering Senators")).join() === "Luke Holmes,Paul Woo",
+    describe(rowsUnder("senate", "Whiting School of Engineering Senators")),
+);
+check(
+    "Registered Student Organization senators are their own subsection",
+    describe(rowsUnder("senate", "Registered Student Organization Senators")).join(" | ") ===
+        "Peter Tarpley: Special Interest and Hobby | Cole Liazos-Coffey: Religious and Spiritual Life",
+    sectionOf("senate")?.subgroups.map((sub) => sub.key),
+);
+check(
+    "caucus senators are their own subsection, a second seat listed there too",
+    describe(rowsUnder("senate", "Caucus Senators")).join(" | ") ===
+        "Jackson Morris: Disabled Students | Jazzlyn Fernandez: First-Generation Limited Income Students",
+    describe(rowsUnder("senate", "Caucus Senators")),
+);
+check(
+    "the Chief Justice leads, the justices follow by surname",
+    describe(rowsUnder("judiciary", "")).join(" | ") ===
+        "Felix Titre: Chief Justice | Aryun Guatam: Justice | Katherine Zhu: Justice",
+    describe(rowsUnder("judiciary", "")),
+);
+check(
+    "elections committee roles drop the committee's name",
+    describe(rowsUnder("cse", "")).join(" | ") === "Sajiv Harikrishnar: Chair | Alysa Peng: Financial Chair",
+    describe(rowsUnder("cse", "")),
+);
+check(
+    "the full office names stay on the record",
+    listing
+        .flatMap((section) => section.subgroups.flatMap((sub) => sub.rows))
+        .find((row) => row.member.name === "Alysa Peng")
+        ?.member.positions.join() === "Financial Chair of the Committee on Student Elections",
+);
+
 check(
     "a roster spreadsheet is not mistaken for one",
     buildSessionDirectory([

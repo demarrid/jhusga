@@ -49,6 +49,23 @@ export type DirectoryCitation = {
     quote: string;
 };
 
+/**
+ * One place a member is listed, as the positions document lays it out. A
+ * person holding two seats is listed under both.
+ */
+export type DirectorySeat = {
+    group: DirectoryGroup;
+    /** Headings between the group and the member, outermost first. */
+    path: string[];
+    /** The role under those headings, or null when the headings already name it. */
+    title: string | null;
+    /** Other offices written under the member at this seat. */
+    offices: string[];
+    committees: string[];
+    /** Where the seat falls in the document, which is the order the page keeps. */
+    order: number;
+};
+
 export type DirectoryMember = {
     name: string;
     email: string | null;
@@ -58,6 +75,8 @@ export type DirectoryMember = {
     subgroup?: string | null;
     /** Standing committees sat on, from the attendance sheet. */
     committees?: string[];
+    /** Only a positions document lays out seats; other sources leave this unset. */
+    seats?: DirectorySeat[];
     emailSource?: DirectoryCitation | null;
     positionSources?: (DirectoryCitation | null)[];
     /** Where the committee list was read from. */
@@ -125,7 +144,15 @@ const SENATE_SUBGROUPS = [
     "KSAS",
     "WSE",
     "RSO",
+    "Caucus",
 ] as const;
+
+const SUBGROUP_HEADINGS: Record<string, string> = {
+    KSAS: "Krieger School of Arts and Sciences Senators",
+    WSE: "Whiting School of Engineering Senators",
+    RSO: "Registered Student Organization Senators",
+    Caucus: "Caucus Senators",
+};
 
 function classSubgroup(haystack: string): string | null {
     if (/senior class/i.test(haystack)) return "Senior Class";
@@ -188,46 +215,152 @@ function seatRank(positions: string[]): number {
     return 50;
 }
 
-export function membersByGroup<
-    T extends { group: DirectoryGroup; subgroup?: string | null; name: string; positions: string[] },
->(
+type DirectoryListing = {
+    group: DirectoryGroup;
+    subgroup?: string | null;
+    name: string;
+    positions: string[];
+    committees?: string[];
+    seats?: DirectorySeat[];
+};
+
+export type DirectoryRow<T> = {
+    member: T;
+    title: string | null;
+    offices: string[];
+    committees: string[];
+};
+
+export type DirectorySubsection<T> = {
+    key: string;
+    /** Headings this subsection opens, which its predecessor has not already. */
+    headings: { text: string; depth: number }[];
+    rows: DirectoryRow<T>[];
+};
+
+/** The Programming Council is listed inside the Executive group. */
+const DISPLAY_GROUPS = DIRECTORY_GROUPS.filter((group) => group !== "programming");
+
+const PROGRAMMING_ORDER = 100_000;
+
+/**
+ * Where a member sits when nothing laid out their seats. The order reproduces
+ * the subgroup and seat ranking the roster and attendance sheet imply.
+ */
+function fallbackSeat(member: DirectoryListing): DirectorySeat {
+    const subgroup =
+        validSubgroup(member.group, member.subgroup) ??
+        directorySubgroup(member.group, member.positions);
+    const committees = member.committees ?? [];
+
+    if (member.group === "programming") {
+        return {
+            group: "executive",
+            path: ["Programming Council", ...(subgroup ? [subgroup] : [])],
+            title: null,
+            offices: member.positions.filter((position) => !/programming council/i.test(position)),
+            committees,
+            order: PROGRAMMING_ORDER + subgroupRank("programming", subgroup) * 100,
+        };
+    }
+
+    const heading = subgroup
+        ? SUBGROUP_HEADINGS[subgroup] ?? (classSubgroup(subgroup) ? `${subgroup} Senators` : subgroup)
+        : null;
+    const [title = null, ...offices] = member.positions;
+    return {
+        group: member.group,
+        path: heading ? [heading] : [],
+        title,
+        offices,
+        committees,
+        order: subgroupRank(member.group, subgroup) * 100 + seatRank(member.positions) + 1,
+    };
+}
+
+function surname(name: string): string {
+    const tokens = name.trim().split(/\s+/).filter((token) => !GENERATIONAL.test(token));
+    return tokens[tokens.length - 1] ?? name;
+}
+
+/**
+ * The document's order, except that people holding the same role are listed
+ * by surname. Each role keeps the place of its first holder.
+ */
+function orderRows<T extends DirectoryListing>(
+    rows: { member: T; seat: DirectorySeat }[],
+): { member: T; seat: DirectorySeat }[] {
+    const roleOrder = new Map<string, number>();
+    for (const { seat } of rows) {
+        const role = seat.title ?? "";
+        roleOrder.set(role, Math.min(roleOrder.get(role) ?? Infinity, seat.order));
+    }
+    const rank = (seat: DirectorySeat) => roleOrder.get(seat.title ?? "")!;
+
+    return [...rows].sort(
+        (a, b) =>
+            rank(a.seat) - rank(b.seat) ||
+            surname(a.member.name).localeCompare(surname(b.member.name)) ||
+            a.member.name.localeCompare(b.member.name),
+    );
+}
+
+function sharedPrefix(left: string[], right: string[]): number {
+    let index = 0;
+    while (index < left.length && index < right.length && left[index] === right[index]) index += 1;
+    return index;
+}
+
+export function membersByGroup<T extends DirectoryListing>(
     members: T[],
 ): {
     group: DirectoryGroup;
     label: string;
-    subgroups: { key: string | null; label: string | null; members: T[] }[];
+    subgroups: DirectorySubsection<T>[];
 }[] {
-    return DIRECTORY_GROUPS.map((group) => {
-        const inGroup = members.filter((member) => member.group === group);
-        const subgroupOf = (member: T): string =>
-            validSubgroup(group, member.subgroup) ??
-            directorySubgroup(group, member.positions) ??
-            "";
+    const placed = members.flatMap((member) =>
+        (member.seats?.length ? member.seats : [fallbackSeat(member)]).map((seat) => ({
+            member,
+            seat,
+        })),
+    );
 
-        const keys = [...new Set(inGroup.map(subgroupOf))];
-        keys.sort((a, b) => {
-            const rank =
-                subgroupRank(group, a || null) - subgroupRank(group, b || null);
-            if (rank !== 0) return rank;
-            return a.localeCompare(b);
-        });
+    return DISPLAY_GROUPS.map((group) => {
+        const byPath = new Map<
+            string,
+            { path: string[]; order: number; rows: { member: T; seat: DirectorySeat }[] }
+        >();
+        for (const row of placed) {
+            if (row.seat.group !== group) continue;
+            const key = row.seat.path.join(" / ");
+            const entry = byPath.get(key) ?? { path: row.seat.path, order: row.seat.order, rows: [] };
+            entry.order = Math.min(entry.order, row.seat.order);
+            entry.rows.push(row);
+            byPath.set(key, entry);
+        }
 
-        return {
-            group,
-            label: directoryGroupLabel(group),
-            subgroups: keys.map((key) => ({
-                key: key || null,
-                label: key || null,
-                members: inGroup
-                    .filter((member) => subgroupOf(member) === key)
-                    .sort((a, b) => {
-                        const seat = seatRank(a.positions) - seatRank(b.positions);
-                        if (seat !== 0) return seat;
-                        return a.name.localeCompare(b.name);
-                    }),
-            })),
-        };
-    }).filter((section) => section.subgroups.some((sub) => sub.members.length > 0));
+        let previous: string[] = [];
+        const subgroups = [...byPath.entries()]
+            .sort((a, b) => a[1].order - b[1].order)
+            .map(([key, entry]): DirectorySubsection<T> => {
+                const opened = sharedPrefix(previous, entry.path);
+                previous = entry.path;
+                return {
+                    key,
+                    headings: entry.path
+                        .slice(opened)
+                        .map((text, index) => ({ text, depth: opened + index })),
+                    rows: orderRows(entry.rows).map(({ member, seat }) => ({
+                        member,
+                        title: seat.title,
+                        offices: seat.offices,
+                        committees: seat.committees,
+                    })),
+                };
+            });
+
+        return { group, label: directoryGroupLabel(group), subgroups };
+    }).filter((section) => section.subgroups.length > 0);
 }
 
 export function directoryGroupLabel(group: DirectoryGroup): string {
@@ -411,6 +544,7 @@ type MutableMember = {
     group: DirectoryGroup;
     subgroup: string | null;
     committees: string[];
+    seats: DirectorySeat[];
     emailSource: DirectoryCitation | null;
     positionSources: (DirectoryCitation | null)[];
     committeeSource: DirectoryCitation | null;
@@ -430,6 +564,7 @@ function blankMember(
         group: input.group,
         subgroup: directorySubgroup(input.group, positions),
         committees: [],
+        seats: [],
         emailSource: input.emailSource ?? null,
         positionSources: positions.map(() => null),
         committeeSource: null,
@@ -450,6 +585,7 @@ function publishedMember(member: MutableMember): DirectoryMember {
         group: member.group,
         subgroup: member.subgroup,
         committees: member.committees,
+        ...(member.seats.length > 0 && { seats: member.seats }),
         emailSource: member.emailSource,
         positionSources: member.positionSources,
         committeeSource: member.committeeSource,
@@ -1064,40 +1200,98 @@ function outlineText(nodes: OutlineNode[]): string[] {
     return nodes.flatMap((node) => [node.text, ...outlineText(node.children)]);
 }
 
-type OutlineSeat = { position: string; group: DirectoryGroup; subgroup: string | null };
+/**
+ * The seat a person holds, from the headings above them. `position` is the
+ * full office kept on their record; `path` and `title` are how the page lists
+ * it, where the headings already say what the long name would repeat.
+ */
+type OutlineSeat = {
+    position: string;
+    group: DirectoryGroup;
+    subgroup: string | null;
+    path: string[];
+    title: string | null;
+};
 
-/** The seat a person holds, from the headings above them. */
+function schoolHeading(heading: string): string {
+    return /senators$/i.test(heading) ? heading : `${heading} Senators`;
+}
+
 function outlineSeat(context: string[]): OutlineSeat {
     const branch = context[0] ?? "";
     const headings = context.slice(1);
     const nearest = headings[headings.length - 1] ?? "";
+    const outer = headings.slice(0, -1);
     const singular = nearest.replace(/\b(Senator|Justice|Representative|Member)s\b/i, "$1");
 
     if (/^executive/i.test(branch)) {
-        return { position: nearest, group: "executive", subgroup: null };
+        if (outer.some((heading) => /programming council/i.test(heading))) {
+            const year = classSubgroup(nearest);
+            return {
+                position: year ? `${year} Programming Council` : "Programming Council",
+                group: "executive",
+                subgroup: null,
+                path: headings,
+                title: null,
+            };
+        }
+        return { position: nearest, group: "executive", subgroup: null, path: outer, title: nearest };
     }
     if (/^judicia/i.test(branch)) {
         if (/student elections/i.test(nearest)) {
-            return { position: "Committee on Student Elections", group: "cse", subgroup: null };
+            return {
+                position: "Committee on Student Elections",
+                group: "cse",
+                subgroup: null,
+                path: [],
+                title: null,
+            };
         }
-        return { position: "Justice", group: "judiciary", subgroup: null };
+        return { position: "Justice", group: "judiciary", subgroup: null, path: [], title: "Justice" };
     }
     if (/^legislative/i.test(branch)) {
         const year = classSubgroup(nearest);
-        if (year) return { position: `${year} Senator`, group: "senate", subgroup: year };
+        if (year) {
+            return { position: `${year} Senator`, group: "senate", subgroup: year, path: [nearest], title: null };
+        }
         if (/krieger|arts and sciences|\bksas\b/i.test(nearest)) {
-            return { position: "KSAS Senator", group: "senate", subgroup: "KSAS" };
+            return {
+                position: "KSAS Senator",
+                group: "senate",
+                subgroup: "KSAS",
+                path: [schoolHeading(nearest)],
+                title: null,
+            };
         }
         if (/whiting|engineering|\bwse\b/i.test(nearest)) {
-            return { position: "WSE Senator", group: "senate", subgroup: "WSE" };
+            return {
+                position: "WSE Senator",
+                group: "senate",
+                subgroup: "WSE",
+                path: [schoolHeading(nearest)],
+                title: null,
+            };
         }
-        if (headings.slice(0, -1).some((heading) => /representative|\brso\b/i.test(heading))) {
-            return { position: `${nearest} Senator`, group: "senate", subgroup: "RSO" };
+        if (outer.some((heading) => /caucus/i.test(heading))) {
+            return {
+                position: /caucus/i.test(nearest) ? `${nearest} Senator` : `${nearest} Caucus Senator`,
+                group: "senate",
+                subgroup: "Caucus",
+                path: outer,
+                title: nearest,
+            };
         }
-        return { position: singular, group: "senate", subgroup: null };
+        if (outer.some((heading) => /representative|\brso\b|registered student organi[sz]ation/i.test(heading))) {
+            return { position: `${nearest} Senator`, group: "senate", subgroup: "RSO", path: outer, title: nearest };
+        }
+        return outer.length > 0
+            ? { position: singular, group: "senate", subgroup: null, path: outer, title: nearest }
+            : { position: singular, group: "senate", subgroup: null, path: [nearest], title: null };
     }
-    return { position: singular, group: "other", subgroup: null };
+    return { position: singular, group: "other", subgroup: null, path: outer, title: nearest };
 }
+
+const CLASS_PRESIDENT = /^(?:senior|junior|sophomore|freshman|first-?year)\s+class\s+president$/i;
 
 /** "No committees", "Committees: None", and the "." left in an empty slot. */
 const OUTLINE_NOTHING =
@@ -1134,6 +1328,8 @@ function seatRoleLabel(role: string): string {
  */
 function readPositionsDocument(document: DirectoryDocument): Map<string, MutableMember> {
     const current = new Map<string, MutableMember>();
+    const seatPositions = new Map<DirectorySeat, string>();
+    let order = 0;
 
     const visit = (nodes: OutlineNode[], context: string[]) => {
         for (const node of nodes) {
@@ -1145,7 +1341,9 @@ function readPositionsDocument(document: DirectoryDocument): Map<string, Mutable
             const seat = outlineSeat(context);
             const source = citationFrom(document, `${context.slice(1).join(", ")}: ${node.text}`);
             let seatPosition = seat.position;
+            let title = seat.title;
             const offices: string[] = [];
+            const listed: string[] = [];
             const committees: string[] = [];
 
             for (const detail of outlineText(node.children)) {
@@ -1153,10 +1351,19 @@ function readPositionsDocument(document: DirectoryDocument): Map<string, Mutable
 
                 if (seat.group === "judiciary" && /^chief justice$/i.test(detail)) {
                     seatPosition = "Chief Justice";
+                    title = "Chief Justice";
                     continue;
                 }
                 if (seat.group === "cse" && !/\bof\b/i.test(detail)) {
                     seatPosition = `${detail} of the Committee on Student Elections`;
+                    title = detail;
+                    continue;
+                }
+                // A class president is one of that class's senators, and the
+                // page lists them as such rather than as two separate seats.
+                if (seat.subgroup && classSubgroup(seat.subgroup) && CLASS_PRESIDENT.test(detail)) {
+                    offices.push(detail);
+                    title = `${detail} (Senator)`;
                     continue;
                 }
 
@@ -1165,19 +1372,24 @@ function readPositionsDocument(document: DirectoryDocument): Map<string, Mutable
                     const year = classSubgroup(
                         role[2]!.replace(/\b(Senior|Junior|Sophomore|Freshman)\s+(?!Class\b)/i, "$1 Class "),
                     );
-                    offices.push(year ? `${year} Programming Council` : "Programming Council");
+                    const council = year ? `${year} Programming Council` : "Programming Council";
+                    offices.push(council);
+                    listed.push(council);
                     continue;
                 }
                 if (role && /commit+e+/i.test(role[2]!)) {
                     const committee = committeeName(role[2]!);
                     if (!committees.includes(committee)) committees.push(committee);
                     if (!/^member$/i.test(role[1]!)) {
-                        offices.push(`${seatRoleLabel(role[1]!)} of the Committee on ${committee}`);
+                        const office = `${seatRoleLabel(role[1]!)} of the Committee on ${committee}`;
+                        offices.push(office);
+                        listed.push(office);
                     }
                     continue;
                 }
 
                 offices.push(detail);
+                listed.push(detail);
             }
 
             const key = nameKey(node.text);
@@ -1193,10 +1405,33 @@ function readPositionsDocument(document: DirectoryDocument): Map<string, Mutable
                 if (!member.committees.includes(committee)) member.committees.push(committee);
             }
             if (committees.length > 0) member.committeeSource = source;
+
+            const placed: DirectorySeat = {
+                group: seat.group,
+                path: seat.path,
+                title,
+                offices: listed,
+                committees,
+                order: order++,
+            };
+            member.seats.push(placed);
+            seatPositions.set(placed, seatPosition);
         }
     };
 
     visit(parseOutline(document.content), []);
+
+    // "Member of Junior Class Programming Council" under the Chair of
+    // Programming is said again by her row in that council.
+    for (const member of current.values()) {
+        for (const seat of member.seats) {
+            const elsewhere = member.seats
+                .filter((other) => other !== seat)
+                .map((other) => nameKey(seatPositions.get(other) ?? ""));
+            seat.offices = seat.offices.filter((office) => !elsewhere.includes(nameKey(office)));
+        }
+    }
+
     return current;
 }
 

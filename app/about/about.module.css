@@ -161,7 +161,7 @@
   border-bottom: 1px solid #b8c7d7;
 }
 
-.impactList span {
+.impactList li > span:first-child {
   padding-top: 0.25rem;
   color: #377ebc;
   font-family: var(--font-work-sans), Tahoma, sans-serif;

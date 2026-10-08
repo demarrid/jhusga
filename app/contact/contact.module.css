@@ -243,6 +243,19 @@
   text-transform: uppercase;
 }
 
+.subgroup h5 {
+  margin: 1.5rem 0 0;
+  color: #377ebc;
+  font-size: 0.64rem;
+  font-weight: 680;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.subgroup h4 + h5 {
+  margin-top: 0.85rem;
+}
+
 .subgroup ul {
   margin: 0;
   padding: 0;

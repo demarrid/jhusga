@@ -102,7 +102,14 @@ export default async function About() {
             <li><span>01</span>Lowering Bloomberg Student Center (BSC) dining prices</li>
             <li><span>02</span>Adding a Boba shop to Levering Hall dining</li>
             <li><span>03</span>Making iClicker free for students (in classes which require it)</li>
-            <li><span>04</span>The existence of construction maps from <a target="_blank" href="https://jhfre.jhu.edu/">JHFRE <span aria-hidden="true">↗</span></a>
+            <li>
+              <span>04</span>
+              <span>
+                The existence of construction maps from{" "}
+                <a target="_blank" href="https://jhfre.jhu.edu/">
+                  JHFRE <span aria-hidden="true">↗</span>
+                </a>
+              </span>
             </li>
           </ol>
         </div>
