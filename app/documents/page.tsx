@@ -17,7 +17,7 @@ import SyncButton from "@/app/(components)/SyncButton";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { manualSyncEnabled } from "@/config/sync";
 import { proseLine } from "@/lib/cite";
-import { contributorRoleLabel } from "@/lib/contributors";
+import { compareNamesBySurname, contributorRoleLabel } from "@/lib/contributors";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
 import { documentKindLabel, isDocumentKind } from "@/lib/kinds";
 import { SESSION_LABEL, pageMetadata } from "@/lib/seo";
@@ -106,7 +106,7 @@ export default async function Documents({
     const linkedPerson = await getPersonFilterOption(person, session);
     if (linkedPerson) {
       peopleForFilter = [...people, linkedPerson].sort((left, right) =>
-        left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+        compareNamesBySurname(left.name, right.name),
       );
       activePerson = linkedPerson;
     }
@@ -278,18 +278,20 @@ function DocumentCard({ document, index }: { document: DocumentListing; index: n
 
         {byPerson.size > 0 && (
           <div className={styles.contributors} aria-label="People named in this document">
-            {[...byPerson].map(([id, entry]) => (
-              <Link
-                key={id}
-                href={`/documents?mode=find&person=${id}`}
-                className={styles.contributorChip}
-              >
-                {entry.name}
-                <span className={styles.contributorTooltip}>
-                  {entry.roles.map(contributorRoleLabel).join(", ")}
-                </span>
-              </Link>
-            ))}
+            {[...byPerson]
+              .sort((left, right) => compareNamesBySurname(left[1].name, right[1].name))
+              .map(([id, entry]) => (
+                <Link
+                  key={id}
+                  href={`/documents?mode=find&person=${id}`}
+                  className={styles.contributorChip}
+                >
+                  {entry.name}
+                  <span className={styles.contributorTooltip}>
+                    {entry.roles.map(contributorRoleLabel).join(", ")}
+                  </span>
+                </Link>
+              ))}
           </div>
         )}
       </article>

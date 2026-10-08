@@ -7,6 +7,7 @@ import { documentFindRank } from "@/lib/document-find";
 import { heldNotice } from "@/lib/integrity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
+import { compareNamesBySurname } from "@/lib/contributors";
 import { isMeetingRole, type MeetingRole } from "@/lib/meetings";
 import { prisma } from "@/lib/prisma";
 import { renderDocument, type Block } from "@/lib/render";
@@ -222,14 +223,15 @@ export async function getPeopleInUse(
                 select: { contributions: { where: { document: sessionWhere(session) } } },
             },
         },
-        orderBy: { name: "asc" },
     });
 
-    return people.map((person) => ({
-        id: person.id,
-        name: person.name,
-        count: person._count.contributions,
-    }));
+    return people
+        .map((person) => ({
+            id: person.id,
+            name: person.name,
+            count: person._count.contributions,
+        }))
+        .sort((left, right) => compareNamesBySurname(left.name, right.name));
 }
 
 /**

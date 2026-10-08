@@ -1,6 +1,6 @@
 import { SESSION_NUMBER, sessionEndDate, sessionStartDate } from "@/config/session";
 import { COMMITTEE_CODES, isAttendanceSheet, parseAttendanceSheet } from "@/lib/attendance";
-import { nameKey } from "@/lib/contributors";
+import { compareNamesBySurname, nameKey } from "@/lib/contributors";
 import { parseCsvLine } from "@/lib/csv";
 import { resolveAffiliates } from "@/lib/names";
 import { toPlainText } from "@/lib/markdown";
@@ -278,11 +278,6 @@ function fallbackSeat(member: DirectoryListing): DirectorySeat {
     };
 }
 
-function surname(name: string): string {
-    const tokens = name.trim().split(/\s+/).filter((token) => !GENERATIONAL.test(token));
-    return tokens[tokens.length - 1] ?? name;
-}
-
 /**
  * The document's order, except that people holding the same role are listed
  * by surname. Each role keeps the place of its first holder.
@@ -300,8 +295,7 @@ function orderRows<T extends DirectoryListing>(
     return [...rows].sort(
         (a, b) =>
             rank(a.seat) - rank(b.seat) ||
-            surname(a.member.name).localeCompare(surname(b.member.name)) ||
-            a.member.name.localeCompare(b.member.name),
+            compareNamesBySurname(a.member.name, b.member.name),
     );
 }
 
@@ -919,7 +913,7 @@ export function mergeDirectoryMembers(lists: DirectoryMember[][]): DirectoryMemb
         .sort((a, b) => {
             const group = groupRank(a.group) - groupRank(b.group);
             if (group !== 0) return group;
-            return a.name.localeCompare(b.name);
+            return compareNamesBySurname(a.name, b.name);
         });
 }
 
@@ -1483,7 +1477,7 @@ function publishDirectory(
             if (sub !== 0) return sub;
             const seat = seatRank(a.positions) - seatRank(b.positions);
             if (seat !== 0) return seat;
-            return a.name.localeCompare(b.name);
+            return compareNamesBySurname(a.name, b.name);
         }),
         sources: sources
             .filter((document, index, all) => all.findIndex((other) => other.id === document.id) === index)

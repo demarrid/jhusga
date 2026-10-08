@@ -6,6 +6,7 @@ import { renderDocument } from "@/lib/render";
 import { questionFocus } from "@/config/search";
 import { collapseUnchanged, diffLines } from "@/lib/diff";
 import { byRecentlyUpdatedFirst, listedDate } from "@/lib/dates";
+import { compareNamesBySurname } from "@/lib/contributors";
 import { documentFindRank } from "@/lib/document-find";
 import { parseTimeframe } from "@/lib/when";
 
@@ -140,7 +141,7 @@ export function demoPeople(session: number | "all" = SESSION_NUMBER) {
         const current = counts.get(person.id);
         counts.set(person.id, { id: person.id, name: person.name, count: (current?.count ?? 0) + 1 });
     });
-    return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...counts.values()].sort((a, b) => compareNamesBySurname(a.name, b.name));
 }
 
 export function demoRoles(session: number | "all" = SESSION_NUMBER) {
