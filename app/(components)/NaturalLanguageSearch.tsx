@@ -12,6 +12,7 @@ import {
 
 import { askArchive, askArchiveSources } from "@/api/search";
 import CitedProse from "@/app/(components)/CitedProse";
+import LoadingBar from "@/app/(components)/LoadingBar";
 import { MAX_QUESTION_CHARS, describeQuestionReading } from "@/config/search";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
@@ -175,9 +176,7 @@ export default function NaturalLanguageSearch() {
     // sitting full -- a bar that fills and then stops reads as a hang.
     const walkingSources =
         pending && !reducedMotion && reading.index < reading.documents.length;
-    const readingProgress = walkingSources
-        ? (reading.index + 1) / (reading.documents.length + 1)
-        : 0;
+    const readingProgress = (reading.index + 1) / (reading.documents.length + 1);
 
     return (
         <div className={styles.panel}>
@@ -217,23 +216,10 @@ export default function NaturalLanguageSearch() {
                             onChange={(event) => setQuestion(event.target.value)}
                         />
                     </div>
-                    <div
-                        className={[
-                            styles.loadingTrack,
-                            pending ? styles.loading : "",
-                            walkingSources ? styles.determinate : "",
-                        ]
-                            .filter(Boolean)
-                            .join(" ")}
-                        style={
-                            walkingSources
-                                ? ({ "--reading-progress": readingProgress } as CSSProperties)
-                                : undefined
-                        }
-                        aria-hidden="true"
-                    >
-                        <span />
-                    </div>
+                    <LoadingBar
+                        active={pending}
+                        progress={walkingSources ? readingProgress : null}
+                    />
                 </div>
                 <button
                     type="submit"

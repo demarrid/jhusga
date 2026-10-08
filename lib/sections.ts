@@ -20,13 +20,21 @@ export type SectionDefinition = {
     sourceKinds: DocumentKind[];
 };
 
+/**
+ * An amendment bill is either a proposal or already folded into the edition
+ * it amended, so the About page reads the edition rather than the bill.
+ */
+const ABOUT_SOURCE_KINDS = AUTHORITATIVE_KINDS.filter(
+    (kind) => kind !== "bill.constitution_amendment" && kind !== "bill.bylaws_amendment",
+);
+
 /** Every slot on the About page describes the SGA as it is currently constituted. */
 function about(key: string, label: string, question: string): SectionDefinition {
     return {
         key: `about.${key}`,
         label: `About / ${label}`,
         question,
-        sourceKinds: AUTHORITATIVE_KINDS,
+        sourceKinds: ABOUT_SOURCE_KINDS,
     };
 }
 

@@ -122,8 +122,113 @@
   text-transform: uppercase;
 }
 
+.listToolbar {
+  padding-bottom: 1.1rem;
+}
+
+/* Flush against the heading's rule, so the bar reads as that line filling. */
+.listLoading {
+  margin-top: -2px;
+}
+
+.sortControl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1.1rem;
+}
+
+.sortControl span {
+  margin-right: 0.5rem;
+  color: #607286;
+  font-size: 0.69rem;
+  font-weight: 720;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sortControl button {
+  cursor: pointer;
+  min-height: 2.1rem;
+  padding: 0 0.9rem;
+  border: 1px solid #b4c3d1;
+  background: transparent;
+  color: #52677d;
+  font-size: 0.68rem;
+  font-weight: 680;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.sortControl button:hover {
+  border-color: #377ebc;
+  color: #164f87;
+}
+
+.sortControl button[aria-pressed="true"] {
+  border-color: #002d72;
+  background: #002d72;
+  color: #ffffff;
+}
+
+.sortControl button:focus-visible {
+  outline: 2px solid #68ace5;
+  outline-offset: 2px;
+}
+
+/* The list being replaced stays readable but plainly is not the answer yet. */
+.listPending {
+  opacity: 0.45;
+  transition: opacity 200ms ease;
+}
+
+.listFooter {
+  min-height: 1px;
+}
+
+.listStatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 2.25rem 0;
+  color: #607286;
+  font-size: 0.7rem;
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid #dce8f3;
+  border-top-color: #377ebc;
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+.retry {
+  cursor: pointer;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #002d72;
+  background: #002d72;
+  color: #ffffff;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.retry:hover {
+  background: #68ace5;
+  color: #001b44;
+}
+
 .documentList {
-  margin: 2rem 0 0;
+  margin: 0;
   padding: 0;
   border-bottom: 1px solid #aebdcb;
   list-style: none;
@@ -259,6 +364,12 @@
   font-style: italic;
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes title-in {
   from {
     opacity: 0;
@@ -311,7 +422,14 @@
   }
 
   .documentCard,
-  .documentArrow {
+  .documentArrow,
+  .sortControl button,
+  .listPending {
     transition: none;
+  }
+
+  /* The caption beside it already says what is happening. */
+  .spinner {
+    animation: none;
   }
 }

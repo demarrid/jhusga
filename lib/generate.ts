@@ -4,6 +4,7 @@ import { SESSION_NUMBER } from "@/config/sga";
 import { generateJson } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
+import { currentEditions } from "@/lib/editions";
 import { prisma } from "@/lib/prisma";
 import { sectionDefinition, type SectionStatus } from "@/lib/sections";
 
@@ -127,11 +128,16 @@ function buildUserPrompt(question: string, documents: SourceDocument[]): string 
  * Restricted to the current session: the archive exists to be compared
  * against, never to be summarised as though it were in force. A clause
  * repealed in the 112th must not end up described as current law.
+ *
+ * Within the session, only the edition of the constitution and bylaws in
+ * force: the folder also holds the editions it replaced and copies being
+ * marked up, and a page citing three bylaws that disagree reads as though
+ * all three were binding.
  */
 export async function sourceDocumentsFor(
     sourceKinds: readonly string[],
 ): Promise<SourceDocument[]> {
-    return prisma.document.findMany({
+    const documents = await prisma.document.findMany({
         where: {
             kind: { in: [...sourceKinds] },
             NOT: { content: "" },
@@ -143,9 +149,16 @@ export async function sourceDocumentsFor(
             kind: true,
             content: true,
             contentHash: true,
+            folderPath: true,
+            datedAt: true,
+            driveModifiedTime: true,
         },
         orderBy: { title: "asc" },
     });
+
+    return currentEditions(documents).map(
+        ({ id, title, kind, content, contentHash }) => ({ id, title, kind, content, contentHash }),
+    );
 }
 
 export async function generateSection(

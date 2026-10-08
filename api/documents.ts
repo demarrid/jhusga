@@ -2,8 +2,15 @@
 
 import { SESSION_NUMBER } from "@/config/sga";
 import { sheetDelimiter } from "@/lib/csv";
-import { byRecentlyUpdatedFirst } from "@/lib/dates";
 import { documentFindRank } from "@/lib/document-find";
+import {
+    DOCUMENT_PAGE_SIZE,
+    compareDocuments,
+    defaultDocumentSort,
+    pageOf,
+    type DocumentCursor,
+    type DocumentSort,
+} from "@/lib/document-sort";
 import { heldNotice } from "@/lib/integrity";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
@@ -21,6 +28,7 @@ import {
     demoPeople,
     demoRoles,
 } from "@/lib/demo-data";
+import type { Prisma } from "@prisma/client";
 
 /** One row in the document listing. */
 export type DocumentListing = {
@@ -67,7 +75,7 @@ function sessionWhere(session: SessionFilter = SESSION_NUMBER) {
     return session === "all" ? {} : { sessionNumber: session };
 }
 
-export async function getDocuments(filters: {
+export type DocumentFilters = {
     kind?: string;
     query?: string;
     session?: SessionFilter;
@@ -77,8 +85,9 @@ export async function getDocuments(filters: {
     role?: string;
     /** Only documents naming someone who holds this office (HopkinsCategory id). */
     officeId?: string;
-} = {}): Promise<DocumentListing[]> {
-    if (demoModeEnabled()) return demoDocuments(filters);
+};
+
+function documentWhere(filters: DocumentFilters) {
     const kind =
         filters.kind && isDocumentKind(filters.kind) ? filters.kind : undefined;
     const query = filters.query?.trim();
@@ -112,99 +121,214 @@ export async function getDocuments(filters: {
             }
             : {};
 
-    const documents = await prisma.document.findMany({
-        where: {
-            ...sessionWhere(filters.session),
-            ...(kind ? { kind } : {}),
-            ...contributorWhere,
-            // Postgres LIKE is case-sensitive, so the mode is required here --
-            // without it, searching "constitution" would miss "Constitution".
-            ...(query
-                ? {
-                    OR: [
-                        { title: { contains: query, mode: "insensitive" } },
-                        { displayTitle: { contains: query, mode: "insensitive" } },
-                        { description: { contains: query, mode: "insensitive" } },
-                        { content: { contains: query, mode: "insensitive" } },
-                        // A name typed into the search box should find the
-                        // documents that name that person.
-                        {
-                            contributors: {
-                                some: {
-                                    hopkinsAffiliate: {
-                                        name: { contains: query, mode: "insensitive" },
-                                    },
+    return {
+        ...sessionWhere(filters.session),
+        ...(kind ? { kind } : {}),
+        ...contributorWhere,
+        // Postgres LIKE is case-sensitive, so the mode is required here --
+        // without it, searching "constitution" would miss "Constitution".
+        ...(query
+            ? {
+                OR: [
+                    { title: { contains: query, mode: "insensitive" } },
+                    { displayTitle: { contains: query, mode: "insensitive" } },
+                    { description: { contains: query, mode: "insensitive" } },
+                    { content: { contains: query, mode: "insensitive" } },
+                    // A name typed into the search box should find the
+                    // documents that name that person.
+                    {
+                        contributors: {
+                            some: {
+                                hopkinsAffiliate: {
+                                    name: { contains: query, mode: "insensitive" },
                                 },
                             },
                         },
-                    ],
-                }
-                : {}),
+                    },
+                ],
+            }
+            : {}),
+    } satisfies Prisma.DocumentWhereInput;
+}
+
+const listingSelect = {
+    id: true,
+    title: true,
+    displayTitle: true,
+    description: true,
+    kind: true,
+    folderPath: true,
+    discoveredVia: true,
+    source: true,
+    sessionNumber: true,
+    driveCreatedTime: true,
+    driveModifiedTime: true,
+    datedAt: true,
+    summary: { select: { content: true, status: true } },
+    contributors: {
+        select: {
+            role: true,
+            hopkinsAffiliate: { select: { id: true, name: true } },
         },
+        orderBy: { hopkinsAffiliate: { name: "asc" } },
+    },
+} satisfies Prisma.DocumentSelect;
+
+type ListingRow = Prisma.DocumentGetPayload<{ select: typeof listingSelect }>;
+
+function shownSummary(summary: { content: string; status: string } | null): string {
+    return summary && (summary.status === "fresh" || summary.status === "stale")
+        ? summary.content
+        : "";
+}
+
+function toListing(document: ListingRow): DocumentListing {
+    return {
+        ...document,
+        title: document.displayTitle || document.title,
+        driveTitle: document.title,
+        kind: isDocumentKind(document.kind) ? document.kind : "unknown",
+        summary: shownSummary(document.summary),
+        contributors: document.contributors.map((entry) => ({
+            id: entry.hopkinsAffiliate.id,
+            name: entry.hopkinsAffiliate.name,
+            role: entry.role,
+        })),
+    };
+}
+
+function findRankOf(document: DocumentListing, query: string | undefined): number {
+    return query
+        ? documentFindRank(
+              { title: document.title, description: document.description, summary: document.summary },
+              query,
+          )
+        : 0;
+}
+
+/** Every matching document at once. The listing pages; see getDocumentPage. */
+export async function getDocuments(filters: DocumentFilters = {}): Promise<DocumentListing[]> {
+    if (demoModeEnabled()) return demoDocuments(filters);
+    const query = filters.query?.trim();
+
+    const documents = (
+        await prisma.document.findMany({
+            where: documentWhere(filters),
+            select: listingSelect,
+        })
+    ).map(toListing);
+
+    return documents
+        .map((document) => ({ document, sortable: { ...document, findRank: findRankOf(document, query) } }))
+        .sort((left, right) => compareDocuments(left.sortable, right.sortable, defaultDocumentSort(Boolean(query))))
+        .map((entry) => entry.document);
+}
+
+export type DocumentPage = {
+    documents: DocumentListing[];
+    /** Every document matching the filters, not just this page. */
+    total: number;
+    /** Null on the last page. */
+    next: DocumentCursor | null;
+};
+
+/**
+ * One page of the listing, in the order the reader chose.
+ *
+ * The order cannot be an ORDER BY -- relevance to a typed query is worked out
+ * in JavaScript, and the default date falls back across three columns -- so
+ * every match is sorted on a narrow row, and only the page being shown pays
+ * for contributors and summaries.
+ */
+export async function getDocumentPage(
+    filters: DocumentFilters & {
+        sort?: DocumentSort;
+        cursor?: DocumentCursor | null;
+        limit?: number;
+    } = {},
+): Promise<DocumentPage> {
+    const limit = Math.min(Math.max(1, filters.limit ?? DOCUMENT_PAGE_SIZE), 100);
+    const query = filters.query?.trim();
+    const sort = filters.sort ?? defaultDocumentSort(Boolean(query));
+
+    if (demoModeEnabled()) {
+        const sorted = demoDocuments(filters)
+            .map((document) => ({
+                id: document.id,
+                document,
+                sortable: { ...document, findRank: findRankOf(document, query) },
+            }))
+            .sort((left, right) => compareDocuments(left.sortable, right.sortable, sort));
+        const { items, next } = pageOf(sorted, filters.cursor ?? null, limit);
+        return {
+            documents: items.map((item) => item.document),
+            total: sorted.length,
+            next,
+        };
+    }
+
+    const candidates = await prisma.document.findMany({
+        where: documentWhere(filters),
         select: {
             id: true,
             title: true,
             displayTitle: true,
             description: true,
-            kind: true,
-            folderPath: true,
-            discoveredVia: true,
-            source: true,
-            sessionNumber: true,
+            datedAt: true,
             driveCreatedTime: true,
             driveModifiedTime: true,
-            datedAt: true,
-            summary: { select: { content: true, status: true } },
-            contributors: {
-                select: {
-                    role: true,
-                    hopkinsAffiliate: { select: { id: true, name: true } },
-                },
-                orderBy: { hopkinsAffiliate: { name: "asc" } },
-            },
         },
-        // A tiebreak only. The order readers see is by relevance when a query
-        // is typed and by last update otherwise, and neither can be an
-        // ORDER BY -- see the sort below.
-        orderBy: [{ sessionNumber: "desc" }, { title: "asc" }],
     });
 
-    const ranked = documents.map((document) => {
-        const title = document.displayTitle || document.title;
-        const summary =
-            document.summary &&
-                (document.summary.status === "fresh" || document.summary.status === "stale")
-                ? document.summary.content
-                : "";
+    // Summaries only count towards relevance, so they are read only when a
+    // query is typed, and then only for the documents it matched.
+    const summaries = query
+        ? new Map(
+              (
+                  await prisma.documentSummary.findMany({
+                      where: {
+                          documentId: { in: candidates.map((candidate) => candidate.id) },
+                          status: { in: ["fresh", "stale"] },
+                      },
+                      select: { documentId: true, content: true },
+                  })
+              ).map((row) => [row.documentId, row.content]),
+          )
+        : new Map<string, string>();
 
-        return {
-            document: {
-                ...document,
+    const sorted = candidates
+        .map((candidate) => {
+            const title = candidate.displayTitle || candidate.title;
+            return {
+                ...candidate,
                 title,
-                driveTitle: document.title,
-                kind: isDocumentKind(document.kind) ? document.kind : "unknown",
-                summary,
-                contributors: document.contributors.map((entry) => ({
-                    id: entry.hopkinsAffiliate.id,
-                    name: entry.hopkinsAffiliate.name,
-                    role: entry.role,
-                })),
-            },
-            findRank: query
-                ? documentFindRank(
-                      { title, description: document.description, summary },
-                      query,
-                  )
-                : 0,
-        };
-    });
+                findRank: query
+                    ? documentFindRank(
+                          {
+                              title,
+                              description: candidate.description,
+                              summary: summaries.get(candidate.id) ?? "",
+                          },
+                          query,
+                      )
+                    : 0,
+            };
+        })
+        .sort((left, right) => compareDocuments(left, right, sort));
 
-    ranked.sort((left, right) => {
-        if (right.findRank !== left.findRank) return right.findRank - left.findRank;
-        return byRecentlyUpdatedFirst(left.document, right.document);
-    });
+    const { items, next } = pageOf(sorted, filters.cursor ?? null, limit);
+    const ids = items.map((item) => item.id);
 
-    return ranked.map((entry) => entry.document);
+    const rows = ids.length
+        ? await prisma.document.findMany({ where: { id: { in: ids } }, select: listingSelect })
+        : [];
+    const byId = new Map(rows.map((row) => [row.id, toListing(row)]));
+
+    return {
+        documents: ids.flatMap((id) => byId.get(id) ?? []),
+        total: sorted.length,
+        next,
+    };
 }
 
 /** People named anywhere in the archive, for the person filter. */
