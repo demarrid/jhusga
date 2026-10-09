@@ -7,6 +7,7 @@ import {
 } from "@/config/sga";
 import { restoreCellBreaks } from "@/lib/cells";
 import { sanitizeExport } from "@/lib/markdown";
+import { docxToText } from "@/lib/office";
 
 /**
  * Read-only Google Drive access.
@@ -26,6 +27,8 @@ export const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 export const GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 export const GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation";
 export const PDF_MIME = "application/pdf";
+export const DOCX_MIME =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 /**
  * A native PDF, including files Drive stored as a generic binary but named
@@ -34,6 +37,11 @@ export const PDF_MIME = "application/pdf";
  */
 export function isPdfFile(file: { mimeType: string; name: string }): boolean {
     return file.mimeType === PDF_MIME || /\.pdf$/i.test(file.name);
+}
+
+/** An uploaded Word document, including files Drive labels as generic binary. */
+export function isDocxFile(file: { mimeType: string; name: string }): boolean {
+    return file.mimeType === DOCX_MIME || /\.docx$/i.test(file.name);
 }
 
 /** A Drive account. Public files expose these even to a bare API key. */
@@ -614,6 +622,29 @@ export async function exportPdfAsText(fileId: string): Promise<string> {
     } catch (cause) {
         // A corrupt or image-only PDF is a fact about that file, not a
         // reason to fail the rest of the walk.
+        if (cause instanceof Error) return "";
+        throw cause;
+    }
+}
+
+/**
+ * Download an uploaded Word document and flatten its paragraphs to text.
+ *
+ * Drive cannot `/export` native Office files, so they use the same `alt=media`
+ * path as PDFs. A malformed or unsupported DOCX remains a visible archive row
+ * with an empty body rather than stopping the rest of the sync.
+ */
+export function extractDocxText(bytes: Uint8Array): string {
+    if (bytes.byteLength === 0) return "";
+    return sanitizeExport(docxToText(Buffer.from(bytes)) ?? "");
+}
+
+export async function exportDocxAsText(fileId: string): Promise<string> {
+    const bytes = await downloadFile(fileId);
+    if (!bytes || bytes.byteLength === 0) return "";
+    try {
+        return extractDocxText(bytes);
+    } catch (cause) {
         if (cause instanceof Error) return "";
         throw cause;
     }

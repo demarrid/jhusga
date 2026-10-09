@@ -7,6 +7,7 @@
  */
 import { bodyForDocument, bodyForOffice } from "../lib/bodies";
 import {
+    canonicalPersonName,
     diminutiveCandidates,
     givenNameCandidates,
     looksMistyped,
@@ -57,6 +58,16 @@ const GRACE_YANG = person("Grace Yang", 0, [
 ]);
 
 const CURRENT = { isCurrentSession: true };
+
+console.log("confirmed aliases");
+check(
+    "Tola Alaofin resolves to the canonical full name",
+    canonicalPersonName("Tola Alaofin") === "Omotola Alaofin",
+);
+check(
+    "canonical names remain unchanged",
+    canonicalPersonName("Omotola Alaofin") === "Omotola Alaofin",
+);
 
 console.log("offices and bodies");
 

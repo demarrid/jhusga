@@ -29,15 +29,21 @@ async function main() {
     const { MASTER_FOLDER_ID } = await import("../config/sga");
 
     if (dry) {
-        const { walkFolder, GOOGLE_DOC_MIME, isPdfFile } = await import("../lib/drive");
+        const { walkFolder, GOOGLE_DOC_MIME, isDocxFile, isPdfFile } =
+            await import("../lib/drive");
         const { classifyDocument } = await import("../lib/kinds");
 
         const files = await walkFolder(MASTER_FOLDER_ID);
         const docs = files.filter(
-            (file) => file.mimeType === GOOGLE_DOC_MIME || isPdfFile(file),
+            (file) =>
+                file.mimeType === GOOGLE_DOC_MIME ||
+                isDocxFile(file) ||
+                isPdfFile(file),
         );
 
-        console.log(`${files.length} files, ${docs.length} documents (Docs and PDFs)\n`);
+        console.log(
+            `${files.length} files, ${docs.length} documents (Docs, Word and PDFs)\n`,
+        );
         for (const file of docs) {
             const kind = classifyDocument({
                 name: file.name,

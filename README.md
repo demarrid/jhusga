@@ -15,12 +15,12 @@ document, and has to stop being trusted the moment that passage changes.
 
 The pipeline that enforces this runs once a day:
 
-1. **Walk the Drive folder** (`lib/drive.ts`). Recurses the master folder and
-   exports each Google Doc as markdown. Nested `Nth SGA Master Folder` folders
-   are recognised as archives and tagged with their session number, including
-   the ones filed as shortcuts rather than as folders -- the 112th holds the
-   111th that way, and following shortcuts is the difference between having that
-   session and not.
+1. **Walk the Drive folder** (`lib/drive.ts`). Recurses the master folder,
+   exports each Google Doc as markdown, and extracts text from uploaded Word
+   documents and PDFs. Nested `Nth SGA Master Folder` folders are recognised as
+   archives and tagged with their session number, including the ones filed as
+   shortcuts rather than as folders -- the 112th holds the 111th that way, and
+   following shortcuts is the difference between having that session and not.
 2. **Follow links** (`lib/sync.ts`, `lib/links.ts`). Agendas mostly list Drive
    and SharePoint URLs. Those targets are ingested if they can be read.
    A linked-in file is dated and placed by what it says about itself

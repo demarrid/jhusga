@@ -29,6 +29,24 @@ import { prisma } from "@/lib/prisma";
 
 export const REGULAR_MIN_DOCUMENTS = 1;
 
+/**
+ * Confirmed alternate full names.
+ *
+ * Unlike inferred nicknames, these are durable identity decisions: they do
+ * not expire when another person with a similar name enters the directory.
+ */
+const MANUAL_NAME_ALIASES = [
+    { alias: "Tola Alaofin", canonical: "Omotola Alaofin" },
+] as const;
+
+export function canonicalPersonName(name: string): string {
+    const key = nameKey(name);
+    return (
+        MANUAL_NAME_ALIASES.find(({ alias }) => nameKey(alias) === key)?.canonical ??
+        name
+    );
+}
+
 export type RegularPerson = {
     id: string;
     name: string;
@@ -374,6 +392,54 @@ async function rememberAlias(
         },
         update: { hopkinsAffiliateId: affiliateId, source },
     });
+}
+
+/**
+ * Apply confirmed full-name aliases to rows created before the mapping existed.
+ *
+ * If only the alternate spelling exists, keep its stable ID and rename it.
+ * If both spellings exist, fold the alternate row onto the canonical one.
+ */
+export async function applyManualNameAliases(): Promise<number> {
+    let changed = 0;
+
+    for (const { alias: aliasName, canonical: canonicalName } of MANUAL_NAME_ALIASES) {
+        const aliasKey = nameKey(aliasName);
+        const canonicalKey = nameKey(canonicalName);
+        const [alias, canonical] = await Promise.all([
+            prisma.hopkinsAffiliate.findUnique({
+                where: { nameKey: aliasKey },
+                select: { id: true, name: true },
+            }),
+            prisma.hopkinsAffiliate.findUnique({
+                where: { nameKey: canonicalKey },
+                select: { id: true },
+            }),
+        ]);
+
+        if (alias && canonical && alias.id !== canonical.id) {
+            await mergeAffiliate(alias.id, canonical.id);
+            changed += 1;
+            continue;
+        }
+
+        if (alias && !canonical) {
+            await prisma.hopkinsAffiliate.update({
+                where: { id: alias.id },
+                data: { name: canonicalName, nameKey: canonicalKey },
+            });
+            await rememberAlias(alias.name, alias.id, "manual");
+            changed += 1;
+            continue;
+        }
+
+        if (canonical) {
+            await rememberAlias(aliasName, canonical.id, "manual");
+        }
+    }
+
+    if (changed > 0) resetNameResolverCache();
+    return changed;
 }
 
 /**
@@ -876,10 +942,12 @@ export async function resolveAffiliates(
     const pending: Pending[] = [];
 
     for (const [index, mention] of mentions.entries()) {
-        const key = nameKey(mention.name);
+        const writtenKey = nameKey(mention.name);
+        const canonicalName = canonicalPersonName(mention.name);
+        const key = nameKey(canonicalName);
 
         const aliased = await prisma.hopkinsAlias.findUnique({
-            where: { aliasKey: key },
+            where: { aliasKey: writtenKey },
             select: { hopkinsAffiliateId: true },
         });
         if (aliased) {
@@ -893,6 +961,9 @@ export async function resolveAffiliates(
         });
 
         if (exact && !isShortForm(mention.name)) {
+            if (writtenKey !== key) {
+                await rememberAlias(mention.name, exact.id, "manual");
+            }
             ids[index] = exact.id;
             continue;
         }
@@ -989,9 +1060,12 @@ export async function resolveAffiliates(
         if (mention.onlyIfKnown) continue;
 
         const created = await prisma.hopkinsAffiliate.create({
-            data: { name: mention.name, nameKey: key },
+            data: { name: canonicalName, nameKey: key },
             select: { id: true },
         });
+        if (writtenKey !== key) {
+            await rememberAlias(mention.name, created.id, "manual");
+        }
         ids[index] = created.id;
     }
 

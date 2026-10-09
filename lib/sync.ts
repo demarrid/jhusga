@@ -9,6 +9,7 @@ import { assessChange } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor } from "@/lib/meetings";
 import {
+    applyManualNameAliases,
     pruneStaleAliases,
     resetNameResolverCache,
     resolveAffiliates,
@@ -23,11 +24,13 @@ import {
     GOOGLE_SLIDES_MIME,
     type WalkedFile,
     driveViewLink,
+    exportDocxAsText,
     exportDocumentAsMarkdown,
     exportPdfAsText,
     exportPresentationAsText,
     exportSpreadsheetAsCsv,
     getFile,
+    isDocxFile,
     isPdfFile,
     walkFolder,
 } from "@/lib/drive";
@@ -680,6 +683,7 @@ async function exportIngestible(file: WalkedFile): Promise<string | null> {
     if (file.mimeType === GOOGLE_SHEET_MIME) return exportSpreadsheetAsCsv(file.id);
     if (file.mimeType === GOOGLE_SLIDES_MIME) return exportPresentationAsText(file.id);
     if (isPdfFile(file)) return exportPdfAsText(file.id);
+    if (isDocxFile(file)) return exportDocxAsText(file.id);
     return exportDocumentAsMarkdown(file.id);
 }
 
@@ -986,12 +990,12 @@ const COMMENT_EXPORT = /^comments for\b/i;
 /**
  * Whether a linked file is a document of record.
  *
- * Docs, sheets, slides and PDFs -- the things an SGA agenda actually links.
+ * Docs, sheets, slides, PDFs and uploaded Word files -- the things an SGA
+ * agenda actually links.
  * A GBM agenda is a list of those: the bill up for a reading (a Doc), the
  * initiative tracksheet (a Sheet), the slate of CSE appointees (Slides), a
- * judiciary opinion filed as a PDF. A linked .docx still has no text
- * export, and a row holding nothing but a filename is a document the
- * reader cannot read.
+ * judiciary opinion filed as a PDF. Drive cannot export a linked .docx, so it
+ * is downloaded and flattened locally.
  *
  * The folder walk still refuses every other sheet; following a link is a
  * different claim. Somebody with a seat put this file in front of the Senate,
@@ -1003,7 +1007,8 @@ function worthFollowing(file: { name: string; mimeType: string }): boolean {
         file.mimeType === GOOGLE_DOC_MIME ||
         file.mimeType === GOOGLE_SHEET_MIME ||
         file.mimeType === GOOGLE_SLIDES_MIME ||
-        isPdfFile(file)
+        isPdfFile(file) ||
+        isDocxFile(file)
     );
 }
 
@@ -1152,20 +1157,20 @@ export async function syncMasterFolder(
     try {
         const files = await timed(summary, "walk", () => walkFolder(MASTER_FOLDER_ID));
 
-        // A first name is read against who currently holds a seat, so the
-        // aliases the archive has outgrown go first and the cached list of
-        // people is rebuilt after.
+        // Confirmed alternate full names are permanent; inferred short-name
+        // aliases can expire as the roster changes.
+        await timed(summary, "manualAliases", () => applyManualNameAliases());
         await timed(summary, "aliases", () => pruneStaleAliases());
         resetNameResolverCache();
 
-        // Google Docs and PDFs, plus the few sheets that say who the SGA is:
-        // rosters, email lists, and the attendance workbook, which is the
-        // only record of which seat each member holds. Every other sheet
-        // stays unexported. PDFs are documents of record -- a judiciary
-        // opinion filed as a PDF is still an opinion.
+        // Google Docs, uploaded Word documents and PDFs, plus the few sheets
+        // that say who the SGA is: rosters, email lists, and the attendance
+        // workbook, which is the only record of which seat each member holds.
+        // Every other sheet stays unexported.
         const docs = files.filter(
             (file) =>
                 file.mimeType === GOOGLE_DOC_MIME ||
+                isDocxFile(file) ||
                 isPdfFile(file) ||
                 (file.mimeType === GOOGLE_SHEET_MIME &&
                     (isDirectorySheetName(file.name) || isAttendanceSheetName(file.name))),

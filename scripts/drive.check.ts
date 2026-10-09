@@ -1,9 +1,13 @@
 /**
- * Checks that a PDF's text layer becomes the same kind of stored string a
- * Google Doc export does, so a judiciary opinion filed as a PDF is readable
- * and citable.
+ * Checks native Drive file detection and that a PDF's text layer becomes the
+ * same kind of stored string a Google Doc export does.
  */
-import { extractPdfText, isPdfFile } from "../lib/drive";
+import {
+    extractDocxText,
+    extractPdfText,
+    isDocxFile,
+    isPdfFile,
+} from "../lib/drive";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -48,6 +52,20 @@ function encodeMinimalPdf(phrase: string): Uint8Array {
     return new TextEncoder().encode(body);
 }
 
+/** The local-file part of a stored ZIP, sufficient for the DOCX reader. */
+function encodeMinimalDocx(phrase: string): Uint8Array {
+    const name = Buffer.from("word/document.xml");
+    const xml = Buffer.from(
+        `<w:document><w:body><w:p><w:r><w:t>${phrase}</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt32LE(xml.length, 18);
+    header.writeUInt32LE(xml.length, 22);
+    header.writeUInt16LE(name.length, 26);
+    return Buffer.concat([header, name, xml]);
+}
+
 console.log("isPdfFile");
 check(
     "Drive's PDF mime type is a PDF",
@@ -63,6 +81,40 @@ check(
         mimeType: "application/vnd.google-apps.document",
         name: "Minutes",
     }),
+);
+
+console.log("\nisDocxFile");
+check(
+    "Drive's Word mime type is a DOCX",
+    isDocxFile({
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        name: "Finance minutes",
+    }),
+);
+check(
+    "a .docx filename is a DOCX even when Drive called it a generic binary",
+    isDocxFile({
+        mimeType: "application/octet-stream",
+        name: "09.01.2026 Finance Committee Agenda and Meeting Minutes.docx",
+    }),
+);
+check(
+    "a Google Doc is not treated as a DOCX",
+    !isDocxFile({
+        mimeType: "application/vnd.google-apps.document",
+        name: "Minutes",
+    }),
+);
+
+console.log("\nextractDocxText");
+check(
+    "paragraph text survives an uploaded Word document",
+    extractDocxText(encodeMinimalDocx("Finance Committee convened."))
+        === "Finance Committee convened.",
+);
+check(
+    "an empty Word buffer yields no text",
+    extractDocxText(new Uint8Array()) === "",
 );
 
 console.log("\nextractPdfText");

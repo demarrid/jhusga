@@ -31,8 +31,12 @@ async function main() {
         recordDriveAccounts,
     } = await import("../lib/sync");
     const { recordAllDirectories } = await import("../lib/directory");
-    const { mergePeopleOneTypoApart, pruneStaleAliases, resetNameResolverCache } =
-        await import("../lib/names");
+    const {
+        applyManualNameAliases,
+        mergePeopleOneTypoApart,
+        pruneStaleAliases,
+        resetNameResolverCache,
+    } = await import("../lib/names");
 
     const documents = await prisma.document.findMany({
         select: { id: true, title: true, description: true, content: true },
@@ -44,6 +48,7 @@ async function main() {
 
     // An alias recorded when the archive knew fewer people can now point at
     // the wrong one, so it goes before anything reads it.
+    const manualAliases = await applyManualNameAliases();
     const prunedAliases = await pruneStaleAliases();
 
     // One person written two ways is two rows in the person filter, each
@@ -127,6 +132,7 @@ async function main() {
     console.log(
         `${documents.length} documents; ${contentsCleaned} cleaned of leftover images; ` +
         `${descriptionsChanged} descriptions rewritten; ${contributors} contributions; ` +
+        `${manualAliases} confirmed name aliases applied; ` +
         `${prunedAliases} outgrown aliases dropped; ` +
         `${folded} misspelled duplicates folded onto the person they are; ` +
         `${orphaned.count} unreferenced people removed; ` +
