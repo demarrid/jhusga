@@ -1,9 +1,9 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useTransition } from "react";
+import { useEffect, useRef } from "react";
 
 import Checkbox from "@/app/(components)/Checkbox";
+import { useDocumentQuery } from "@/app/(components)/DocumentQuery";
 import Select from "@/app/(components)/Select";
 import { contributorRoleLabel } from "@/lib/contributors";
 import { documentKindLabel } from "@/lib/kinds";
@@ -46,10 +46,9 @@ export default function DocumentSearch({
     roles: { role: string; count: number }[];
     offices: { id: string; name: string; count: number }[];
 }) {
-    const router = useRouter();
-    const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const [pending, startTransition] = useTransition();
+    // Applied to the live URL rather than rebuilt from props, so unrelated
+    // params such as `lineage` and `sort` survive. See DocumentQuery.
+    const { pending, apply } = useDocumentQuery();
     const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const queryInput = useRef<HTMLInputElement>(null);
 
@@ -58,26 +57,6 @@ export default function DocumentSearch({
             if (typingTimer.current) clearTimeout(typingTimer.current);
         };
     }, []);
-
-    // Rebuilt from the live URL rather than from props so that a filter set a
-    // moment ago is not dropped by the next one, and so unrelated params such
-    // as `lineage` survive.
-    function apply(changes: Record<string, string>) {
-        const params = new URLSearchParams(searchParams.toString());
-
-        for (const [key, value] of Object.entries(changes)) {
-            if (value) params.set(key, value);
-            else params.delete(key);
-        }
-
-        const search = params.toString();
-
-        // replace, not push: the back button should leave the listing, not
-        // walk back through every filter the reader tried.
-        startTransition(() => {
-            router.replace(search ? `${pathname}?${search}` : pathname, { scroll: false });
-        });
-    }
 
     function applyQuery(value: string) {
         if (typingTimer.current) clearTimeout(typingTimer.current);

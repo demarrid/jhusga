@@ -6,22 +6,22 @@ import { getLineage } from "@/api/archive";
 import {
   getContributorRolesInUse,
   getDocumentKindsInUse,
-  getDocuments,
+  getDocumentPage,
   getOfficesInUse,
   getPeopleInUse,
   getPersonFilterOption,
-  type DocumentListing,
 } from "@/api/documents";
 import ArchiveSearch from "@/app/(components)/ArchiveSearch";
+import { DocumentQueryProvider } from "@/app/(components)/DocumentQuery";
 import SyncButton from "@/app/(components)/SyncButton";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { manualSyncEnabled } from "@/config/sync";
-import { proseLine } from "@/lib/cite";
-import { contributorRoleLabel } from "@/lib/contributors";
-import { formatDateShort, formatDateTime } from "@/lib/dates";
+import { compareNamesBySurname } from "@/lib/contributors";
+import { defaultDocumentSort, parseDocumentSort } from "@/lib/document-sort";
 import { documentKindLabel, isDocumentKind } from "@/lib/kinds";
 import { SESSION_LABEL, pageMetadata } from "@/lib/seo";
 
+import DocumentResults from "./DocumentResults";
 import styles from "./documents.module.css";
 
 export const dynamic = "force-dynamic";
@@ -83,15 +83,19 @@ export default async function Documents({
     archive?: string;
     lineage?: string;
     mode?: string;
+    sort?: string;
   }>;
 }) {
-  const { q, kind, person, role, office, archive, lineage, mode } = await searchParams;
+  const { q, kind, person, role, office, archive, lineage, mode, sort: sortParam } =
+    await searchParams;
 
   // The archive is opt-in, so the default listing is current-session law.
   const session = archive === "1" ? "all" : SESSION_NUMBER;
+  const hasQuery = Boolean(q?.trim());
+  const sort = parseDocumentSort(sortParam, hasQuery);
 
-  const [documents, kinds, people, roles, offices, lineageGroup] = await Promise.all([
-    getDocuments({ query: q, kind, session, personId: person, role, officeId: office }),
+  const [firstPage, kinds, people, roles, offices, lineageGroup] = await Promise.all([
+    getDocumentPage({ query: q, kind, session, personId: person, role, officeId: office, sort }),
     getDocumentKindsInUse(session),
     getPeopleInUse(session),
     getContributorRolesInUse(session),
@@ -106,7 +110,7 @@ export default async function Documents({
     const linkedPerson = await getPersonFilterOption(person, session);
     if (linkedPerson) {
       peopleForFilter = [...people, linkedPerson].sort((left, right) =>
-        left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+        compareNamesBySurname(left.name, right.name),
       );
       activePerson = linkedPerson;
     }
@@ -124,7 +128,28 @@ export default async function Documents({
   const sessionScope =
     session === "all" ? "the archive" : `the ${sessionOrdinal(SESSION_NUMBER)} session`;
 
-  const resultLabel = `${documents.length} document${documents.length === 1 ? "" : "s"} found in ${sessionScope}`;
+  const resultLabel = `${firstPage.total} document${firstPage.total === 1 ? "" : "s"} found in ${sessionScope}`;
+
+  // What the list sends for each further page, and what it is keyed by: any
+  // change here is a different list, which starts again from its first page.
+  const listSearch = new URLSearchParams(
+    Object.entries({
+      q,
+      kind,
+      person,
+      role,
+      office,
+      archive: archive === "1" ? "1" : undefined,
+      sort: sort === defaultDocumentSort(hasQuery) ? undefined : sort,
+    }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  ).toString();
+
+  const emptyMessage = activePerson
+    ? `${activePerson.name} is not named in any documents${
+        session === "all" ? " in the archive" : ` in the ${sessionOrdinal(SESSION_NUMBER)} session`
+      }. Try including past sessions, or choose Anyone above.`
+    : // Run `npm run sync` if the archive is empty.
+      "No results.";
 
   // Finding documents is the page's own job, so it opens there; an explicit
   // mode wins so a visitor can still switch tabs without losing active filters.
@@ -163,171 +188,43 @@ export default async function Documents({
           </section>
         )}
 
-        <Suspense>
-          <ArchiveSearch
-            initialMode={initialSearchMode}
-            query={q}
-            kind={kind}
-            person={person}
-            role={role}
-            office={office}
-            archive={archive === "1"}
-            kinds={kinds}
-            people={peopleForFilter}
-            roles={roles}
-            offices={offices}
-          />
-        </Suspense>
+        <DocumentQueryProvider>
+          <Suspense>
+            <ArchiveSearch
+              initialMode={initialSearchMode}
+              query={q}
+              kind={kind}
+              person={person}
+              role={role}
+              office={office}
+              archive={archive === "1"}
+              kinds={kinds}
+              people={peopleForFilter}
+              roles={roles}
+              offices={offices}
+            />
+          </Suspense>
 
-        <section className={styles.catalogue} aria-labelledby="document-list-heading">
-          <div className={styles.catalogueHeading}>
-            <div>
-              <span>Browse the record</span>
-              <h2 id="document-list-heading">{listHeading}</h2>
+          <section className={styles.catalogue} aria-labelledby="document-list-heading">
+            <div className={styles.catalogueHeading}>
+              <div>
+                <span>Browse the record</span>
+                <h2 id="document-list-heading">{listHeading}</h2>
+              </div>
+              <p>{resultLabel}</p>
             </div>
-            <p>{resultLabel}</p>
-          </div>
 
-          {documents.length === 0 ? (
-            <p className={styles.muted}>
-              {activePerson
-                ? `${activePerson.name} is not named in any documents${
-                    session === "all"
-                      ? " in the archive"
-                      : ` in the ${sessionOrdinal(SESSION_NUMBER)} session`
-                  }. Try including past sessions, or choose Anyone above.`
-                : (
-                    <>
-                      No results.
-                       {/* Run <code>npm run sync</code> if the archive is empty. */}
-                    </>
-                  )}
-            </p>
-          ) : (
-            <ul className={styles.documentList}>
-              {documents.map((document, index) => (
-                <DocumentCard key={document.id} document={document} index={index + 1} />
-              ))}
-            </ul>
-          )}
-        </section>
+            <DocumentResults
+              key={listSearch}
+              initial={firstPage}
+              search={listSearch}
+              sort={sort}
+              hasQuery={hasQuery}
+              emptyMessage={emptyMessage}
+            />
+          </section>
+        </DocumentQueryProvider>
       </div>
     </main>
-  );
-}
-
-function DocumentCard({ document, index }: { document: DocumentListing; index: number }) {
-  // One person chip lists every capacity in which that person appears.
-  const byPerson = new Map<string, { name: string; roles: string[] }>();
-  for (const contributor of document.contributors) {
-    const entry = byPerson.get(contributor.id);
-    if (entry) {
-      entry.roles.push(contributor.role);
-    } else {
-      byPerson.set(contributor.id, {
-        name: contributor.name,
-        roles: [contributor.role],
-      });
-    }
-  }
-
-  // Preserve the original Drive name as hover context after normalization.
-  const renamed = document.driveTitle !== document.title;
-  const metadata = [
-    documentKindLabel(document.kind),
-    document.discoveredVia === "link" ? "Linked from the archive" : document.folderPath,
-    document.sessionNumber !== null &&
-      document.sessionNumber !== SESSION_NUMBER &&
-      `${sessionOrdinal(document.sessionNumber)} session`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  return (
-    <li className={styles.documentCard}>
-      <div className={styles.documentIndex}>{String(index).padStart(2, "0")}</div>
-      <article>
-        <p className={styles.documentMetadata}>{metadata}</p>
-        <h3>
-          <Link
-            href={`/documents/${document.id}`}
-            title={renamed ? `Filed in Drive as “${document.driveTitle}”` : undefined}
-          >
-            {document.title}
-          </Link>
-        </h3>
-
-        <DocumentDates
-          created={document.datedAt ?? document.driveCreatedTime}
-          modified={document.driveModifiedTime}
-          dated={Boolean(document.datedAt)}
-        />
-
-        {/*
-          * The restatement, not the Drive description. The description is
-          * whatever the officer who uploaded the file typed into the box, which
-          * is usually nothing; the restatement says what the document does and
-          * every claim in it was checked against the document's own words. See
-          * lib/summarize.ts.
-          */}
-        {(document.summary || document.description) && (
-          <p className={styles.documentDescription}>
-            {document.summary ? proseLine(document.summary, 260) : document.description}
-          </p>
-        )}
-
-        {byPerson.size > 0 && (
-          <div className={styles.contributors} aria-label="People named in this document">
-            {[...byPerson].map(([id, entry]) => (
-              <Link
-                key={id}
-                href={`/documents?mode=find&person=${id}`}
-                className={styles.contributorChip}
-              >
-                {entry.name}
-                <span className={styles.contributorTooltip}>
-                  {entry.roles.map(contributorRoleLabel).join(", ")}
-                </span>
-              </Link>
-            ))}
-          </div>
-        )}
-      </article>
-      <Link className={styles.documentArrow} href={`/documents/${document.id}`} aria-label={`Open ${document.title}`}>
-        ↗
-      </Link>
-    </li>
-  );
-}
-
-/** Display Drive dates without repeating identical created and updated days. */
-function DocumentDates({
-  created,
-  modified,
-  dated,
-}: {
-  created: Date | null;
-  modified: Date | null;
-  dated?: boolean;
-}) {
-  if (!created && !modified) return null;
-
-  const sameDay =
-    created && modified && formatDateShort(created) === formatDateShort(modified);
-
-  return (
-    <p className={styles.documentDates}>
-      {created && (
-        <time dateTime={created.toISOString()} title={formatDateTime(created) ?? undefined}>
-          {`${dated ? "Dated" : "Created"} ${formatDateShort(created)}`}
-        </time>
-      )}
-      {created && modified && !sameDay && " · "}
-      {modified && !sameDay && (
-        <time dateTime={modified.toISOString()} title={formatDateTime(modified) ?? undefined}>
-          {`Updated ${formatDateShort(modified)}`}
-        </time>
-      )}
-    </p>
   );
 }

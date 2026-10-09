@@ -1451,3 +1451,29 @@ export function nameKey(name: string): string {
             .trim()
     );
 }
+
+/** "Jr." is not a surname. "Smith Jr." files under Smith. */
+const GENERATIONAL_SUFFIX = /^(?:III|II|IV|Jr|Sr)\.?$/i;
+
+/**
+ * The name a list should file someone under.
+ *
+ * The last word, unless that word is a generational suffix. A hyphen stays
+ * in the surname, so "Garduno-Castaneda" files under G rather than C.
+ */
+export function surnameOf(name: string): string {
+    const tokens = name.trim().split(/\s+/).filter((token) => !GENERATIONAL_SUFFIX.test(token));
+    return tokens[tokens.length - 1] ?? name.trim();
+}
+
+/**
+ * Alphabetical order for people: by surname, then by the full name.
+ *
+ * Stored names lead with the given name ("Zoe Adams"), so sorting the string
+ * files Zoe under Z. A directory files Adams before Carter.
+ */
+export function compareNamesBySurname(left: string, right: string): number {
+    const order = surnameOf(left).localeCompare(surnameOf(right), undefined, { sensitivity: "base" });
+    if (order !== 0) return order;
+    return left.localeCompare(right, undefined, { sensitivity: "base" });
+}

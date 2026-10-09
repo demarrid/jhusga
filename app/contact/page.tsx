@@ -137,22 +137,24 @@ export default async function Contact() {
                               {member.email && (
                                 <span className={styles.email}>
                                   <a href={`mailto:${member.email}`}>{member.email}</a>
-                                  {member.emailSource && <SourceChip mini citation={chipFrom(member.emailSource)} />}
+                                  {member.emailSource && <SourceChip mini className={styles.emailChip} citation={chipFrom(member.emailSource)} />}
                                 </span>
                               )}
                             </div>
 
                             <div className={styles.memberDetails}>
                               {/* Roles stay plain; the member name already links to their records. */}
-                              <div className={styles.positions}>
-                                {[title, ...offices].filter(Boolean).map((position) => (
-                                  <span key={`${member.name}-${position}`}>{position}</span>
-                                ))}
-                              </div>
+                              {(title || offices.length > 0) && (
+                                <div className={styles.positions}>
+                                  {[title, ...offices].filter(Boolean).map((position) => (
+                                    <span key={`${member.name}-${position}`}>{position}</span>
+                                  ))}
+                                </div>
+                              )}
 
                               {committees.length > 0 && (
                                 <p className={styles.committees}>
-                                  Committees: {committees.join(", ")}
+                                  Committees: {[...committees].sort((a, b) => a.localeCompare(b)).join(", ")}
                                 </p>
                               )}
                             </div>

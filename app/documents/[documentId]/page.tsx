@@ -10,7 +10,7 @@ import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
-import { contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
+import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
 import { formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
 import { pageMetadata } from "@/lib/seo";
@@ -284,7 +284,7 @@ function byPerson(
     }
 
     return [...people.values()]
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => compareNamesBySurname(a.name, b.name))
         .map((person) => ({
             id: person.id,
             name: person.name,

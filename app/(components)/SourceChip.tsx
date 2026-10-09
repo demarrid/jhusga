@@ -15,7 +15,15 @@ export type ChipCitation = {
  * An inline footnote-style chip. The visible label is a truncated document
  * title; a hover panel carries the full title and quoted passage.
  */
-export default function SourceChip({ citation, mini }: { citation: ChipCitation, mini?: boolean }) {
+export default function SourceChip({
+    citation,
+    mini,
+    className,
+}: {
+    citation: ChipCitation;
+    mini?: boolean;
+    className?: string;
+}) {
     const quote = truncateAtWord(citation.quote, 220);
 
     const tooltip = (
@@ -28,7 +36,7 @@ export default function SourceChip({ citation, mini }: { citation: ChipCitation,
     if (mini) {
         // Keep the tooltip outside the clipped circle so the custom panel can show.
         return (
-            <span className={styles.miniChipWrap}>
+            <span className={`${styles.miniChipWrap} ${className ?? ""}`}>
                 <Link href={citation.href} className={`${styles.chip} ${styles.miniChip}`}>
                     <span className={styles.visuallyHidden}>
                         {`Source: ${citation.documentTitle}`}

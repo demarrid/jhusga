@@ -1,0 +1,47 @@
+.track {
+  height: 3px;
+  overflow: hidden;
+  background: #dce8f3;
+  opacity: 0;
+}
+
+.track span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  background: #377ebc;
+  transform: translateX(-110%);
+}
+
+.track.loading {
+  opacity: 1;
+}
+
+.track.loading:not(.determinate) span {
+  animation: reading 1.15s ease-in-out infinite;
+}
+
+.track.determinate span {
+  width: calc(var(--reading-progress, 0) * 100%);
+  transform: none;
+  animation: none;
+  transition: width 420ms ease;
+}
+
+@keyframes reading {
+  0% { transform: translateX(-110%); }
+  55% { transform: translateX(105%); }
+  100% { transform: translateX(245%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track.loading span {
+    width: 100%;
+    animation: none;
+    transform: none;
+  }
+
+  .track.determinate span {
+    transition: none;
+  }
+}

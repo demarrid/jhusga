@@ -8,6 +8,7 @@
  */
 
 import {
+    compareNamesBySurname,
     extractContributors,
     nameKey,
 } from "../lib/contributors";
@@ -1138,6 +1139,20 @@ check(
     extractContributors("Sponsored by: Finance Chair Peter Tarpley").some(
         (p) => p.name === "Peter Tarpley" && p.office === "Finance Chair",
     ),
+);
+check(
+    "an alphabetical list of people is by surname",
+    ["Zoe Adams", "Ben Carter", "Amy Xu", "John Smith Jr."].sort(compareNamesBySurname).join() ===
+        "Zoe Adams,Ben Carter,John Smith Jr.,Amy Xu",
+);
+check(
+    "a hyphenated surname is filed under the whole surname",
+    compareNamesBySurname("Ana Garduno-Castaneda", "Paul Woo") < 0 &&
+        compareNamesBySurname("Ana Garduno-Castaneda", "Ben Carter") > 0,
+);
+check(
+    "the same surname falls back to the full name",
+    compareNamesBySurname("Mary Ann Smith", "John Smith") > 0,
 );
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
