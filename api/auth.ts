@@ -80,7 +80,7 @@ export async function sendSignInCode(email: string): Promise<AuthResult> {
 
     return {
         ok: true,
-        message: `A six-digit code is on its way to ${address}. It is good for fifteen minutes.`,
+        message: `A six-digit code has been sent to ${address}. It will expire in 15 minutes. Check spam/junk folder if you can't find it.`,
     };
 }
 
