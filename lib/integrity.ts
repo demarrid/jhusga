@@ -78,7 +78,7 @@ export function assessChange(input: {
             ...verdict,
             publish: false,
             reason:
-                `${preamble}the constitution and bylaws are amended by a bill passed in a Senate meeting, ` +
+                `${preamble}the Constitution and Bylaws are amended only by a bill passed in a Senate meeting, ` +
                 `and this edit to the source file has not been ratified in one yet ` +
                 `(${diff.added} line${diff.added === 1 ? "" : "s"} added, ` +
                 `${diff.removed} removed) — ratified.`,

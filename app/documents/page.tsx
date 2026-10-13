@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
 
 const DOCUMENTS_DESCRIPTION =
   `Every public record of the SGA at Johns Hopkins, searchable in full: meeting ` +
-  `agendas and minutes, legislation, the constitution and bylaws, and reports ` +
+  `agendas and minutes, legislation, the Constitution and Bylaws, and reports ` +
   `from the ${SESSION_LABEL} and the sessions before it.`;
 
 /**

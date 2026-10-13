@@ -174,6 +174,10 @@ export function classifyDocument(input: {
     if (/attendance/.test(haystack)) return "attendance";
     if (/roster|email list|contact list|contact sheet|directory/.test(haystack)) return "directory";
 
+    // A member's personal rewrite may reproduce the bylaws, but it is not an
+    // adopted instrument and must not be presented or searched as one.
+    if (/\bpersonal rewrite\b/.test(titled)) return "unknown";
+
     // A bill template is not a bill. Checked before the legislation rules so
     // "SGA Bill Template" does not become one.
     if (/\btemplate\b/.test(titled)) return "template";

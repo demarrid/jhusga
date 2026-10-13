@@ -420,6 +420,13 @@ check(
     }) === "guiding.bylaws",
 );
 check(
+    "a personal rewrite is not classified as adopted bylaws",
+    classifyDocument({
+        name: "Bylaws (Personal Rewrite, Condensed)",
+        folderPath: "Guiding Documents",
+    }) === "unknown",
+);
+check(
     "a Senate GBM without the word agenda is still Senate minutes",
     classifyDocument({
         name: "Copy of Senate GBM #15",
