@@ -111,6 +111,25 @@ check(
 
 check("an empty document yields no passages", splitIntoPassages("   \n\n  ").length === 0);
 
+const firstTab = Array.from({ length: 12 }, (_, row) => `Senator ${row},Present,Excused`);
+const laterTab = Array.from({ length: 12 }, (_, row) => `Item ${row},Coffee for the retreat,12`);
+const workbookPassages = splitIntoPassages(
+    [...firstTab, "\fFinance", ...laterTab].join("\n"),
+);
+check(
+    "a later tab of a workbook is its own passage, under the tab's name",
+    workbookPassages.some(
+        (passage) =>
+            passage.heading === "Finance" &&
+            passage.content.includes("Coffee for the retreat") &&
+            !passage.content.includes("Senator"),
+    ) &&
+        workbookPassages.some(
+            (passage) => passage.heading === "" && passage.content.includes("Senator 0"),
+        ),
+    workbookPassages.map((passage) => [passage.heading, passage.content.slice(0, 30)]),
+);
+
 console.log("\nquestionTerms");
 
 const terms = questionTerms("How many caucus senators can there be?");

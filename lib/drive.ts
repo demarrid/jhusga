@@ -6,8 +6,9 @@ import {
     SESSION_NUMBER,
 } from "@/config/sga";
 import { restoreCellBreaks } from "@/lib/cells";
+import { appendWorkbookSheets, formatDelimited } from "@/lib/csv";
 import { sanitizeExport } from "@/lib/markdown";
-import { docxToText } from "@/lib/office";
+import { docxToText, xlsxSheets } from "@/lib/office";
 
 /**
  * Read-only Google Drive access.
@@ -542,14 +543,86 @@ export async function exportPresentationAsText(fileId: string): Promise<string> 
 }
 
 /**
- * Export a Google Sheet as CSV (the first tab).
+ * The xlsx Drive will export a Google Sheet as.
  *
- * Roster and email-list workbooks are the reason this exists for the folder
- * walk; linked sheets are a separate case -- an agenda pointing at an
- * initiative tracksheet is the Senate being asked to look at that sheet.
+ * `text/csv` is only the first tab. The workbook export is how the remaining
+ * tabs are read without a second API: same key, same file, every sheet.
+ */
+const XLSX_EXPORT_MIME =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/**
+ * Export a Google Sheet as CSV, every tab.
+ *
+ * The first tab stays Drive's own CSV, which is what the roster and
+ * attendance readers parse and what existing citations were anchored to.
+ * Later tabs are appended from the xlsx export. An agenda pointing at an
+ * initiative tracksheet is the Senate being asked to look at that sheet,
+ * including the tabs after the first.
+ *
+ * The later tabs are an addition, not a requirement: when Drive refuses the
+ * workbook outright, the first tab is still the sheet. A refusal that might
+ * pass on the next run is thrown instead, like any other export failure.
+ * Storing the first tab alone would drop the rest until the sheet is next
+ * edited, since an unchanged modifiedTime skips the export entirely.
  */
 export async function exportSpreadsheetAsCsv(fileId: string): Promise<string> {
-    return (await exportFile(fileId, "text/csv")).replace(/^\uFEFF/, "").trim();
+    // A form feed in a cell would read as a tab break. Swapping it for a
+    // space keeps every offset where it was.
+    const first = (await exportFile(fileId, "text/csv"))
+        .replace(/^\uFEFF/, "")
+        .trim()
+        .replace(/\f/g, " ");
+    const workbook = await exportWorkbook(fileId);
+    if (!workbook) return first;
+
+    // Drive's CSV is the first tab. When that tab is empty the xlsx copy of
+    // it is the only text it has, so it is kept; otherwise it would be stored
+    // twice, once in each dialect.
+    const sheets = xlsxSheets(workbook);
+    const rest = (first ? sheets.slice(1) : sheets).map((sheet) => ({
+        name: sheet.name,
+        text: formatDelimited(sheet.rows, ","),
+    }));
+    return appendWorkbookSheets(first, rest);
+}
+
+const MAX_BINARY_BYTES = 20 * 1024 * 1024;
+
+/**
+ * A Google Sheet as xlsx bytes, or null when Drive will not give them: a
+ * 4xx about this file, or a workbook larger than the archive will hold.
+ * Rate limits and server errors have already been retried by `driveFetch`
+ * and are thrown.
+ */
+async function exportWorkbook(fileId: string): Promise<Buffer | null> {
+    const params = new URLSearchParams({
+        mimeType: XLSX_EXPORT_MIME,
+        supportsAllDrives: "true",
+        key: apiKey(),
+    });
+
+    let response: Response;
+    try {
+        response = await driveFetch(
+            `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`,
+        );
+    } catch (cause) {
+        if (cause instanceof DriveKeyError) throw cause;
+        if (cause instanceof Error && /Drive API (?!429)4\d\d\b/.test(cause.message)) {
+            return null;
+        }
+        throw cause;
+    }
+
+    const declared = Number(response.headers.get("content-length") ?? 0);
+    if (declared > MAX_BINARY_BYTES) {
+        await response.body?.cancel();
+        return null;
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return bytes.length > MAX_BINARY_BYTES ? null : bytes;
 }
 
 /**
@@ -560,8 +633,6 @@ export async function exportSpreadsheetAsCsv(fileId: string): Promise<string> {
  * file that is not shared is not a sync failure -- and on a file that is
  * larger than the archive is willing to hold in memory.
  */
-const MAX_BINARY_BYTES = 20 * 1024 * 1024;
-
 async function downloadFile(fileId: string): Promise<Uint8Array | null> {
     const params = new URLSearchParams({
         alt: "media",

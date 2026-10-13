@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getSessionString } from "../utils";
+import MainNav from "./MainNav";
 import styles from "./Header.module.css";
 
 export default function Header() {
@@ -24,12 +25,7 @@ export default function Header() {
           </span>
         </Link>
 
-        <nav className={styles.navigation} aria-label="Main navigation">
-          <Link href="/about">About</Link>
-          <Link href="/documents">Documents</Link>
-          <Link href="/contact">Contact</Link>
-          <Link href="/discussion">Discussion</Link>
-        </nav>
+        <MainNav />
       </div>
     </header>
   );

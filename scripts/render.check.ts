@@ -1,6 +1,14 @@
 import { findQuote } from "../lib/anchor";
 import { toPlainText } from "../lib/markdown";
-import { proseInlineRuns, renderDocument, runsText, type Block, type InlineRun } from "../lib/render";
+import { documentSections, type DocumentSection } from "../lib/outline";
+import {
+    blockSectionIds,
+    proseInlineRuns,
+    renderDocument,
+    runsText,
+    type Block,
+    type InlineRun,
+} from "../lib/render";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -81,6 +89,10 @@ function words(blocks: Block[]): string[] {
 /** One table cell's text, run boundaries removed. */
 function cellText(cell: InlineRun[]): string {
     return cell.map((run) => run.text).join("");
+}
+
+function flatIds(sections: DocumentSection[]): string[] {
+    return sections.flatMap((section) => [section.id, ...flatIds(section.children)]);
 }
 
 /** The text a given annotation ended up highlighting. */
@@ -339,6 +351,166 @@ check(
     agenda,
 );
 
+console.log("\nagendas");
+
+// The shape the GBM agendas actually export in: each item a bold numbered
+// line with Docs' underline as a `---` beneath it, and the lines under it at
+// whatever column the export chose, the first of them at the item's own.
+const agendaDoc = [
+    "1.  **Call to Order & Roll Call**",
+    "   ---",
+    "",
+    "1. Present:",
+    "2. Absent:",
+    "",
+    "   i. Excused:",
+    "",
+    "   ii. Unexcused:",
+    "",
+    "2.  **Non-Legislative Business**",
+    "   ---",
+    "",
+    "            a. Senator of the Month",
+    "            b. Approval of the discretionary fund",
+    "3. **Second Reading**",
+    "",
+    "      a. [Survey Tabling Bill](https://example.org/survey) \\- Chair Veda",
+    "",
+    "         b. SAAC Funding Bill",
+    "4. Public Input",
+    "5. **Closing and Adjournment**",
+    "    ---",
+    "",
+    "    *SGA meetings run until 9:00 PM.*",
+].join("\n");
+const agendaBlocks = renderDocument(agendaDoc, []);
+type ListBlock = Extract<Block, { kind: "list" }>;
+const agendaList = agendaBlocks[0] as ListBlock;
+const titleOf = (item: ListBlock["items"][number]) => {
+    const heading = item.blocks[0];
+    return heading?.kind === "heading" ? heading : null;
+};
+const childList = (item: ListBlock["items"][number], at = 1) => item.blocks[at] as ListBlock | undefined;
+
+check(
+    "an agenda of bold numbered items is one list, its underlines not rules",
+    agendaBlocks.length === 1 &&
+    agendaList.kind === "list" &&
+    agendaList.agenda === true &&
+    agendaList.items.length === 5,
+    agendaBlocks.map((block) => block.kind),
+);
+check(
+    "each agenda item is a heading with the number the export wrote",
+    agendaList.items.map((item) => titleOf(item)?.marker).join(" ") === "1. 2. 3. 4. 5." &&
+    runsText(titleOf(agendaList.items[0])!.runs) === "Call to Order & Roll Call" &&
+    titleOf(agendaList.items[0])!.ruled === true &&
+    titleOf(agendaList.items[2])!.ruled !== true,
+    agendaList.items.map((item) => titleOf(item)),
+);
+check(
+    // The inversion this fixes: "1. Present" sat at the item's own column and
+    // so became a sibling of "Call to Order", and the lettered lines became
+    // flush-left paragraphs larger in effect than the items above them.
+    "lines at the item's own column fall under it, with their own nesting",
+    childList(agendaList.items[0])?.items.length === 2 &&
+    (childList(agendaList.items[0])!.items[1].blocks[0] as ListBlock | undefined)?.numbering === "roman" &&
+    (childList(agendaList.items[0])!.items[1].blocks[0] as ListBlock).items.length === 2,
+    childList(agendaList.items[0]),
+);
+check(
+    // The letters are the author's text, not list syntax: they stay in the
+    // runs, and the item says how many characters they take up.
+    "typed letters are a lettered list under their item, and keep their letters",
+    childList(agendaList.items[1])?.numbering === "letter" &&
+    childList(agendaList.items[1])!.items.map((item) => runsText(item.runs)).join("|") ===
+        "a. Senator of the Month|b. Approval of the discretionary fund" &&
+    childList(agendaList.items[1])!.items.every((item) => item.typedMarker === 2),
+    childList(agendaList.items[1]),
+);
+check(
+    "a b. indented under a. is still a's sibling",
+    childList(agendaList.items[2])?.items.length === 2 &&
+    childList(agendaList.items[2])!.items[1].value === 2,
+    childList(agendaList.items[2]),
+);
+check(
+    "an unbolded item numbered next is the agenda's, not a note under the last",
+    runsText(titleOf(agendaList.items[3])!.runs) === "Public Input" &&
+    agendaList.items[3].blocks.length === 1,
+    agendaList.items[3],
+);
+check(
+    "a note indented under the last item stays with it",
+    agendaList.items[4].blocks[1]?.kind === "paragraph" &&
+    runsText((agendaList.items[4].blocks[1] as { runs: InlineRun[] }).runs) === "SGA meetings run until 9:00 PM.",
+    agendaList.items[4].blocks,
+);
+check(
+    "an agenda renders every word, typed letters included",
+    words(agendaBlocks).join(" ") ===
+    (toPlainText(agendaDoc).match(/[A-Za-z0-9]+/g) ?? []).join(" "),
+    words(agendaBlocks).join(" "),
+);
+check(
+    "every outline entry of an agenda has a block to scroll to",
+    documentSections(agendaDoc).length > 0 &&
+    flatIds(documentSections(agendaDoc)).every((id) => blockSectionIds(agendaBlocks).has(id)),
+    [flatIds(documentSections(agendaDoc)), [...blockSectionIds(agendaBlocks)]],
+);
+const agendaQuote = findQuote(agendaDoc, "Senator of the Month")!;
+const crossing = findQuote(agendaDoc, "Absent:\n\n   i. Excused:")!;
+const agendaCited = renderDocument(agendaDoc, [
+    { id: "month", startOffset: agendaQuote.startOffset, endOffset: agendaQuote.endOffset },
+    { id: "cross", startOffset: crossing.startOffset, endOffset: crossing.endOffset },
+]);
+check(
+    "a citation inside an agenda highlights exactly its words",
+    highlighted(agendaCited, "month") === "Senator of the Month" &&
+    highlighted(agendaCited, "cross") === "Absent:i. Excused:",
+    [highlighted(agendaCited, "month"), highlighted(agendaCited, "cross")],
+);
+check(
+    "highlighting an agenda does not change what is rendered",
+    renderedText(agendaCited) === renderedText(agendaBlocks),
+);
+
+const pdfAgenda = renderDocument(
+    ["1. Call to Order and Attendance (1 min)", "a. Absentees:", "i. Excused:", "2. Convening Business"].join("\n"),
+    [],
+);
+check(
+    // A PDF's wrapped lines sit at the margin too, so a list there would cut
+    // "e. Election of President of the Senate" off from "& Committee Chairs".
+    "unindented letters outside an agenda stay text",
+    pdfAgenda.every((block) => block.kind !== "list" || (!block.agenda && !block.numbering)) &&
+    pdfAgenda.some((block) => block.kind === "paragraph" && runsText(block.runs).startsWith("a. Absentees:")),
+    pdfAgenda,
+);
+check(
+    "a bold sentence is a notice, not an agenda item",
+    renderDocument("1. **The first 3 hours are required\\!**\n2. **Please arrive by 10:30am.**", [])
+        .every((block) => block.kind !== "list" || !block.agenda),
+);
+const mixed = renderDocument(
+    ["1. Attendance", "2. Academic Affairs", "   1. **Board Town Hall**", "3. **Wellness Pass**"].join("\n"),
+    [],
+);
+check(
+    "a plain list gives way to an agenda below it, and keeps its bold sub-items",
+    mixed.length === 2 &&
+    mixed[0].kind === "list" && !mixed[0].agenda && mixed[0].items.length === 2 &&
+    mixed[1].kind === "list" && mixed[1].agenda === true && mixed[1].start === 3,
+    mixed,
+);
+const letters = renderDocument("   g. Seventh\n   h. Eighth\n   i. Ninth", [])[0];
+check(
+    "an i. after h. is a letter, not a numeral",
+    letters?.kind === "list" && letters.numbering === "letter" &&
+    letters.items.map((item) => item.value).join(",") === "7,8,9",
+    letters,
+);
+
 console.log("\nhighlights");
 
 const a = findQuote(doc, "The Treasurer shall maintain the accounts.")!;
@@ -471,6 +643,16 @@ check(
     JSON.stringify(highlighted(sheetCited, "s")),
 );
 
+const roll = renderDocument(
+    "| Shreemann Patel, Chair | Present |\n| :---- | :---- |\n| Sumire Sumi | Present |\n| Paul Woo | Excused |",
+    [],
+);
+check(
+    "a roll's first row is a member, not a column header",
+    roll[0]?.kind === "table" && roll[0].header === null && roll[0].rows.length === 3,
+    roll[0],
+);
+
 const tabbed = renderDocument("Name\tSeat\nAda\tTreasurer", [], {
     sheetDelimiter: "\t",
 });
@@ -478,6 +660,42 @@ check(
     "tab-separated rows from the xlsx path split too",
     tabbed[0].kind === "table" && cellText(tabbed[0].rows[0].cells[1]) === "Treasurer",
     tabbed[0].kind === "table" ? tabbed[0].rows[0].cells.map(cellText) : null,
+);
+
+const tabs = [
+    "Name,Seat",
+    "Ada,Treasurer",
+    "\fBudget",
+    "Item,Amount",
+    "Coffee,12",
+].join("\n");
+const tabBlocks = renderDocument(tabs, [], { sheetDelimiter: "," });
+const tabTables = tabBlocks.filter((block) => block.kind === "table");
+check(
+    "each tab of a workbook renders as its own table",
+    tabTables.length === 2 &&
+        tabBlocks.some(
+            (block) => block.kind === "heading" && runsText(block.runs) === "Budget",
+        ),
+    tabBlocks.map((block) => block.kind),
+);
+check(
+    "a later tab keeps its own header",
+    tabTables[1]?.kind === "table" &&
+        tabTables[1].header !== null &&
+        tabTables[1].header.cells.map(cellText).join("|") === "Item|Amount",
+    tabTables[1]?.kind === "table" ? tabTables[1].header?.cells.map(cellText) : null,
+);
+const coffee = findQuote(tabs, "Coffee")!;
+const tabCited = renderDocument(
+    tabs,
+    [{ id: "b", startOffset: coffee.startOffset, endOffset: coffee.endOffset }],
+    { sheetDelimiter: "," },
+);
+check(
+    "a citation into a later tab highlights that cell",
+    highlighted(tabCited, "b") === "Coffee",
+    JSON.stringify(highlighted(tabCited, "b")),
 );
 
 console.log("\nproseInlineRuns");

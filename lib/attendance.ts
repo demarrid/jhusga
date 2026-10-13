@@ -1,4 +1,4 @@
-import { parseCsvLine } from "@/lib/csv";
+import { firstSheetText, parseCsvLine } from "@/lib/csv";
 import type { DirectoryGroup } from "@/lib/directory";
 
 /**
@@ -292,7 +292,9 @@ type BlockState = {
  * they sit on. A person holding two seats appears twice.
  */
 export function parseAttendanceSheet(csv: string): AttendanceMember[] {
-    const rows = csv.split(/\r?\n/).map(parseCsvLine);
+    // Later tabs are the same people counted again, or a different meeting.
+    // The seat each person holds is the first tab.
+    const rows = firstSheetText(csv).split(/\r?\n/).map(parseCsvLine);
     const states: BlockState[] = BLOCKS.map(() => ({ section: null, seat: null }));
     const found: AttendanceMember[] = [];
 
@@ -388,5 +390,8 @@ export function isAttendanceSheetName(name: string): boolean {
  * policy in the bylaws. The tally marker is the giveaway.
  */
 export function isAttendanceSheet(input: { title: string; content: string }): boolean {
-    return isAttendanceSheetName(input.title) && /,\s*Totals\s*,/i.test(input.content);
+    return (
+        isAttendanceSheetName(input.title) &&
+        /,\s*Totals\s*,/i.test(firstSheetText(input.content))
+    );
 }

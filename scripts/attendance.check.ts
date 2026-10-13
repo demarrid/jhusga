@@ -229,5 +229,12 @@ check(
     members.every((member) => member.evidence.includes(member.name)),
 );
 
+const withAnotherTab = `${SHEET}\n\fWeek 2\nJason Yu,Totals,GBM,Exec,IA`;
+check(
+    "a later tab is not read as more of the roster",
+    parseAttendanceSheet(withAnotherTab).length === members.length,
+    parseAttendanceSheet(withAnotherTab).length,
+);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

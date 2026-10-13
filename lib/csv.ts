@@ -1,4 +1,77 @@
 /**
+ * A line that opens a later tab of the same workbook.
+ *
+ * The first tab is stored as it always was, with no marker, so a one-tab
+ * file and every citation into it stay put. Each further tab is a line
+ * `\fName` and then that tab's rows. The character is a form feed, which
+ * no stored cell contains: `formatDelimited` replaces it, and so does the
+ * Drive export for the first tab.
+ */
+export const SHEET_BREAK = "\f";
+
+/** The first tab of a stored workbook, or the whole text when it has one tab. */
+export function firstSheetText(content: string): string {
+    const at = content.indexOf(`\n${SHEET_BREAK}`);
+    return at === -1 ? content : content.slice(0, at);
+}
+
+/**
+ * One workbook's tabs as stored text.
+ *
+ * `first` is the leading tab and is not renamed: Google Sheets keep the CSV
+ * Drive already exported, whose bytes citations may already point into.
+ * Later tabs are appended. Empty tabs are dropped, and a workbook whose
+ * first tab is blank starts at the next one that has rows.
+ */
+export function appendWorkbookSheets(
+    first: string,
+    rest: { name: string; text: string }[],
+): string {
+    const more = rest
+        .map((sheet) => ({
+            name: sheet.name.replace(/[\r\n\f]/g, " ").trim() || "Sheet",
+            text: sheet.text.trim(),
+        }))
+        .filter((sheet) => sheet.text);
+
+    const head = first.trim();
+    if (more.length === 0) return head;
+    if (!head) {
+        const [primary, ...tail] = more;
+        return appendWorkbookSheets(primary!.text, tail);
+    }
+
+    const appended = more
+        .map((sheet) => `${SHEET_BREAK}${sheet.name}\n${sheet.text}`)
+        .join("\n");
+    return `${head}\n${appended}`;
+}
+
+/**
+ * Rows joined for storage, one row per line.
+ *
+ * Every reader of stored sheets -- the renderer, the roster and attendance
+ * parsers -- splits on newlines before it splits cells, so a line break or
+ * form feed inside a cell is flattened to a space for both delimiters
+ * rather than quoted across lines. Tabs never quote: the xlsx path has
+ * always treated a quote as text, so a tab in a cell is flattened too.
+ * Commas quote the way Drive's CSV export does, because that is the Google
+ * Sheet dialect the roster and attendance readers already parse.
+ */
+export function formatDelimited(rows: string[][], delimiter: "," | "\t"): string {
+    return rows
+        .map((row) => row.map((cell) => formatCell(cell, delimiter)).join(delimiter))
+        .join("\n");
+}
+
+function formatCell(value: string, delimiter: "," | "\t"): string {
+    const clean = value.replace(/\r\n|[\r\n\f]/g, " ");
+    if (delimiter === "\t") return clean.replace(/\t/g, " ");
+    if (/[",]/.test(clean)) return `"${clean.replace(/"/g, '""')}"`;
+    return clean;
+}
+
+/**
  * Which delimiter a stored document's rows are separated by, or null when it
  * is not a spreadsheet at all.
  *

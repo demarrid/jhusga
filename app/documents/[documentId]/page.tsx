@@ -4,15 +4,17 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import { getDocument, type DocumentDetail } from "@/api/documents";
+import DocumentOutline from "@/app/(components)/DocumentOutline";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentViewer from "@/app/(components)/DocumentViewer";
-import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
 import { formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
+import { documentSections } from "@/lib/outline";
+import { blockSectionIds } from "@/lib/render";
 import { pageMetadata } from "@/lib/seo";
 
 import styles from "../document-detail.module.css";
@@ -78,6 +80,12 @@ export default async function DocumentPage({
     const document = await loadDocument(documentId);
 
     if (!document) notFound();
+
+    const sections = documentSections(document.content, {
+        titles: [document.title, document.driveTitle],
+        anchored: blockSectionIds(document.blocks),
+        kind: document.kind,
+    });
 
     return (
         <main className={styles.page}>
@@ -208,11 +216,18 @@ export default async function DocumentPage({
                 </article>
 
                 <aside className={styles.sidebar}>
-                    <DoubleStickyHolder>
+                    <div>
                         <section className={styles.sidebarSection}>
                             <h2>Summary</h2>
                             <DocumentRestatement restatement={document.restatement} />
                         </section>
+
+                        {sections.length > 0 && (
+                            <nav className={styles.sidebarSection} aria-labelledby="document-sections">
+                                <h2 id="document-sections">Sections</h2>
+                                <DocumentOutline sections={sections} />
+                            </nav>
+                        )}
 
                         <RelatedDocuments
                             counterpart={document.counterpart}
@@ -251,7 +266,7 @@ export default async function DocumentPage({
                                     .join(" · ")}
                             </p>
                         )}
-                    </DoubleStickyHolder>
+                    </div>
                 </aside>
             </div>
         </main>

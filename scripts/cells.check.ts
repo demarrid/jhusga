@@ -113,5 +113,19 @@ check(
     restoreCellBreaks(wrapped, wrappedHtml),
 );
 
+const bulleted = `| Action Items Can we audit them? It\u2019s kind of primitive\u2026 there are better ways | All Present |\n| :---- | ----: |`;
+const bulletedHtml =
+    `<table><tr><td><p><span>Action Items</span></p><ul>` +
+    `<li><span>Can we audit them?</span></li>` +
+    `<li><span>It&rsquo;s kind of primitive&hellip; there are better ways</span></li>` +
+    `</ul></td><td>All Present</td></tr></table>`;
+check(
+    "bullets with named entities in them still get their breaks",
+    restoreCellBreaks(bulleted, bulletedHtml).includes(
+        `Action Items${CELL_BREAK}Can we audit them?${CELL_BREAK}It\u2019s kind`,
+    ),
+    restoreCellBreaks(bulleted, bulletedHtml),
+);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

@@ -14,6 +14,8 @@
  * Text in, passages out, and no database: lib/search.ts stores them.
  */
 
+import { SHEET_BREAK } from "@/lib/csv";
+
 /** Size a passage aims for, and the point past which it is split regardless. */
 const TARGET_CHARS = 1_400;
 const MAX_CHARS = 2_600;
@@ -44,6 +46,12 @@ const STRUCTURAL_HEADING =
     /^\s*(?:\*\*|__)?\s*(article|section|amendment|title|chapter|part|clause)\s+([ivxlcdm]+|\d+)\b/i;
 
 function headingLevel(line: string): { level: number; text: string } | null {
+    // A later tab of a workbook; its rows are found under the tab's name.
+    if (line.startsWith(SHEET_BREAK)) {
+        const text = line.slice(SHEET_BREAK.length).trim();
+        return text ? { level: 1, text } : null;
+    }
+
     const markdown = MARKDOWN_HEADING.exec(line);
     if (markdown) {
         return { level: markdown[1]!.length, text: markdown[2]!.trim() };

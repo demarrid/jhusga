@@ -1,7 +1,7 @@
 import { SESSION_NUMBER, sessionEndDate, sessionStartDate } from "@/config/session";
 import { COMMITTEE_CODES, isAttendanceSheet, parseAttendanceSheet } from "@/lib/attendance";
 import { compareNamesBySurname, nameKey } from "@/lib/contributors";
-import { parseCsvLine } from "@/lib/csv";
+import { firstSheetText, parseCsvLine } from "@/lib/csv";
 import { resolveAffiliates } from "@/lib/names";
 import { toPlainText } from "@/lib/markdown";
 import { canonicalOffices } from "@/lib/offices";
@@ -666,7 +666,7 @@ export function parseRosterCsv(csv: string): DirectoryMember[] {
     const byKey = new Map<string, MutableMember>();
     let section: DirectoryGroup = "other";
 
-    for (const rawLine of csv.split(/\r?\n/)) {
+    for (const rawLine of firstSheetText(csv).split(/\r?\n/)) {
         const cells = parseCsvLine(rawLine);
         if (cells.every((cell) => !cell)) continue;
 
@@ -705,6 +705,7 @@ export function parseRosterCsv(csv: string): DirectoryMember[] {
 }
 
 export function parseEmailList(markdown: string): DirectoryMember[] {
+    markdown = firstSheetText(markdown);
     const byKey = new Map<string, MutableMember>();
     const names = extractWrittenNames(markdown);
     const emails = extractEmails(markdown);
@@ -750,13 +751,13 @@ export function parseDirectoryDocument(input: {
     content: string;
 }): DirectoryMember[] {
     const title = input.title.toLowerCase();
-    if (/roster/.test(title) || /^name,/im.test(input.content)) {
+    if (/roster/.test(title) || /^name,/im.test(firstSheetText(input.content))) {
         return parseRosterCsv(input.content);
     }
     if (/email list|contact list/.test(title)) {
         return parseEmailList(input.content);
     }
-    if (extractEmails(input.content).length > 0) {
+    if (extractEmails(firstSheetText(input.content)).length > 0) {
         return parseEmailList(input.content);
     }
     return [];
@@ -1456,7 +1457,7 @@ function publishDirectory(
 ): { members: DirectoryMember[]; sources: DirectorySource[] } {
     assignLeftoverEmails(
         [...current.values()],
-        emailDocs.flatMap((document) => extractEmails(document.content)),
+        emailDocs.flatMap((document) => extractEmails(firstSheetText(document.content))),
     );
     for (const member of current.values()) {
         if (member.email && !member.emailSource && emailDocs[0]) {
@@ -1504,7 +1505,10 @@ export function buildSessionDirectory(documents: DirectoryDocument[]): {
     const emailDocs = directoryDocs.filter((document) => {
         const title = document.title.toLowerCase();
         if (/roster/.test(title)) return false;
-        return /email list|contact list/.test(title) || extractEmails(document.content).length > 0;
+        return (
+            /email list|contact list/.test(title) ||
+            extractEmails(firstSheetText(document.content)).length > 0
+        );
     });
 
     if (positionsDoc) {
@@ -1515,7 +1519,7 @@ export function buildSessionDirectory(documents: DirectoryDocument[]): {
 
     const rosterDocs = directoryDocs.filter((document) => {
         const title = document.title.toLowerCase();
-        return /roster/.test(title) || /^name,/im.test(document.content);
+        return /roster/.test(title) || /^name,/im.test(firstSheetText(document.content));
     });
 
     const current = new Map<string, MutableMember>();

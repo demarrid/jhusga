@@ -90,6 +90,15 @@
   transform-origin: left;
 }
 
+.navigation a.active {
+  color: var(--color-accent);
+  font-weight: 800;
+}
+
+.navigation a.active::after {
+  background: currentColor;
+}
+
 @media (max-width: 680px) {
   .inner {
     min-height: auto;

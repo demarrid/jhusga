@@ -118,7 +118,7 @@
   overflow: hidden;
 }
 
-/* Fixed chrome: translated content passes underneath, not through, this bar. */
+/* Fixed chrome: the sidebar scrolls underneath, not through, this bar. */
 .sidebar::before {
   content: "";
   display: block;
@@ -130,10 +130,17 @@
   z-index: 2;
 }
 
+/* Its own scroll, rather than one that follows the page: the outline is how a
+   reader sees where they are, so the document scrolling must not carry it out
+   of sight. */
 .sidebar > div {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  padding-right: 0.75rem;
+  padding-bottom: 2rem;
+  scrollbar-width: thin;
+  scrollbar-color: #b6c5d3 transparent;
 }
 
 .sidebarSection {
@@ -211,11 +218,7 @@
 .summary ul {
   display: grid;
   gap: 0.75rem;
-  padding-left: 1.15rem;
-}
-
-.summary li {
-  padding-left: 0.25rem;
+  padding-left: 0;
 }
 
 .summary li::marker {
@@ -240,6 +243,12 @@
   white-space: pre-wrap;
 }
 
+/* A typed line break: more than a wrapped line, less than a new paragraph. */
+.lineGap {
+  display: block;
+  height: 0.5em;
+}
+
 .viewer h2,
 .viewer h3,
 .viewer h4,
@@ -250,10 +259,20 @@
   line-height: 1.2;
 }
 
-.viewer h2 { margin: 2.75rem 0 0.8rem; font-size: clamp(1.5rem, 2.6vw, 2.1rem); }
-.viewer h3 { margin: 2.25rem 0 0.65rem; font-size: clamp(1.25rem, 2vw, 1.65rem); }
-.viewer h4 { margin: 2rem 0 0.6rem; font-size: 1.2rem; }
-.viewer h5 { margin: 1.75rem 0 0.5rem; font-size: 1.05rem; }
+/* One step per level, and no step so large that a `##` agenda item outranks
+   the `#` banner above it or dwarfs the `**bold**` items beside it. */
+.viewer h2 { margin: 2.5rem 0 0.75rem; font-size: 1.4rem; }
+.viewer h2.viewerTopHeading { margin-top: 2.75rem; font-size: clamp(1.55rem, 2.4vw, 1.9rem); }
+.viewer h3 { margin: 2.1rem 0 0.6rem; font-size: 1.2rem; }
+.viewer h4 { margin: 1.85rem 0 0.5rem; font-size: 1.08rem; font-weight: 600; }
+.viewer h5 { margin: 1.6rem 0 0.45rem; font-size: 1rem; font-weight: 600; }
+
+/* A heading Docs put inside a sub-item ("a. ### Cabinet Reports") is still a
+   sub-item, and must not print larger than the agenda item it sits under. */
+.viewer li > :is(h2, h3, h4, h5) {
+  margin: 0.45rem 0 0.25rem;
+  font-size: 1.1rem;
+}
 
 .viewer blockquote {
   margin: 1.5rem 0;
@@ -268,9 +287,104 @@
   padding-left: 1.6rem;
 }
 
+/* The reset strips every marker, and without them a sub-item cannot be told
+   from the item above it. Nested levels follow Docs' own 1., a., i. */
+.viewer ol { list-style: decimal; }
+.viewer ul { list-style: disc; }
+.viewer :is(ol, ul) ol { list-style-type: lower-alpha; }
+.viewer :is(ol, ul) :is(ol, ul) ol { list-style-type: lower-roman; }
+.viewer :is(ol, ul) :is(ol, ul) :is(ol, ul) ol { list-style-type: decimal; }
+.viewer :is(ol, ul) ul { list-style-type: circle; }
+.viewer :is(ol, ul) :is(ol, ul) ul { list-style-type: square; }
 .viewer li {
   margin: 0.35rem 0;
   white-space: pre-wrap;
+}
+
+.viewer li::marker {
+  color: #52677d;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Letters the author typed are text, set in the margin where the marker
+   would be, so they line up with the numbered lists around them. */
+.viewer ol.listTyped {
+  list-style: none;
+}
+
+.viewer ol.listTyped > li {
+  position: relative;
+}
+
+.typedMarker {
+  position: absolute;
+  right: 100%;
+  padding-right: 0.4rem;
+  color: #52677d;
+  white-space: nowrap;
+}
+
+.viewer li > :is(ol, ul) {
+  margin: 0.3rem 0;
+}
+
+/*
+ * An agenda: each item a numbered heading with what falls under it indented
+ * to the start of its title, as the Doc lays it out. The number column is a
+ * fixed width so that "9." and "10." line their titles up.
+ */
+.viewer ol.agenda {
+  margin: 1.75rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.viewer .agendaItem {
+  margin: 0;
+  white-space: normal;
+}
+
+.viewer .agendaItem + .agendaItem {
+  margin-top: 1.9rem;
+}
+
+.viewer .agendaTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.viewer .agendaTitleRuled {
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid #b6c5d3;
+}
+
+.agendaNumber {
+  flex: none;
+  min-width: 2.1rem;
+  color: #377ebc;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer .agendaBody {
+  margin-top: 0.7rem;
+  padding-left: 2.4rem;
+}
+
+.viewer .agendaBody > :first-child {
+  margin-top: 0;
+}
+
+.viewer .agendaBody > :last-child {
+  margin-bottom: 0;
+}
+
+.viewer .agendaBody > :is(ol, ul) {
+  margin: 0.5rem 0;
 }
 
 .viewerTable {
@@ -284,15 +398,22 @@
 
 /*
  * A table the author used to place things on a page, printed as the text it
- * is. The item keeps the line breaks restored into the cell; whoever it
- * belongs to follows underneath rather than as a second column, so a closing
- * motion is not mistaken for a spreadsheet.
+ * is. The item keeps the line breaks restored into the cell. Who leads it, or
+ * "All Present", sits right-aligned beside its first line, where the minutes
+ * template puts it, and drops underneath on a phone.
  */
 .viewerLayoutRow {
   display: grid;
-  gap: 0.35rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 2rem;
+  row-gap: 0.35rem;
+  align-items: start;
   padding: 1.15rem 0;
   border-top: 1px solid #dbe4ed;
+}
+
+.viewerLayoutItem:only-child {
+  grid-column: 1 / -1;
 }
 
 .viewerLayoutRow:first-child {
@@ -310,17 +431,19 @@
 }
 
 .viewerLayoutAside {
+  display: grid;
+  justify-items: end;
+  gap: 0.2rem;
   margin: 0;
+  /* Level with the first line of the item beside it. */
+  padding-top: 0.2rem;
   color: #52677d;
   font-family: var(--font-work-sans), Tahoma, sans-serif;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1.5;
-}
-
-.viewerLayoutAside span + span::before {
-  content: " · ";
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: right;
+  white-space: pre-wrap;
 }
 
 .viewer table {
@@ -370,15 +493,96 @@
   position: static;
   display: inline-block;
   margin: 0 0.12rem;
-  vertical-align: super;
+  /* The mark inherits the summary's loose line-height, and `super` then lifted
+     that whole box into the space above the words. A tight line box, centered
+     on the text, sits in the line it cites. */
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.outline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outline .outline {
+  margin: 0.2rem 0 0 0.15rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid #d6dfe7;
+}
+
+.sidebar .outline li {
+  padding: 0.2rem 0;
+  border-top: 0;
+  line-height: 1.35;
+}
+
+.sidebar .outline a {
+  display: block;
+  color: #344960;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.sidebar .outline a:hover,
+.sidebar .outline a:focus-visible,
+.sidebar .outline a[aria-current="location"] {
+  color: #002d72;
+  opacity: 1;
+}
+
+.sidebar .outline a:focus-visible {
+  outline: 2px solid #68ace5;
+  outline-offset: 2px;
+}
+
+/* "Agenda" and "Minutes" over the two runs of one file: a caption, not a link,
+   and the sections under it stay at the top level. */
+.sidebar .outline li.outlineGroup {
+  padding: 0;
+}
+
+.sidebar .outline li + li.outlineGroup {
+  margin-top: 0.85rem;
+}
+
+.outlineGroup > span {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: #52677d;
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.outline .outlineGroup > .outline {
+  margin: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.sectionAnchor {
+  scroll-margin-top: 7rem;
 }
 
 .citationMark {
-  padding: 0 0.28rem;
+  display: inline-block;
+  padding: 0.1rem 0.28rem;
+  line-height: 1;
   background: #377ebc;
   color: #ffffff;
   font-family: var(--font-work-sans), Tahoma, sans-serif;
   font-size: 0.65rem;
+  /* Centered on the line box it reads low beside lowercase text. Nudged here
+     rather than on .citation, which must stay static so the tooltip spans the
+     whole summary item. */
+  position: relative;
+  top: -3px;
 }
 
 .citationTooltip {
@@ -519,6 +723,16 @@
 
   .sidebar > div {
     overflow: visible;
+    padding: 0;
+  }
+
+  /* Here the sidebar comes before the document, and a long agenda's outline
+     would push the text itself a screen or two down. */
+  .outlineRoot {
+    max-height: 18rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
   }
 }
 
@@ -538,5 +752,15 @@
 
   .compareContent {
     width: calc(100% - 2.5rem);
+  }
+
+  .viewerLayoutRow {
+    grid-template-columns: 1fr;
+  }
+
+  .viewerLayoutAside {
+    justify-items: start;
+    padding-top: 0;
+    text-align: left;
   }
 }

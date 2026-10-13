@@ -1,5 +1,6 @@
 import { normalizeForMatch } from "@/lib/anchor";
 import { CELL_BREAK, cellBreakAt } from "@/lib/markdown";
+import { decodeEntities } from "@/lib/newsletter";
 import { markdownTables, type SourceRange } from "@/lib/render";
 
 /**
@@ -141,21 +142,12 @@ function cellLines(html: string): string[] {
         .replace(/<style[\s\S]*?<\/style>/gi, "")
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<\/(?:p|div|li|h[1-6]|blockquote)\s*>/gi, "\n")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;|&apos;/g, "'")
-        .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
-            String.fromCharCode(Number.parseInt(hex, 16)),
-        )
-        .replace(/&#(\d+);/g, (_, dec: string) =>
-            String.fromCharCode(Number.parseInt(dec, 10)),
-        );
+        .replace(/<[^>]+>/g, "");
 
-    return text
+    // Docs writes typographic punctuation as named entities -- `&hellip;`,
+    // `&rsquo;` -- and one line left undecoded fails to match, which drops
+    // every break in the cell.
+    return decodeEntities(text)
         .split("\n")
         .map((line) => line.replace(/\s+/g, " ").trim())
         .filter(Boolean);

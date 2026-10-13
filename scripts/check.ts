@@ -52,11 +52,13 @@ const SUITES = [
     "meetings",
     "names",
     "newsletter",
+    "office",
     "passages",
     "search",
     "summarize",
     "titles",
     "render",
+    "outline",
     "when",
     "db",
 ];

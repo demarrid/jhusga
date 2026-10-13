@@ -63,7 +63,23 @@ function encodeMinimalDocx(phrase: string): Uint8Array {
     header.writeUInt32LE(xml.length, 18);
     header.writeUInt32LE(xml.length, 22);
     header.writeUInt16LE(name.length, 26);
-    return Buffer.concat([header, name, xml]);
+
+    // The reader finds entries through the central directory, as every ZIP
+    // writer leaves one.
+    const entry = Buffer.alloc(46);
+    entry.writeUInt32LE(0x02014b50, 0);
+    entry.writeUInt32LE(xml.length, 20);
+    entry.writeUInt32LE(xml.length, 24);
+    entry.writeUInt16LE(name.length, 28);
+
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(1, 8);
+    end.writeUInt16LE(1, 10);
+    end.writeUInt32LE(46 + name.length, 12);
+    end.writeUInt32LE(30 + name.length + xml.length, 16);
+
+    return Buffer.concat([header, name, xml, entry, name, end]);
 }
 
 console.log("isPdfFile");

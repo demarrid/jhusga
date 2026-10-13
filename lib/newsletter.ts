@@ -137,6 +137,8 @@ const NAMED_ENTITIES: Record<string, string> = {
     ldquo: "\u201c",
     rdquo: "\u201d",
     hellip: "\u2026",
+    bull: "\u2022",
+    middot: "\u00b7",
 };
 
 const ENTITY = /&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([a-zA-Z][a-zA-Z0-9]*));/g;
