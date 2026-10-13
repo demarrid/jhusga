@@ -628,7 +628,22 @@ function isValueGrid(rows: TableRow[]): boolean {
     const columns = rows.reduce((widest, row) => Math.max(widest, row.cells.length), 0);
     if (columns < 2) return false;
 
-    return looksLikeAttendance(rows);
+    // A minutes row is an item beside a short aside ("All Present", "Chair").
+    // A bill's amendment table is two columns of the provision itself, and
+    // squeezing the second into that aside collapses both of them.
+    return looksLikeAttendance(rows) || hasTwoLongColumns(rows);
+}
+
+/** Two different columns each hold a passage, not a label. */
+function hasTwoLongColumns(rows: TableRow[]): boolean {
+    const longest: number[] = [];
+    for (const row of rows) {
+        row.cells.forEach((cell, index) => {
+            const length = runsText(cell).trim().length;
+            longest[index] = Math.max(longest[index] ?? 0, length);
+        });
+    }
+    return longest.filter((length) => length >= 80).length >= 2;
 }
 
 const ATTENDANCE_STATUS = /^(present|absent|excused|late|here)\b/i;

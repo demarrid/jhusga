@@ -48,17 +48,26 @@ function BlockView({ block }: { block: Block }) {
             );
         }
 
-        case "paragraph":
+        case "paragraph": {
             // pre-wrap keeps the line breaks the author typed; the export does
             // not soft-wrap, so every newline inside a paragraph is deliberate.
+            // A bill's letterhead is those breaks and nothing else: five short
+            // bold lines. Centering them, at the line's own spacing, is the
+            // title; the extra gap a body paragraph gives a typed break would
+            // string it down the page.
+            const letterhead = isLetterhead(block.runs);
             return (
                 <p
                     id={block.sectionId}
-                    className={anchorClass(styles.viewerParagraph, block.sectionId)}
+                    className={anchorClass(
+                        letterhead ? styles.viewerLetterhead : styles.viewerParagraph,
+                        block.sectionId,
+                    )}
                 >
-                    {renderRuns(block.runs)}
+                    {renderRuns(block.runs, !letterhead)}
                 </p>
             );
+        }
 
         case "quote":
             return (
@@ -109,23 +118,31 @@ function BlockView({ block }: { block: Block }) {
                 </ul>
             );
 
-        case "table":
+        case "table": {
+            const presented = presentTable(block);
+            const prose = presented.rows.some((row) =>
+                row.cells.filter((cell) => runsText(cell).trim().length >= 80).length >= 2,
+            );
             return (
                 <div className={styles.viewerTable}>
-                    <table>
-                        {block.header && (
+                    <table className={prose ? styles.proseTable : undefined}>
+                        {presented.caption && (
+                            <caption>{renderRuns(presented.caption)}</caption>
+                        )}
+                        {presented.header && (
                             <thead>
-                                <Row row={block.header} cell="th" />
+                                <Row row={presented.header} cell="th" />
                             </thead>
                         )}
                         <tbody>
-                            {block.rows.map((row, index) => (
+                            {presented.rows.map((row, index) => (
                                 <Row key={index} row={row} cell="td" />
                             ))}
                         </tbody>
                     </table>
                 </div>
             );
+        }
 
         case "layout":
             return (
@@ -299,12 +316,12 @@ function splitTypedMarker(runs: InlineRun[], length: number): [InlineRun[], Inli
     return [label, text];
 }
 
-function renderRuns(runs: InlineRun[]): ReactNode {
-    return runs.map((run, index) => <Run key={index} run={run} />);
+function renderRuns(runs: InlineRun[], gaps = true): ReactNode {
+    return runs.map((run, index) => <Run key={index} run={run} gaps={gaps} />);
 }
 
-function Run({ run }: { run: InlineRun }) {
-    let node: ReactNode = withLineGaps(run.text);
+function Run({ run, gaps }: { run: InlineRun; gaps: boolean }) {
+    let node: ReactNode = gaps ? withLineGaps(run.text) : run.text;
 
     if (run.strike) node = <s>{node}</s>;
     if (run.italic) node = <em>{node}</em>;
@@ -347,6 +364,65 @@ function Run({ run }: { run: InlineRun }) {
  * The spacer is a block of its own, which breaks the line without the
  * newline character, and stays inside any highlight or bold around it.
  */
+/**
+ * The enacting heading a bill sets in short bold lines, one under the next.
+ *
+ * "Senate / of the / Student Government Association / of / The Johns Hopkins
+ * University" is one paragraph only because the export put a break where the
+ * Doc centered a line. It is not a list of sentences.
+ */
+function isLetterhead(runs: InlineRun[]): boolean {
+    const lines = runsText(runs)
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    if (lines.length < 3 || lines.length > 6) return false;
+    if (lines.some((line) => line.length > 42 || /[.:]/.test(line))) return false;
+
+    for (const run of runs) {
+        if (!run.bold && /[^\s]/.test(run.text)) return false;
+    }
+    return true;
+}
+
+/**
+ * Docs exports a merged banner cell as a header row with the other cells
+ * empty. That banner is the table's caption, and the short row under it --
+ * "Current language", "Proposed language" -- is the header the delimiter
+ * could not see, because the export always marks the first row as one.
+ */
+function presentTable(block: Extract<Block, { kind: "table" }>): {
+    caption: InlineRun[] | null;
+    header: TableRow | null;
+    rows: TableRow[];
+} {
+    let header = block.header;
+    let rows = block.rows;
+    let caption: InlineRun[] | null = null;
+
+    if (header) {
+        const filled = header.cells.filter((cell) => runsText(cell).trim().length > 0);
+        if (filled.length === 1 && header.cells.length > 1) {
+            caption = filled[0]!;
+            header = null;
+        }
+    }
+
+    const labels = rows[0];
+    if (
+        caption &&
+        labels &&
+        rows.length > 1 &&
+        labels.cells.filter((cell) => runsText(cell).trim().length > 0).length >= 2 &&
+        labels.cells.every((cell) => runsText(cell).trim().length <= 48)
+    ) {
+        header = labels;
+        rows = rows.slice(1);
+    }
+
+    return { caption, header, rows };
+}
+
 function withLineGaps(text: string): ReactNode {
     if (!text.includes("\n")) return text;
     return text.split("\n").flatMap((piece, index) =>

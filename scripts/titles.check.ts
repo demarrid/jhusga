@@ -77,6 +77,12 @@ check(
     cleanTitle("SGA-R-1718.08 - SGA Powers and Authorities Resolution"),
 );
 check(
+    "CSAC stays an acronym",
+    cleanTitle("Bylaws Amendment: Choosing the CSAC Representative") ===
+    "Bylaws Amendment: Choosing the CSAC Representative",
+    cleanTitle("Bylaws Amendment: Choosing the CSAC Representative"),
+);
+check(
     // Bills naming a student group are how most groups reach the archive.
     "a group's name is an acronym, not a person's name",
     cleanTitle("JHUMA Funding Bill Fall 2026") === "JHUMA Funding Bill Fall 2026",

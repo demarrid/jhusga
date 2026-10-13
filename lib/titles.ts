@@ -44,6 +44,9 @@ const ACRONYMS = new Map(
         "SGA", "JHU", "GBM", "RSO", "KSAS", "WSE", "CE", "IA", "SS", "AA",
         "HSS", "CSO", "PC", "FC", "SBP", "CSC", "BSC", "MSE", "TBD", "AV",
         "SHWB", "Q&A", "II", "III", "IV",
+        // Four letters, so without this a shouted "CSAC" is read as a word
+        // and comes back "Csac".
+        "CSAC",
         // Student groups and events the SGA funds, which reach the archive
         // only through the bills that fund them: "JHUMA Funding Bill Fall
         // 2026" is the Muslim Association, not somebody called Jhuma.

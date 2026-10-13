@@ -249,6 +249,18 @@ check(
     )[0].kind === "table",
 );
 check(
+    "a two-column amendment is a table, not an aside",
+    renderDocument(
+        [
+            "| *SENATE BYLAWS* |  |",
+            "| ----- | ----- |",
+            "| **CURRENT LANGUAGE** | **PROPOSED LANGUAGE** |",
+            "| Option i: the bylaws do not mention the CSAC representative at all, in any article of the bylaws. | Option i: within the first 3 meetings the senate elects a CSAC representative from among its members. |",
+        ].join("\n"),
+        [],
+    )[0].kind === "table",
+);
+check(
     "an agenda of short items next to All Present is still prose",
     renderDocument(
         [

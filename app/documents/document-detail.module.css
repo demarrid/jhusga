@@ -236,6 +236,16 @@
   white-space: pre-wrap;
 }
 
+/* A bill's stacked enacting lines: a title, at the spacing of its own lines. */
+.viewerLetterhead {
+  margin: 0.25rem 0 1.5rem;
+  color: #16365e;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
 /* A typed line break: more than a wrapped line, less than a new paragraph. */
 .lineGap {
   display: block;
@@ -444,6 +454,23 @@
   border-collapse: collapse;
   font-family: var(--font-work-sans), Tahoma, sans-serif;
   font-size: 0.8rem;
+}
+
+.viewer caption {
+  caption-side: top;
+  padding: 0 0 0.65rem;
+  color: #002d72;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Provisions, not a roster: the same face as the bill around the table. */
+.proseTable {
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.55;
 }
 
 .viewer th,
