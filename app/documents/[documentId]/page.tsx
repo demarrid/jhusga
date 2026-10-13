@@ -7,6 +7,7 @@ import { getDocument, type DocumentDetail } from "@/api/documents";
 import DocumentOutline from "@/app/(components)/DocumentOutline";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentViewer from "@/app/(components)/DocumentViewer";
+import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
@@ -216,7 +217,7 @@ export default async function DocumentPage({
                 </article>
 
                 <aside className={styles.sidebar}>
-                    <div>
+                    <DoubleStickyHolder>
                         <section className={styles.sidebarSection}>
                             <h2>Summary</h2>
                             <DocumentRestatement restatement={document.restatement} />
@@ -266,7 +267,7 @@ export default async function DocumentPage({
                                     .join(" · ")}
                             </p>
                         )}
-                    </div>
+                    </DoubleStickyHolder>
                 </aside>
             </div>
         </main>

@@ -118,7 +118,7 @@
   overflow: hidden;
 }
 
-/* Fixed chrome: the sidebar scrolls underneath, not through, this bar. */
+/* Fixed chrome: translated content passes underneath, not through, this bar. */
 .sidebar::before {
   content: "";
   display: block;
@@ -130,17 +130,10 @@
   z-index: 2;
 }
 
-/* Its own scroll, rather than one that follows the page: the outline is how a
-   reader sees where they are, so the document scrolling must not carry it out
-   of sight. */
 .sidebar > div {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding-right: 0.75rem;
-  padding-bottom: 2rem;
-  scrollbar-width: thin;
-  scrollbar-color: #b6c5d3 transparent;
+  overflow: hidden;
 }
 
 .sidebarSection {

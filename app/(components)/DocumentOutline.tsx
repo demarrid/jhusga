@@ -33,59 +33,74 @@ export default function DocumentOutline({ sections }: { sections: DocumentSectio
             .filter((node): node is HTMLElement => node !== null);
         if (targets.length === 0) return;
 
-        let frame = 0;
-        let line = readingLine(targets[0]!);
+        let line = 0;
+        let pageHeight = 0;
+        let marks: { id: string; top: number }[] = [];
+        let current = "";
+
+        // Positions are taken when the layout changes, not on each scroll.
+        // Measuring every heading per frame forces layout while the sidebar
+        // is trying to follow the page, and that hitch is the stutter.
+        function measure() {
+            line = readingLine(targets[0]!);
+            const scrollY = window.scrollY;
+            marks = targets.map((target) => ({
+                id: target.id,
+                top: target.getBoundingClientRect().top + scrollY,
+            }));
+            pageHeight = document.documentElement.scrollHeight;
+        }
 
         function update() {
-            frame = 0;
             const chosen = chosenRef.current;
-            if (chosen) {
-                setActive(chosen);
-                return;
-            }
+            let next = chosen ?? "";
 
-            let next = "";
-            for (const target of targets) {
-                if (target.getBoundingClientRect().top <= line) next = target.id;
-                else break;
-            }
+            if (!chosen) {
+                const scrollY = window.scrollY;
+                const passed = scrollY + line;
+                for (const mark of marks) {
+                    if (mark.top <= passed) next = mark.id;
+                    else break;
+                }
 
-            // Above the first heading, it counts once it is well up the
-            // screen; until then the reader is still on the preamble.
-            if (!next && targets[0]!.getBoundingClientRect().top < window.innerHeight / 2) {
-                next = targets[0]!.id;
-            }
+                // Above the first heading, it counts once it is well up the
+                // screen; until then the reader is still on the preamble.
+                const first = marks[0];
+                if (!next && first && first.top < scrollY + window.innerHeight / 2) {
+                    next = first.id;
+                }
 
-            // At the foot of the page the last sections cannot reach the line,
-            // so the last one on screen is the one being read.
-            const atBottom =
-                window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
-            if (atBottom) {
-                for (const target of targets) {
-                    if (target.getBoundingClientRect().top < window.innerHeight) next = target.id;
+                // At the foot of the page the last sections cannot reach the
+                // line, so the last one on screen is the one being read.
+                if (window.innerHeight + scrollY >= pageHeight - 2) {
+                    const viewBottom = scrollY + window.innerHeight;
+                    for (const mark of marks) {
+                        if (mark.top < viewBottom) next = mark.id;
+                    }
                 }
             }
 
+            if (next === current) return;
+            current = next;
             setActive(next);
-        }
-
-        function schedule() {
-            if (frame === 0) frame = requestAnimationFrame(update);
         }
 
         function release() {
             chosenRef.current = null;
-            schedule();
+            update();
         }
 
         function resize() {
-            line = readingLine(targets[0]!);
-            schedule();
+            measure();
+            update();
         }
 
+        measure();
         update();
-        window.addEventListener("scroll", schedule, { passive: true });
+        window.addEventListener("scroll", update, { passive: true });
         window.addEventListener("resize", resize);
+        const observer = new ResizeObserver(resize);
+        observer.observe(document.documentElement);
         // Only the reader's own scrolling ends a click's claim; the smooth
         // scroll the click started fires `scroll` events too. A pointer press
         // covers dragging the scrollbar.
@@ -94,13 +109,13 @@ export default function DocumentOutline({ sections }: { sections: DocumentSectio
         window.addEventListener("touchmove", release, { passive: true });
         window.addEventListener("keydown", release);
         return () => {
-            window.removeEventListener("scroll", schedule);
+            window.removeEventListener("scroll", update);
             window.removeEventListener("resize", resize);
+            observer.disconnect();
             window.removeEventListener("wheel", release);
             window.removeEventListener("pointerdown", release);
             window.removeEventListener("touchmove", release);
             window.removeEventListener("keydown", release);
-            if (frame !== 0) cancelAnimationFrame(frame);
             chosenRef.current = null;
         };
     }, [key]);
