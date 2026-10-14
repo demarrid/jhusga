@@ -482,6 +482,13 @@
   white-space: pre-wrap;
 }
 
+/* A vendor URL is one long token. Breaking only the link keeps "Quantity"
+   and "$997.99" on one line while the address wraps inside its cell. */
+.viewer td a,
+.viewer th a {
+  overflow-wrap: anywhere;
+}
+
 .viewer th {
   background: #eaf3fb;
   color: #16365e;

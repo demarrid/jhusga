@@ -631,7 +631,25 @@ function isValueGrid(rows: TableRow[]): boolean {
     // A minutes row is an item beside a short aside ("All Present", "Chair").
     // A bill's amendment table is two columns of the provision itself, and
     // squeezing the second into that aside collapses both of them.
-    return looksLikeAttendance(rows) || hasTwoLongColumns(rows);
+    return looksLikeAttendance(rows) || hasTwoLongColumns(rows) || looksLikeDataTable(rows);
+}
+
+/**
+ * A grid of column headings and values: a funding table, not an agenda item
+ * set beside who leads it.
+ *
+ * The minutes template is two cells, the item and a short aside. Three or
+ * more columns whose first row is a row of short names is a table, and
+ * printing it as an aside stacks those columns down the margin.
+ */
+function looksLikeDataTable(rows: TableRow[]): boolean {
+    const columns = rows.reduce((widest, row) => Math.max(widest, row.cells.length), 0);
+    if (columns < 3) return false;
+
+    const header = rows[0]!.cells.map((cell) => runsText(cell).trim()).filter((cell) => cell.length > 0);
+    if (header.length < 3 || header.some((cell) => cell.length > 40)) return false;
+
+    return rows.slice(1).some((row) => row.cells.filter((cell) => runsText(cell).trim().length > 0).length >= 2);
 }
 
 /** Two different columns each hold a passage, not a label. */

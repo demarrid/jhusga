@@ -1,5 +1,3 @@
-'use server'
-
 import { SESSION_NUMBER } from "@/config/sga";
 import { sheetDelimiter } from "@/lib/csv";
 import { documentFindRank } from "@/lib/document-find";

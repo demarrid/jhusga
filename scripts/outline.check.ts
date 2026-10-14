@@ -396,6 +396,41 @@ check(
     flat(documentSections(committee)),
 );
 
+const minutesNotes = [
+    "1. ## Reports (5 min)",
+    "   1. Cabinet Reports (4 min)",
+    "      1. Student Body President - *Jason*",
+    "         1. Bring meetings with different departments to GBM",
+    "      2. Treasurer - *Amy*",
+    "      3. Chair of Programming - *Grace*",
+    "         1. Auditions due at October 4th",
+    "   2. Senator reports",
+    "      1. Luke",
+    "      2. Aishani:",
+    "         1. Working with Jackson and Natalie from CARE to apply to dialogue grant, working on budgeting details, seeking more help",
+    "1. ## Second Reading (10 min)",
+    "   1. Tabling supplies funding bill - Student Services Chair Veda Kommineni",
+    "      1. Passed finance with positive recommendation",
+    "      2. Jazz: chair of programming washes them",
+    "      3. Aishani: motion to pass",
+    "         1. passed",
+].join("\n");
+check(
+    "minutes number their notes, and the outline keeps the parts of the meeting",
+    flat(documentSections(minutesNotes)).join("\n") ===
+        [
+            "Reports (5 min)",
+            "  Cabinet Reports (4 min)",
+            "    Student Body President - Jason",
+            "    Treasurer - Amy",
+            "    Chair of Programming - Grace",
+            "  Senator reports",
+            "Second Reading (10 min)",
+            "  Tabling supplies funding bill - Student Services Chair Veda Kommineni",
+        ].join("\n"),
+    flat(documentSections(minutesNotes)),
+);
+
 console.log("\nbills and articles");
 
 const bill = [
@@ -418,6 +453,53 @@ const bill = [
     "Stone Meng",
     "Student Body President of the Johns Hopkins SGA",
 ].join("\n");
+const bylaws = [
+    "**BYLAWS OF THE Senate**",
+    "**OF THE**",
+    "**STUDENT GOVERNMENT ASSOCIATION**",
+    "",
+    "*Last Updated April 2026*",
+    "",
+    "**ARTICLE 1\\. TITLE AND PURPOSE**",
+    "",
+    "**_ARTICLE 1, SECTION 1\\._** These Bylaws of the Student Government Association, also referred to as the Bylaws, enacted pursuant to Article II, Section 3 of the Constitution, contains all regulations currently and permanently affecting the Student Government Association.",
+    "",
+    "**ARTICLE 3\\. THE EXECUTIVE BRANCH**",
+    "",
+    "**_ARTICLE 3, SECTION 2\\. RESPONSIBILITIES OF THE EXECUTIVE BRANCH_**",
+    "",
+    "**3.2.1 STUDENT BODY PRESIDENT**",
+    "",
+    "3.2.1 Serves as the Spokesperson of SGA.",
+    "",
+    "3.2.6.3 Organizes SGA Tabling Events",
+    "",
+    "3.2.6.3.5.8 The Bloomberg Student Center",
+    "",
+    "Caucus Senators Shall:",
+    "",
+    "**ARTICLE 4\\. THE LEGISLATIVE BRANCH**",
+    "",
+    "**4.1.2 STANDING LEGISLATIVE COMMITTEES**",
+    "",
+    "**4.1.2.5.1 COMMITTEE ON ACADEMIC AFFAIRS**",
+].join("\n");
+check(
+    "bylaws nest sections and offices under their article, and clauses stay out",
+    flat(documentSections(bylaws)).join("\n") ===
+        [
+            "ARTICLE 1. TITLE AND PURPOSE",
+            "  ARTICLE 1, SECTION 1",
+            "ARTICLE 3. THE EXECUTIVE BRANCH",
+            "  ARTICLE 3, SECTION 2. RESPONSIBILITIES OF THE EXECUTIVE BRANCH",
+            "    3.2.1 STUDENT BODY PRESIDENT",
+            "ARTICLE 4. THE LEGISLATIVE BRANCH",
+            "  4.1.2 STANDING LEGISLATIVE COMMITTEES",
+            "    4.1.2.5.1 COMMITTEE ON ACADEMIC AFFAIRS",
+        ].join("\n"),
+    flat(documentSections(bylaws)),
+);
+
 check(
     "a bill's title block, its fields, its clauses, and its signatories are not sections",
     flat(documentSections(bill)).join("\n") ===

@@ -1,0 +1,246 @@
+/*
+ * One frosted plate on the right of the hero. The blur is the plate's own
+ * backdrop, and the plate is only as tall as the lane now showing, so the
+ * bird stays sharp everywhere else.
+ */
+.carousel {
+  --card-w: 20.75rem;
+  --card-h: 7.15rem;
+  --word-h: 1.15rem;
+  --label-h: var(--word-h);
+  --gap: 0.5rem;
+  --pad: 0.65rem;
+  --glide: 1.45s;
+
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  right: max(4vw, 1.75rem);
+  width: calc(var(--card-w) + var(--pad) * 2);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.plate {
+  overflow: hidden;
+  box-sizing: border-box;
+  height: calc(var(--pad) * 2 + var(--label-h) + var(--shown, 1) * (var(--card-h) + var(--gap)));
+  padding: var(--pad);
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+  pointer-events: auto;
+  transition: height var(--glide) ease;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  box-sizing: border-box;
+  width: var(--card-w);
+  height: var(--label-h);
+  margin: 0 0 var(--gap);
+  color: #002d72;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.recentWord {
+  color: #8d9aaa;
+}
+
+.currentLane {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+.wordWindow {
+  height: var(--word-h);
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.wordTrack,
+.cardTrack {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glide {
+  transition: transform var(--glide) ease;
+}
+
+.glideInstant {
+  transition: none;
+}
+
+.wordTrack {
+  transform: translateY(calc(var(--lane-index, 0) * var(--word-h) * -1));
+}
+
+.wordTrack li {
+  display: flex;
+  align-items: center;
+  height: var(--word-h);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.cardTrack {
+  transform: translateY(calc(var(--lane-index, 0) * var(--card-h) * -1));
+}
+
+.cardTrack li {
+  height: var(--card-h);
+}
+
+.cardFace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 0.75rem;
+  box-sizing: border-box;
+  width: var(--card-w);
+  height: var(--card-h);
+  padding: 0.65rem 0.85rem 0.55rem;
+  background: rgba(255, 255, 255, 0.82);
+  color: inherit;
+  pointer-events: auto;
+  text-decoration: none;
+}
+
+.cardFace:hover {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.status,
+.date {
+  color: #377ebc;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.date {
+  grid-column: 2;
+  grid-row: 1;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.status {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.cardTitle {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: start;
+  display: -webkit-box;
+  margin-top: 0.4rem;
+  overflow: hidden;
+  color: #002d72;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: 1.12rem;
+  font-weight: 520;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.authors {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  align-self: end;
+  min-height: 1.3em;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  color: #6d7c8f;
+  font-size: 0.75rem;
+  font-weight: 560;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cardFace:focus-visible {
+  outline: 2px solid #002d72;
+  outline-offset: -2px;
+}
+
+@media (max-width: 1100px) {
+  .carousel {
+    --card-w: 100%;
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: min(100%, 28rem);
+    margin-top: 2.75rem;
+    transform: none;
+  }
+
+  .label,
+  .card,
+  .cardFace {
+    width: 100%;
+  }
+}
+
+@media (max-width: 680px) {
+  .carousel {
+    --card-h: 6.45rem;
+    --gap: 0.4rem;
+    --pad: 0.5rem;
+    width: 100%;
+    margin-top: 1.35rem;
+  }
+
+  .cardTitle {
+    font-size: 1.02rem;
+  }
+
+  .authors {
+    font-size: 0.7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plate,
+  .glide {
+    transition: none;
+  }
+}

@@ -8,6 +8,9 @@ The content below, as well as the vast majority of this repository's backend, wa
 
 ## Architecture
 
+For estimated minutes contributors from retained Google Drive history, see
+[personal OAuth setup and credit policy](docs/drive-revisions.md).
+
 SGA governing documents live in Google Docs, inside a master folder that changes
 every year. Because legislation mutates by amendment, any claim this site makes
 about how the SGA works has to be traceable to a specific passage of a specific

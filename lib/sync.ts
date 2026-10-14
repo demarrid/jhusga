@@ -873,8 +873,10 @@ export async function ingestFile(
             content,
             contentHash,
             driveModifiedTime,
+            editorName: file.lastModifyingUser?.displayName?.trim() ?? "",
+            editorEmail: file.lastModifyingUser?.emailAddress?.trim().toLowerCase() ?? "",
         },
-        update: { fetchedAt: new Date() },
+        update: {},
     });
 
     if (!verdict.publish) {

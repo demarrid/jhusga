@@ -144,6 +144,7 @@ model Document {
 
     documentAnnotations DocumentAnnotation[]
     revisions           DocumentRevision[]
+    driveRevisions      DriveRevision[]
     contributors        DocumentContributor[]
     summary             DocumentSummary?
     passages            DocumentPassage[]
@@ -246,6 +247,12 @@ model DocumentRevision {
     driveModifiedTime DateTime?
     fetchedAt         DateTime  @default(now())
 
+    // Who Drive named as the last editor when this version was first stored.
+    // Empty for a revision saved before that was recorded. This is an
+    // observation, not proof of authorship of the entire snapshot.
+    editorName  String @default("")
+    editorEmail String @default("")
+
     // Set when this revision is the one a reviewer accepted, and by whom.
     // A revision that was published automatically has neither.
     reviewedAt DateTime?
@@ -257,6 +264,21 @@ model DocumentRevision {
     // One row per distinct content hash per document.
     @@unique([documentId, contentHash])
     @@index([documentId, fetchedAt])
+}
+
+// OAuth history is separate from published/held archive versions. Null content
+// preserves an unavailable export as a gap so it cannot earn inferred credit.
+model DriveRevision {
+    id String @id @default(uuid())
+    documentId String
+    document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+    revisionId String
+    modifiedAt DateTime
+    editorName String @default("")
+    editorEmail String @default("")
+    content String?
+    @@unique([documentId, revisionId])
+    @@index([documentId, modifiedAt])
 }
 
 // A highlighted span of a document: the evidence a generated claim points at.

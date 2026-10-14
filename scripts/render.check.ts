@@ -261,6 +261,18 @@ check(
     )[0].kind === "table",
 );
 check(
+    "a funding grid of several short columns is a table",
+    renderDocument(
+        [
+            "| Item | Vendor (Link) | Price ($/item) | Quantity | Total ($) |",
+            "| :---- | :---- | :---- | :---- | :---- |",
+            "| Qdoba catering | https://catering.qdoba.com/online/itemDetails/index/itemId/1156/categoryId/32/itemQuantity/1 | $926.71 | 1 | $997.99 |",
+            "| **Total:** |  |  |  | **997.99** |",
+        ].join("\n"),
+        [],
+    )[0].kind === "table",
+);
+check(
     "an agenda of short items next to All Present is still prose",
     renderDocument(
         [

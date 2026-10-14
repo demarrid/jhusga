@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { getRecentActivity } from "@/api/activity";
 import HeroBackground from "@/app/(components)/HeroBackground";
+import RecentCarousel from "@/app/(components)/RecentCarousel";
 import styles from "@/app/home.module.css";
 import { pageMetadata } from "@/lib/seo";
 
@@ -18,7 +20,11 @@ export const metadata: Metadata = pageMetadata({
   path: "/",
 });
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const activity = await getRecentActivity();
+
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
@@ -35,6 +41,7 @@ export default function Home() {
             <span className={styles.arrow} aria-hidden="true">↗</span>
           </Link>
         </div>
+        {activity.length > 0 && <RecentCarousel lanes={activity} />}
         <HeroBackground />
       </section>
 

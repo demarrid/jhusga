@@ -1,0 +1,321 @@
+import { SESSION_NUMBER } from "@/config/session";
+import { demoModeEnabled } from "@/lib/data-mode";
+import { formatDateShort } from "@/lib/dates";
+import { proseLine } from "@/lib/cite";
+import {
+    ACTIVITY_CARD_LIMIT,
+    ACTIVITY_LANE_ORDER,
+    activityDate,
+    authorLine,
+    chooseMeetings,
+    countsAsOccurredMeeting,
+    countsAsSenateRecord,
+    hasOccurred,
+    legislationLane,
+    passedLegislation,
+    type ActivityCard,
+    type ActivityLane,
+    type ActivityLaneId,
+} from "@/lib/activity";
+import { editorDisplayName, rankedEditors } from "@/lib/editors";
+import { demoDocuments } from "@/lib/demo-data";
+import { prisma } from "@/lib/prisma";
+
+/**
+ * The three lanes of the home carousel.
+ *
+ * Resolutions and bills are whatever Senate minutes record as passed.
+ * Meetings are minutes of meetings whose date has arrived. The current
+ * session is read first only because its dates are the latest: a lane with
+ * fewer than three cards keeps going into earlier sessions until it has
+ * three, or the archive runs out. A lane with nothing in it is left out.
+ */
+export async function getRecentActivity(now = new Date()): Promise<ActivityLane[]> {
+    if (demoModeEnabled()) return demoActivity(now);
+
+    const minutes = await prisma.document.findMany({
+        where: {
+            meetingRole: "minutes",
+            kind: { startsWith: "minutes." },
+            reviewState: "published",
+        },
+        select: {
+            id: true,
+            title: true,
+            displayTitle: true,
+            kind: true,
+            folderPath: true,
+            meetingKey: true,
+            meetingRole: true,
+            datedAt: true,
+            driveCreatedTime: true,
+            driveLastEditorName: true,
+            driveLastEditorEmail: true,
+            driveOwnerName: true,
+            driveOwnerEmail: true,
+            summary: { select: { content: true, status: true } },
+        },
+    });
+
+    const senateIds = minutes.filter(countsAsSenateRecord).map((document) => document.id);
+    const senateText = senateIds.length
+        ? await prisma.document.findMany({
+              where: { id: { in: senateIds } },
+              select: { id: true, driveFileId: true, content: true },
+          })
+        : [];
+    const textById = new Map(senateText.map((document) => [document.id, document]));
+
+    const passedOn = new Map<string, Date>();
+
+    for (const document of minutes) {
+        if (!countsAsSenateRecord(document)) continue;
+        const when = activityDate(document);
+        if (!when || !hasOccurred(when, now)) continue;
+
+        const text = textById.get(document.id);
+        if (!text) continue;
+
+        for (const item of passedLegislation(text.content)) {
+            if (item.fileId === text.driveFileId) continue;
+            const earlier = passedOn.get(item.fileId);
+            if (!earlier || when > earlier) passedOn.set(item.fileId, when);
+        }
+    }
+
+    const fileIds = [...passedOn.keys()];
+    const legislation = fileIds.length
+        ? await prisma.document.findMany({
+              where: { driveFileId: { in: fileIds }, reviewState: "published" },
+              select: {
+                  id: true,
+                  driveFileId: true,
+                  title: true,
+                  displayTitle: true,
+                  kind: true,
+                  content: true,
+                  summary: { select: { content: true, status: true } },
+              },
+          })
+        : [];
+
+    const grouped: Record<ActivityLaneId, { card: ActivityCard; when: number }[]> = {
+        resolutions: [],
+        meetings: [],
+        bills: [],
+    };
+
+    for (const document of legislation) {
+        const lane = legislationLane({
+            title: document.displayTitle || document.title,
+            kind: document.kind,
+            content: document.content,
+        });
+        if (!lane) continue;
+
+        const when = passedOn.get(document.driveFileId);
+        if (!when) continue;
+
+        const laneId = lane === "resolution" ? "resolutions" : "bills";
+        grouped[laneId].push({
+            when: when.getTime(),
+            card: toCard(document, when, "Passed"),
+        });
+    }
+
+    const held = chooseMeetings(
+        minutes.flatMap((document) => {
+            if (!countsAsOccurredMeeting(document)) return [];
+            const when = activityDate(document);
+            if (!when || !hasOccurred(when, now)) return [];
+            return [
+                {
+                    ...document,
+                    title: document.displayTitle || document.title,
+                    when: when.getTime(),
+                },
+            ];
+        }),
+        ACTIVITY_CARD_LIMIT,
+    );
+
+    grouped.meetings = held.map((document) => ({
+        when: document.when,
+        card: toCard(document, new Date(document.when), "Minutes"),
+    }));
+
+    const lanes = ACTIVITY_LANE_ORDER.flatMap((lane) => {
+        const cards = grouped[lane.id]
+            .sort((left, right) => right.when - left.when || left.card.title.localeCompare(right.card.title))
+            .slice(0, ACTIVITY_CARD_LIMIT)
+            .map((entry) => entry.card);
+
+        return cards.length ? [{ ...lane, cards }] : [];
+    });
+
+    await attachAuthors(lanes);
+    return lanes;
+}
+
+/**
+ * The opening sentence of a summary.
+ *
+ * The rest of a restatement is how the document moved through readings, which
+ * on this carousel fights the "Passed" label: the bill page can carry the
+ * procedure, and the card only has to say what it is.
+ */
+function shownSummary(summary: { content: string; status: string } | null): string {
+    if (!summary || (summary.status !== "fresh" && summary.status !== "stale")) return "";
+
+    const line = proseLine(summary.content, 500);
+    const breakAt = line.search(/\.\s/);
+    const sentence = breakAt === -1 ? line : line.slice(0, breakAt + 1);
+    if (sentence.length <= 220) return sentence;
+    return `${sentence.slice(0, 219).trimEnd()}…`;
+}
+
+function toCard(
+    document: {
+        id: string;
+        title: string;
+        displayTitle?: string;
+        summary: { content: string; status: string } | null;
+    },
+    when: Date,
+    status: string,
+    authors = "",
+): ActivityCard {
+    return {
+        id: document.id,
+        href: `/documents/${document.id}`,
+        title: document.displayTitle || document.title,
+        dateLabel: formatDateShort(when) ?? "",
+        summary: shownSummary(document.summary),
+        authors,
+        status,
+    };
+}
+
+/**
+ * Legislation is credited from the lines the bill itself writes. Minutes are
+ * credited from substantive writing in retained OAuth revision snapshots.
+ * Unknown history and unresolved handles earn no inferred authorship.
+ */
+async function attachAuthors(
+    lanes: ActivityLane[],
+): Promise<void> {
+    const legislationIds = lanes
+        .filter((lane) => lane.id !== "meetings")
+        .flatMap((lane) => lane.cards.map((card) => card.id));
+    const meetingIds = lanes
+        .filter((lane) => lane.id === "meetings")
+        .flatMap((lane) => lane.cards.map((card) => card.id));
+
+    const [contributors, revisions, people] = await Promise.all([
+        legislationIds.length
+            ? prisma.documentContributor.findMany({
+                  where: {
+                      documentId: { in: legislationIds },
+                      role: { in: ["introducer", "sponsor"] },
+                  },
+                  select: {
+                      documentId: true,
+                      role: true,
+                      hopkinsAffiliate: { select: { name: true } },
+                  },
+              })
+            : [],
+        meetingIds.length
+            ? prisma.driveRevision.findMany({
+                  where: {
+                      documentId: { in: meetingIds },
+                  },
+                  select: {
+                      documentId: true,
+                      editorName: true,
+                      editorEmail: true,
+                      modifiedAt: true,
+                      revisionId: true,
+                      content: true,
+                      document: { select: {
+                          contentHash: true,
+                          driveModifiedTime: true,
+                          revisions: { select: { contentHash: true, driveModifiedTime: true } },
+                      } },
+                  },
+              })
+            : [],
+        prisma.hopkinsAffiliate.findMany({ select: { id: true, name: true } }),
+    ]);
+
+    const byDocument = new Map<string, { role: string; name: string }[]>();
+    for (const contributor of contributors) {
+        const list = byDocument.get(contributor.documentId) ?? [];
+        list.push({ role: contributor.role, name: contributor.hopkinsAffiliate.name });
+        byDocument.set(contributor.documentId, list);
+    }
+
+    // Exclude later Drive edits that the archive has not published (including
+    // rejected edits and historical snapshots after a published rollback).
+    const publishedRevisions = revisions.filter(revision => {
+        const document = revision.document;
+        const cutoff = document.revisions.find(stored => stored.contentHash === document.contentHash)
+            ?.driveModifiedTime ?? document.driveModifiedTime;
+        return cutoff !== null && revision.modifiedAt <= cutoff;
+    });
+    const authors = rankedEditors(publishedRevisions.map(revision => ({
+        ...revision, fetchedAt: revision.modifiedAt,
+    })));
+
+    for (const lane of lanes) {
+        for (const card of lane.cards) {
+            if (lane.id === "meetings") {
+                card.authors = [...new Set((authors.get(card.id) ?? [])
+                    .map(editor => editorDisplayName(editor, people)).filter(Boolean))].join(", ");
+            } else {
+                card.authors = authorLine(byDocument.get(card.id) ?? []);
+            }
+        }
+    }
+}
+
+function demoActivity(now: Date): ActivityLane[] {
+    const meetings = chooseMeetings(
+        demoDocuments({ session: SESSION_NUMBER }).flatMap((document) => {
+            if (!document.kind.startsWith("minutes.")) return [];
+            const when = activityDate({
+                title: document.driveTitle,
+                displayTitle: document.title,
+                datedAt: document.datedAt,
+            });
+            if (!when || !hasOccurred(when, now)) return [];
+
+            return [
+                {
+                    meetingKey: document.id,
+                    folderPath: document.folderPath,
+                    title: document.title,
+                    when: when.getTime(),
+                    document,
+                },
+            ];
+        }),
+        ACTIVITY_CARD_LIMIT,
+    );
+
+    const cards = meetings.map((entry) =>
+        toCard(
+            {
+                id: entry.document.id,
+                title: entry.document.title,
+                summary: entry.document.summary
+                    ? { content: entry.document.summary, status: "fresh" }
+                    : null,
+            },
+            new Date(entry.when),
+            "Minutes",
+        ),
+    );
+
+    return cards.length ? [{ id: "meetings", label: "Meetings", cards }] : [];
+}

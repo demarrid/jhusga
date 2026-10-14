@@ -246,21 +246,36 @@ type Mark = {
     indent: number;
     raw: string;
     kind: "number" | "letter" | "roman" | "bullet";
+    /** 1 when the list starts over, which is a nested list rather than "b." under "a.". */
+    value: number;
+};
+
+const ROMAN_VALUE: Record<string, number> = {
+    i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12,
 };
 
 function outlineMark(text: string): Mark | null {
     const number = /^(\s*)(\d{1,3})[.)]\s+(\S.*)$/.exec(text);
-    if (number) return { indent: number[1]!.length, raw: number[3]!, kind: "number" };
+    if (number) return { indent: number[1]!.length, raw: number[3]!, kind: "number", value: Number(number[2]) };
 
     // Before the single-letter test, so "i." and "v." stay roman.
     const roman = /^(\s*)(xii|xi|x|ix|iv|viii|vii|vi|v|iii|ii|i)[.)]\s+(\S.*)$/i.exec(text);
-    if (roman) return { indent: roman[1]!.length, raw: roman[3]!, kind: "roman" };
+    if (roman) {
+        return {
+            indent: roman[1]!.length,
+            raw: roman[3]!,
+            kind: "roman",
+            value: ROMAN_VALUE[roman[2]!.toLowerCase()] ?? 1,
+        };
+    }
 
     const letter = /^(\s*)([a-z])[.)]\s+(\S.*)$/.exec(text);
-    if (letter) return { indent: letter[1]!.length, raw: letter[3]!, kind: "letter" };
+    if (letter) {
+        return { indent: letter[1]!.length, raw: letter[3]!, kind: "letter", value: letter[2]!.charCodeAt(0) - 96 };
+    }
 
     const bullet = /^(\s*)[-*+]\s+(\S.*)$/.exec(text);
-    if (bullet) return { indent: bullet[1]!.length, raw: bullet[2]!, kind: "bullet" };
+    if (bullet) return { indent: bullet[1]!.length, raw: bullet[2]!, kind: "bullet", value: 1 };
 
     return null;
 }
@@ -268,6 +283,112 @@ function outlineMark(text: string): Mark | null {
 function structuralLevel(keyword: string): number {
     const name = keyword.toLowerCase();
     return name === "section" || name === "clause" ? 3 : 2;
+}
+
+/**
+ * "ARTICLE 3, SECTION 1" is the section, one step under the article. A line
+ * that is only "ARTICLE 3" stays an article.
+ */
+function structuralDepth(keyword: string, plain: string): number {
+    const base = structuralLevel(keyword);
+    if (keyword.toLowerCase() === "article" && /,\s*section\b/i.test(plain)) return base + 1;
+    return base;
+}
+
+/** "3.2.1 STUDENT BODY PRESIDENT" — a numbered heading, not "1. Call to Order". */
+const DECIMAL_HEADING = /^(\d+(?:\.\d+)+)\s+(\S.*)$/;
+
+const VOTE_RESULT = /^(pass(?:ed|es)?|fail(?:ed|s)?|tabled|adopted|lost|approved|rejected|seconded)$/i;
+
+const INLINE_ARTICLE_SECTION = new RegExp(
+    `^(article\\s+(?:(?:${NUMBER_WORD})|[ivxlcdm]+|\\d+)\\s*,\\s*section\\s+(?:(?:${NUMBER_WORD})|[ivxlcdm]+|\\d+))\\b`,
+    "i",
+);
+
+/**
+ * Where a decimal heading sits: under the article section, and deeper as the
+ * number gains parts, so 4.1.2.5.1 nests under 4.1.2.
+ */
+function decimalLevel(number: string): number {
+    return 3 + number.split(".").length - 1;
+}
+
+/**
+ * A bylaws heading set in capitals, as opposed to a clause that happens to
+ * start with its own number.
+ *
+ * "4.1.1 SENATORS" names a part of the article. "3.2.6.3 Organizes SGA
+ * Tabling Events" and "3.2.6.3.5.8 The Bloomberg Student Center" are the
+ * clause and one of its examples.
+ */
+function isProvisionHeading(plain: string): boolean {
+    const match = DECIMAL_HEADING.exec(plain);
+    if (!match) return false;
+    const title = match[2]!.replace(/[:.\s]+$/, "").trim();
+    if (title.length < 2 || title.length > 80) return false;
+    if (SENTENCE_VERB.test(title) || /[.!?]$/.test(title)) return false;
+    const letters = title.replace(/[^\p{L}]/gu, "");
+    const capitals = title.replace(/[^\p{Lu}]/gu, "");
+    return letters.length > 0 && capitals.length / letters.length >= 0.8;
+}
+
+/**
+ * A numbered line that names a part of the meeting, rather than a note the
+ * secretary typed under one.
+ *
+ * Agendas number their parts ("a. Judiciary confirmation", "Cabinet
+ * Reports"). Minutes number the notes too ("Bring meetings with different
+ * departments to GBM", "Luke", "passed"), and an outline of those is the
+ * document again.
+ */
+function isOutlineEntry(plain: string): boolean {
+    if (VOTE_RESULT.test(plain.trim()) || isBareName(plain)) return false;
+    // Before the speaker test: "Bylaws Amendment: Choosing the CSAC
+    // Representative" names a bill, and the colon is the title, not a speech.
+    if (/\(\s*\d+\s*min(?:ute)?s?\s*\)/i.test(plain)) return true;
+    if (/\b(bills?|resolutions?|amendments?|directives?)\b/i.test(plain) && !SENTENCE_VERB.test(plain)) {
+        return true;
+    }
+    if (isSpeaker(plain)) return false;
+    if (isRoleLine(plain)) return true;
+
+    const words = plain.split(/\s+/);
+    const share = headingShare(plain);
+    // "Judiciary confirmation", "Cabinet Reports": a short name of a part.
+    if (words.length <= 3 && share >= 0.5) return true;
+    // A longer title is capitals. "Auditions due at October 4th" is a note:
+    // the lowercase word is what makes it one, even when the names are capital.
+    return words.length >= 2 && share >= 0.75;
+}
+
+/** Share of words of three letters or more that start with a capital. */
+function headingShare(plain: string): number {
+    const words = plain.split(/\s+/).filter((word) => word.replace(/[^\p{L}]/gu, "").length >= 3);
+    if (words.length === 0) return 0;
+    return words.filter((word) => /^[^\p{L}]*\p{Lu}/u.test(word)).length / words.length;
+}
+
+/** "Luke", "Srika". A one-word heading of the document is not a person's name. */
+function isBareName(plain: string): boolean {
+    const word = plain.replace(/:\s*$/, "");
+    if (!/^\p{Lu}\p{Ll}{1,14}$/u.test(word)) return false;
+    return !/^(attendance|adjournment|preamble|reports|minutes|agenda|closing|opening|business|announcements|legislation|quorum)$/i.test(
+        word,
+    );
+}
+
+/**
+ * "Student Body President - Jason", "Secretary - Honora". The right-hand side
+ * is a name. A remark after a colon is a speaker, and is rejected first.
+ */
+function isRoleLine(plain: string): boolean {
+    const match = /^(.{2,80}?)\s+[-–—:]\s+(\p{Lu}[\p{L}'.-]*(?:\s+\p{Lu}[\p{L}'.-]*){0,2})$/u.exec(plain);
+    if (!match) return false;
+    const left = match[1]!.trim();
+    if (/[.!?]/.test(match[2]!)) return false;
+    const leftWords = left.split(/\s+/);
+    if (leftWords.length > 8) return false;
+    return leftWords.length === 1 || capitalisedShare(leftWords) >= 0.34;
 }
 
 function toLines(content: string): Line[] {
@@ -549,8 +670,20 @@ function indexSections(content: string): Index {
      * at the same column as "1. **Call to Order**" and is still a child of it,
      * because the bold item is the parent and the plain one is not. A deeper
      * indent steps down; the same indent is another item at that depth.
+     *
+     * A list that starts again at 1 under the item above it is that item's
+     * own list. "b." indented under "a." did not start over, and the export
+     * indents it that way anyway, so it stays a sibling.
      */
-    function outlineLevel(indent: number, kind: MarkerKind): number {
+    function outlineLevel(indent: number, kind: MarkerKind, value: number): number {
+        if (kind !== "bullet") {
+            for (let index = frames.length - 1; index >= 0; index -= 1) {
+                const frame = frames[index]!;
+                if (!frame.outline) break;
+                if (frame.marker === kind && frame.indent === indent) return frame.level;
+            }
+        }
+
         let index = frames.length - 1;
         while (index >= 0 && frames[index]!.outline) {
             const frame = frames[index]!;
@@ -559,7 +692,8 @@ function indexSections(content: string): Index {
             // note on the one before it, not a new parent for the one after.
             const sameKind = kind !== "bullet" && frame.marker === kind;
             const crossedBullet = frame.marker === "bullet" && kind !== "bullet";
-            if (frame.indent < indent && !sameKind && !crossedBullet) break;
+            const restarted = value === 1 && frame.indent < indent;
+            if (frame.indent < indent && (!sameKind || restarted) && !crossedBullet) break;
             index -= 1;
         }
         const parent = index >= 0 ? frames[index]! : null;
@@ -621,6 +755,13 @@ function indexSections(content: string): Index {
 
         const { plain, wrapped } = emphasis(text);
         if (!plain || isBanner(plain, meetings) || isDateLine(plain)) continue;
+        // "Last Updated April 2026" is the revision stamp under the title
+        // block. Closing the block here is what lets the first article be a
+        // section instead of one more line of the title.
+        if (/^last updated\b/i.test(plain) && MONTH.test(plain)) {
+            closeFront();
+            continue;
+        }
         // `\<script\>` is a note that a passage was not transcribed, not a section.
         if (/\bscripts?\b/i.test(plain) && plain.length < 120) continue;
 
@@ -635,7 +776,18 @@ function indexSections(content: string): Index {
             const title = isLabel(unstopped)
                 ? unstopped
                 : `${structural[1]} ${structural[2]}${subtitle && isLabel(subtitle) ? `: ${subtitle}` : ""}`;
-            place(structuralLevel(structural[1]!), 0, false, false, "heading", clean(title), at);
+            place(structuralDepth(structural[1]!, unstopped), 0, false, false, "heading", clean(title), at);
+            continue;
+        }
+
+        // The clause is on the heading's own line: "ARTICLE 1, SECTION 1.
+        // These Bylaws...". The label is the section; the sentence is its body.
+        const inlineSection = INLINE_ARTICLE_SECTION.exec(unstopped);
+        if (inlineSection && unstopped.length > inlineSection[1]!.length + 8) {
+            const title = inlineSection[1]!.replace(/\s+/g, " ").replace(/[.\s]+$/, "");
+            body();
+            place(structuralDepth("article", unstopped), 0, false, false, "heading", clean(title), at);
+            if (open) bodied.add(open);
             continue;
         }
 
@@ -659,6 +811,11 @@ function indexSections(content: string): Index {
             // under it -- "Present", "i. Excused", "a. Judiciary confirmation"
             // -- are its children, even when the export did not indent them.
             const agendaHeading = mark.kind === "number" && label.wrapped === "bold";
+            // A note numbered like an agenda item is still a note.
+            if (!agendaHeading && !isOutlineEntry(label.plain)) {
+                if (open) bodied.add(open);
+                continue;
+            }
             if (agendaHeading) {
                 place(2, mark.indent, false, false, "heading", label.plain, at);
             } else if (mark.kind === "bullet") {
@@ -679,7 +836,7 @@ function indexSections(content: string): Index {
                 );
             } else {
                 place(
-                    outlineLevel(mark.indent, mark.kind),
+                    outlineLevel(mark.indent, mark.kind, mark.value),
                     mark.indent,
                     true,
                     false,
@@ -704,6 +861,16 @@ function indexSections(content: string): Index {
         }
 
         if (wrapped === "bold" && isLabel(plain) && !isNoise(plain) && !isSpeaker(plain)) {
+            const decimal = DECIMAL_HEADING.exec(plain);
+            if (decimal) {
+                if (!isProvisionHeading(plain)) {
+                    body();
+                    continue;
+                }
+                if (front !== null) closeFront();
+                place(decimalLevel(decimal[1]!), 0, false, false, "heading", plain, at);
+                continue;
+            }
             if (front !== null && !(meetings && isMeetingTitle(plain))) {
                 front.push({ title: plain, at });
                 continue;
@@ -717,12 +884,25 @@ function indexSections(content: string): Index {
         // Otherwise the document's own title -- "Constitution of the" on one
         // line, the university's name on the next -- becomes the outline.
         const opened = frames.length > 0;
+        if (!signing && wrapped === null && isBreakLine(plain)) {
+            place(minorLevel(), 0, false, false, "heading", plain, at);
+            continue;
+        }
         if (
             !signing &&
-            ((wrapped === "italic" && isTitleCase(plain)) ||
-                (wrapped === null && isBreakLine(plain)) ||
-                (wrapped === null && opened && isTitleCase(plain)))
+            isTitleCase(plain) &&
+            !SENTENCE_VERB.test(plain) &&
+            (wrapped === "italic" || (wrapped === null && opened))
         ) {
+            const decimal = DECIMAL_HEADING.exec(plain);
+            if (decimal) {
+                if (isProvisionHeading(plain)) {
+                    place(decimalLevel(decimal[1]!), 0, false, false, "heading", plain, at);
+                } else {
+                    body();
+                }
+                continue;
+            }
             place(minorLevel(), 0, false, false, "heading", plain, at);
             continue;
         }
