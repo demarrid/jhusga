@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import DocumentSearchLink from "@/app/(components)/DocumentSearchLink";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import type { DocumentListing, DocumentPage } from "@/api/documents";
@@ -247,12 +248,12 @@ function DocumentCard({
             <article>
                 <p className={styles.documentMetadata}>{metadata}</p>
                 <h3>
-                    <Link
+                    <DocumentSearchLink
                         href={`/documents/${document.id}`}
                         title={renamed ? `Filed in Drive as “${document.driveTitle}”` : undefined}
                     >
                         {document.title}
-                    </Link>
+                    </DocumentSearchLink>
                 </h3>
 
                 <DocumentDates document={document} sort={sort} />
@@ -289,13 +290,13 @@ function DocumentCard({
                     </div>
                 )}
             </article>
-            <Link
+            <DocumentSearchLink
                 className={styles.documentArrow}
                 href={`/documents/${document.id}`}
                 aria-label={`Open ${document.title}`}
             >
                 ↗
-            </Link>
+            </DocumentSearchLink>
         </li>
     );
 }

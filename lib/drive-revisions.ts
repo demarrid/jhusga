@@ -14,6 +14,23 @@ type Revision = {
 let cached: { token: string; expires: number } | undefined;
 let refreshing: Promise<string> | undefined;
 
+// Reserve request start times globally, including retries and redirects.
+const REQUEST_INTERVAL_MS = 1_500;
+let nextRequestAt = 0;
+async function paceRequest(): Promise<void> {
+    const now = Date.now();
+    const start = Math.max(now, nextRequestAt);
+    nextRequestAt = start + REQUEST_INTERVAL_MS;
+    if (start > now) await new Promise(resolve => setTimeout(resolve, start - now));
+}
+
+export function revisionRetryDelay(retryAfter: string | null, attempt: number, now = Date.now()): number {
+    const seconds = retryAfter?.trim() ? Number(retryAfter) : NaN;
+    const requested = Number.isFinite(seconds) && seconds >= 0
+        ? seconds * 1000 : retryAfter ? Date.parse(retryAfter) - now : 0;
+    return Math.max(5_000 * 2 ** attempt, Number.isFinite(requested) ? requested : 0);
+}
+
 export function revisionOAuthConfigured(): boolean {
     const values = [process.env.GOOGLE_OAUTH_CLIENT_ID, process.env.GOOGLE_OAUTH_CLIENT_SECRET,
         process.env.GOOGLE_OAUTH_REFRESH_TOKEN];
@@ -50,29 +67,54 @@ async function accessToken(): Promise<string> {
  * Follow only Google export redirects; signed googleusercontent downloads
  * receive no bearer token.
  */
-async function oauthFetch(url: string, attempt = 0, redirects = 0): Promise<Response> {
+async function oauthFetch(url: string, attempt = 0, redirects = 0, refreshed = false): Promise<Response> {
     const target = new URL(url);
     const signedDownload = target.hostname.endsWith(".googleusercontent.com");
     if (target.protocol !== "https:" || target.username || target.password || target.port ||
         (!signedDownload && !["www.googleapis.com", "docs.google.com", "drive.google.com"].includes(target.hostname))) {
         throw new Error("Untrusted Drive revision export URL");
     }
+    const token = signedDownload ? undefined : await accessToken();
+    await paceRequest();
     const response = await fetch(url, { cache: "no-store", redirect: "manual",
-        headers: signedDownload ? {} : { Authorization: `Bearer ${await accessToken()}` }, signal: AbortSignal.timeout(30_000) });
+        headers: signedDownload ? {} : { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000) });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get("location");
         if (!location || redirects >= 5) throw new Error("Invalid Drive revision export redirect");
-        return oauthFetch(new URL(location, target).toString(), attempt, redirects + 1);
+        return oauthFetch(new URL(location, target).toString(), attempt, redirects + 1, refreshed);
     }
-    if (response.status === 401 && attempt === 0 && !signedDownload) {
+    if (response.status === 401 && !refreshed && !signedDownload) {
+        await response.body?.cancel();
         cached = undefined;
-        return oauthFetch(url, 1, redirects);
+        return oauthFetch(url, attempt, redirects, true);
     }
-    if ((response.status === 429 || response.status >= 500) && attempt < 3) {
-        await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
-        return oauthFetch(url, attempt + 1, redirects);
+    if ((response.status === 429 || response.status >= 500) && attempt < 5) {
+        const delay = revisionRetryDelay(response.headers.get("retry-after"), attempt)
+            + Math.floor(Math.random() * 1000);
+        await response.body?.cancel();
+        nextRequestAt = Math.max(nextRequestAt, Date.now() + delay);
+        console.log(`Drive returned ${response.status}; waiting ${Math.ceil(delay / 1000)}s before retry ${attempt + 1}/5`);
+        return oauthFetch(url, attempt + 1, redirects, refreshed);
     }
     return response;
+}
+
+const historyAccess = new Map<string, { readable: boolean; expires: number }>();
+
+/** Access is tied to the OAuth account, not the public document permissions. */
+export async function canReadRevisionHistory(fileId: string): Promise<boolean | null> {
+    if (!revisionOAuthConfigured()) return null;
+    const cachedAccess = historyAccess.get(fileId);
+    if (cachedAccess && cachedAccess.expires > Date.now()) return cachedAccess.readable;
+    const url = new URL(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`);
+    url.searchParams.set("fields", "capabilities(canReadRevisions)");
+    const response = await oauthFetch(url.toString());
+    if (!response.ok) throw new Error(`Drive revision access check failed (${response.status})`);
+    const file = await response.json() as { capabilities?: { canReadRevisions?: boolean } };
+    const readable = file.capabilities?.canReadRevisions;
+    if (typeof readable !== "boolean") return null;
+    historyAccess.set(fileId, { readable, expires: Date.now() + 5 * 60_000 });
+    return readable;
 }
 
 export async function listDriveRevisions(fileId: string): Promise<Revision[]> {
@@ -97,6 +139,13 @@ export async function listDriveRevisions(fileId: string): Promise<Revision[]> {
         }
         pageToken = data.nextPageToken ?? "";
     } while (pageToken);
+    if (revisions.length === 0) {
+        // Drive may return an empty list rather than an access error. Distinguish
+        // an unreadable history from a document with no retained revisions.
+        if (await canReadRevisionHistory(fileId) === false) {
+            throw new Error("Drive revision history requires Editor access for the app's OAuth account");
+        }
+    }
     return revisions;
 }
 
@@ -118,7 +167,7 @@ export async function revisionText(revision: Revision): Promise<string | null> {
 export async function importRevisionAuthors(fileId?: string): Promise<{ imported: number; failed: number }> {
     if (!revisionOAuthConfigured()) throw new Error("Configure Drive revision OAuth first (see docs/drive-revisions.md)");
     const documents = await prisma.document.findMany({
-        where: { mimeType: GOOGLE_DOC_MIME, meetingRole: "minutes", reviewState: "published",
+        where: { mimeType: GOOGLE_DOC_MIME, meetingRole: "minutes", kind: {startsWith: "minutes."}, reviewState: "published",
             ...(fileId ? { driveFileId: fileId } : {}) },
         select: { id: true, driveFileId: true },
     });

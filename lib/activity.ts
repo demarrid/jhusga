@@ -22,6 +22,16 @@ import { compareNamesBySurname, nameKey } from "@/lib/contributors";
 /** How many cards one lane of the home carousel shows. */
 export const ACTIVITY_CARD_LIMIT = 3;
 
+/** Kept in the archive, excluded only from homepage editorial highlights. */
+export function isHomepageHighlight(driveFileId: string): boolean {
+    return driveFileId !== "1GfPEmdmayF7MwY4R1XQq9YKG3KzIdYz-D1NQr8yPvDo";
+}
+
+/** A resolution may be signed by the body collectively rather than individuals. */
+export function collectiveResolutionAuthor(content: string): string {
+    return toPlainText(content).match(/\bIn solidarity with our students,\s*(?:The\s+)?(\d{1,3}(?:st|nd|rd|th)\s+Student Government Association)\b/i)?.[1] ?? "";
+}
+
 const ZONE = "America/New_York";
 
 export type ActivityLaneId = "resolutions" | "meetings" | "bills";
@@ -262,9 +272,9 @@ export function legislationLane(input: {
     ) {
         return null;
     }
-    if (EXCLUDED_KIND.test(kind) && kind !== "unknown") return null;
+    if (EXCLUDED_KIND.test(kind)) return null;
 
-    if (/\bresolutions?\b/i.test(title)) return "resolution";
+    if (kind === "resolution" || /\bresolutions?\b/i.test(title)) return "resolution";
 
     const head = toPlainText((input.content ?? "").slice(0, 1_500));
     // The caption sits under a letterhead, so "S. Resolution 26-27" is not the
@@ -397,7 +407,7 @@ export function authorLine(people: { role: string; name: string }[]): string {
     const sponsors: string[] = [];
 
     for (const person of people) {
-        if (person.role === "introducer") introducers.push(person.name);
+        if (person.role === "introducer" || person.role === "author") introducers.push(person.name);
         else if (person.role === "sponsor") sponsors.push(person.name);
     }
 
@@ -437,4 +447,10 @@ export function chooseMeetings<T extends MinutesCandidate>(items: T[], limit: nu
     return [...best.values(), ...loose]
         .sort((left, right) => right.when - left.when || left.title.localeCompare(right.title))
         .slice(0, limit);
+}
+
+/** A filled-in enactment line is evidence; committee votes and XX templates are not. */
+export function recordedResolutionPassage(content: string): boolean {
+    const match = toPlainText(content).match(/\bThe Resolution hereby PASSES by a vote of (\d+) to (\d+) with (\d+) abstentions?\b/i);
+    return !!match && Number(match[1]) > Number(match[2]);
 }

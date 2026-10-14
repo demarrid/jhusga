@@ -55,9 +55,11 @@ export function rankedEditors(revisions: StoredEditor[]): Map<string, RankedEdit
         for (const snapshot of snapshots) {
             if (before !== null && snapshot.content !== null) {
                 const changedWords = contributionWords(before, snapshot.content);
-                total += changedWords;
                 const email = snapshot.editorEmail.trim().toLowerCase();
                 const name = snapshot.editorName.trim();
+                // Anonymous changes remain the next baseline, but do not
+                // dilute the share of writing observed from named editors.
+                if (email || name) total += changedWords;
                 if (changedWords >= MIN_AUTHOR_WORDS && (email || name)) {
                     const key = email || `name:${name.toLowerCase()}`;
                     const person = people.get(key) ?? { name, email, changedWords: 0 };

@@ -1678,48 +1678,57 @@ export async function recordDirectory(
     let offices = 0;
     const keep: { affiliateId: string; categoryId: string }[] = [];
 
+    // Read stable lookups once rather than once per member and seat.
+    const [categories, affiliates, relationships] = await Promise.all([
+        prisma.hopkinsCategory.findMany({ where: { type: "position" }, select: { id: true, name: true } }),
+        prisma.hopkinsAffiliate.findMany({ select: { id: true, email: true } }),
+        prisma.hopkinsRelationship.findMany({
+            where: { hopkinsAffiliateId: { in: affiliateIds.filter((id): id is string => id !== null) }, OR: [{ endedAt: null }, { startedAt: termStart }] },
+            select: { id: true, hopkinsAffiliateId: true, hopkinsCategoryId: true, startedAt: true, endedAt: true },
+        }),
+    ]);
+    const categoryByName = new Map(categories.map(category => [category.name, category]));
+    const emailById = new Map(affiliates.map(affiliate => [affiliate.id, affiliate.email]));
+    const idByEmail = new Map(affiliates.filter(affiliate => affiliate.email).map(affiliate => [affiliate.email!, affiliate.id]));
+    const relationshipKey = (affiliateId: string, categoryId: string) => `${affiliateId}:${categoryId}`;
+    const openBySeat = new Map(relationships.filter(row => row.endedAt === null).map(row => [relationshipKey(row.hopkinsAffiliateId, row.hopkinsCategoryId), row]));
+    const termBySeat = new Map(relationships.filter(row => row.startedAt?.getTime() === termStart.getTime()).map(row => [relationshipKey(row.hopkinsAffiliateId, row.hopkinsCategoryId), row]));
+
     for (const [index, member] of members.entries()) {
         const affiliateId = affiliateIds[index]!;
 
         if (member.email && isCurrent) {
-            const clash = await prisma.hopkinsAffiliate.findFirst({
-                where: { email: member.email, NOT: { id: affiliateId } },
-                select: { id: true },
-            });
-            if (!clash) {
-                await prisma.hopkinsAffiliate.update({
-                    where: { id: affiliateId },
-                    data: { email: member.email },
-                });
+            const owner = idByEmail.get(member.email);
+            if (!owner || owner === affiliateId) {
+                if (emailById.get(affiliateId) !== member.email) {
+                    const priorEmail = emailById.get(affiliateId);
+                    await prisma.hopkinsAffiliate.update({ where: { id: affiliateId }, data: { email: member.email } });
+                    if (priorEmail) idByEmail.delete(priorEmail);
+                    emailById.set(affiliateId, member.email);
+                    idByEmail.set(member.email, affiliateId);
+                }
                 emails += 1;
             }
         }
 
         for (const office of member.positions) {
-            const category = await prisma.hopkinsCategory.upsert({
+            const category = categoryByName.get(office) ?? await prisma.hopkinsCategory.upsert({
                 where: { type_name: { type: "position", name: office } },
                 create: { type: "position", name: office },
                 update: {},
                 select: { id: true },
             });
+            categoryByName.set(office, { ...category, name: office });
 
             if (isCurrent) {
-                const open = await prisma.hopkinsRelationship.findFirst({
-                    where: {
-                        hopkinsAffiliateId: affiliateId,
-                        hopkinsCategoryId: category.id,
-                        endedAt: null,
-                    },
+                const open = openBySeat.get(relationshipKey(affiliateId, category.id)) ?? await prisma.hopkinsRelationship.findFirst({
+                    where: { hopkinsAffiliateId: affiliateId, hopkinsCategoryId: category.id, endedAt: null },
                     select: { id: true },
                 });
 
                 if (!open) {
-                    const sameTerm = await prisma.hopkinsRelationship.findFirst({
-                        where: {
-                            hopkinsAffiliateId: affiliateId,
-                            hopkinsCategoryId: category.id,
-                            startedAt: termStart,
-                        },
+                    const sameTerm = termBySeat.get(relationshipKey(affiliateId, category.id)) ?? await prisma.hopkinsRelationship.findFirst({
+                        where: { hopkinsAffiliateId: affiliateId, hopkinsCategoryId: category.id, startedAt: termStart },
                         select: { id: true },
                     });
 
@@ -1739,12 +1748,8 @@ export async function recordDirectory(
                     }
                 }
             } else {
-                const existing = await prisma.hopkinsRelationship.findFirst({
-                    where: {
-                        hopkinsAffiliateId: affiliateId,
-                        hopkinsCategoryId: category.id,
-                        startedAt: termStart,
-                    },
+                const existing = termBySeat.get(relationshipKey(affiliateId, category.id)) ?? await prisma.hopkinsRelationship.findFirst({
+                    where: { hopkinsAffiliateId: affiliateId, hopkinsCategoryId: category.id, startedAt: termStart },
                     select: { id: true, endedAt: true },
                 });
 

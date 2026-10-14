@@ -34,7 +34,7 @@ export default function BlueJayAsciiVideo() {
           bgOpacityRaw={0.16}
           chars=" .,:;irsXA253hMHGS#9B&@"
           charMode="luminance"
-          mouseEffect={true}
+          mouseEffect={false}
           clickEffect={false}
         />
       )}

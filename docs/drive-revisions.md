@@ -41,9 +41,10 @@ rewrites using the same vocabulary. Tiny edits are not accumulated into credit.
 
 The first available snapshot is a baseline and earns no credit: its last editor
 cannot be assumed to have written everything in it. Missing exports break the
-comparison chain. Unknown editors still affect the denominator. An unavailable
-history leaves author labels blank; neither ownership nor the current last editor
-is a fallback. Resolved names are deduplicated while preserving rank.
+comparison chain. Unnamed edits earn no credit and do not affect the named-writing denominator;
+their text remains the baseline so it is not attributed to the next named editor. When the OAuth account explicitly lacks revision-history access, meeting cards
+fall back to the resolved Drive owner name. Download failures and histories with
+no qualifying writer do not trigger that owner fallback. Resolved names are deduplicated while preserving rank.
 
 Google may omit revisions, merge edits, or omit signed-out editor identities.
 The API reports only the **last modifying user** of a retained revision. Credits
@@ -57,3 +58,15 @@ Sources: [revision history limitations](https://developers.google.com/workspace/
 [revision metadata](https://developers.google.com/workspace/drive/api/reference/rest/v3/revisions),
 [offline OAuth](https://developers.google.com/identity/protocols/oauth2/web-server),
 [token lifetime](https://developers.google.com/identity/protocols/oauth2).
+
+Revision requests are spaced at least 1.5 seconds apart. HTTP 429 and server
+errors receive up to five retries, with exponential waits starting at five
+seconds, jitter, and any longer Retry-After delay supplied by Google.
+
+## Request scope
+
+Revision authorship imports and permission checks run only for published minutes.
+Bill and resolution credits come from named introducers, authors, sponsors, or
+collective signatures in archived text, without revision-history calls or AI
+generation. Bill Voting Records is read as archived spreadsheet text for passage
+checks; its revision history is never used for authorship.

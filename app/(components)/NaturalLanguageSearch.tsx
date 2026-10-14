@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import DocumentSearchLink from "./DocumentSearchLink";
 import {
     useEffect,
     useRef,
@@ -428,7 +428,7 @@ function Match({ match }: { match: MatchedDocument }) {
 
     return (
         <li>
-            <Link href={`/documents/${match.id}`}>{match.title}</Link>
+            <DocumentSearchLink href={`/documents/${match.id}`}>{match.title}</DocumentSearchLink>
             <span className={styles.matchMetadata}>
                 {" — "}
                 {[

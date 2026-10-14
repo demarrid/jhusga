@@ -339,6 +339,13 @@ check(
 );
 
 console.log("\nclassifyDocument");
+check("voting records are a tracker", classifyDocument({ name: "114th SGA: Bill Voting Records", folderPath: "" }) === "tracker");
+check("a resolution-themed deck remains a presentation", classifyDocument({ name: "SGA Resolution", folderPath: "", mimeType: "application/vnd.google-apps.presentation" }) === "presentation");
+check("reviewed ICE document stays outside resolutions after a rename", classifyDocument({ name: "Renamed resolution", folderPath: "", driveFileId: "1LGp96ElM0w4a4qpAgnNiHWndpq6fd1hv14_mgWkXjWs" }) === "unknown");
+check("Board of Trustees Resolution is a resolution", classifyDocument({name: "Board of Trustees Resolution", folderPath: ""}) === "resolution");
+check("Inclusive JHU resolution is a resolution", classifyDocument({name: "Resolution for a More Inclusive JHU: Demanding Action on Diversity Decline", folderPath: ""}) === "resolution");
+check("amendment captions classify an act", classifyDocument({ name: "CLeRPA", folderPath: "", content: "**Senate**\n**of the Student Government Association**\n**A Bill to Amend The Bylaws of the Senate**\nConstitutional Amendments proposed in this bill" }) === "bill.bylaws_constitution_amendment");
+
 check(
     "a Rules Bill is senate rules, not a generic bill",
     classifyDocument({ name: rulesTitle, folderPath: "" }) === "bill.senate_rules",
@@ -486,7 +493,7 @@ check(
     classifyDocument({
         name: "Student Government Resolution regarding ICE",
         folderPath: "",
-    }) === "bill.other",
+    }) === "resolution",
 );
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);

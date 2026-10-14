@@ -6,6 +6,8 @@
  * require a schema migration. The tuple below is the canonical list, and the
  * type guard keeps application code honest about it.
  */
+import { toPlainText } from "@/lib/markdown";
+
 export const DOCUMENT_KINDS = [
     "minutes.executive",
     "minutes.senate",
@@ -15,7 +17,9 @@ export const DOCUMENT_KINDS = [
     "bill.funding",
     "bill.bylaws_amendment",
     "bill.constitution_amendment",
+    "bill.bylaws_constitution_amendment",
     "bill.other",
+    "resolution",
     "guiding.constitution",
     "guiding.bylaws",
     "guiding.other",
@@ -38,6 +42,12 @@ export const DOCUMENT_KINDS = [
 
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
+/** Reviewed exceptions follow Drive identity across renames and future syncs. */
+const REVIEWED_DOCUMENT_KINDS: Record<string, DocumentKind> = {
+    "1LGp96ElM0w4a4qpAgnNiHWndpq6fd1hv14_mgWkXjWs": "unknown",
+    "12IpFP0qlLBDgPkzxJuXGSZA8KWyDSOnLdjnvuFTRzLk": "presentation",
+};
+
 export function isDocumentKind(value: string): value is DocumentKind {
     return (DOCUMENT_KINDS as readonly string[]).includes(value);
 }
@@ -53,6 +63,8 @@ const KIND_LABELS: Partial<Record<DocumentKind, string>> = {
     "judicial.writ_of_certiorari": "Judiciary / Writ of certiorari",
     "judicial.writ_of_mandamus": "Judiciary / Writ of mandamus",
     "judicial.advisory_opinion": "Judiciary / Advisory opinion",
+    "bill.bylaws_constitution_amendment": "Bill / Bylaws and constitutional amendment",
+    resolution: "Resolution",
     presentation: "Presentation",
     template: "Template",
 };
@@ -105,6 +117,7 @@ export const AUTHORITATIVE_KINDS: DocumentKind[] = [
     "bill.constitution_amendment",
     "bill.bylaws_amendment",
     "bill.senate_rules",
+    "bill.bylaws_constitution_amendment",
     "judicial.writ_of_certiorari",
     "judicial.writ_of_mandamus",
     "judicial.writ",
@@ -157,11 +170,14 @@ function minutesKind(text: string): DocumentKind | null {
 export function classifyDocument(input: {
     name: string;
     folderPath: string;
+    driveFileId?: string;
     content?: string;
     /** The name the site shows, when it has already been rewritten. */
     displayTitle?: string;
     mimeType?: string;
 }): DocumentKind {
+    const reviewed = input.driveFileId ? REVIEWED_DOCUMENT_KINDS[input.driveFileId] : undefined;
+    if (reviewed) return reviewed;
     const name = input.name.toLowerCase();
     const shown = (input.displayTitle ?? "").toLowerCase();
     const path = input.folderPath.toLowerCase();
@@ -182,9 +198,29 @@ export function classifyDocument(input: {
     // "SGA Bill Template" does not become one.
     if (/\btemplate\b/.test(titled)) return "template";
 
-    // Briefing slides and update decks a group brings to a meeting. Checked
-    // before minutes so "Committee Update Presentation" is not a meeting.
+    // Voting registers and tracking sheets are records, not legislation.
+    if (/vot(?:ing|e) records?|tracksheet|initiative tracker|bill tracker/.test(titled)) return "tracker";
+
+    const body = (input.content ?? "").split("\n").map(toPlainText).join("\n");
+    const caption = body.slice(0, 1500);
+    const amendmentCaption = /^(?:a\s+)?(?:bill|act)\s+to\s+amend\b[^.\n]{0,100}/im.exec(caption)?.[0] ?? "";
+    const bylawsAmendment = /bylaws?/i.test(amendmentCaption);
+    const constitutionAmendment = /constitution/i.test(amendmentCaption)
+        || /constitutional amendments? proposed in this bill/i.test(body);
+    if (bylawsAmendment && constitutionAmendment) return "bill.bylaws_constitution_amendment";
+    if (bylawsAmendment) return "bill.bylaws_amendment";
+    if (constitutionAmendment) return "bill.constitution_amendment";
+
+    if (/bylaw|constitution/.test(titled) && /amendment|amend\b|resolution/.test(titled)) {
+        if (/bylaw/.test(titled) && /constitution/.test(titled)) return "bill.bylaws_constitution_amendment";
+        return /bylaw/.test(titled) ? "bill.bylaws_amendment" : "bill.constitution_amendment";
+    }
+
+    // Slides and briefing decks remain presentations even when discussing a resolution.
     if (isPresentation(input.mimeType, titled, path)) return "presentation";
+
+    if (/\bresolutions?\b/.test(titled)) return "resolution";
+    if (!/\bbill\b|\bact\b/.test(titled) && /^(?:[\s{]*S\.?\s+Resolution\b|A Resolution\b)/im.test(caption)) return "resolution";
 
     // Constitution and bylaws, whether the adopted text or an amendment to it.
     // The filename wins over the folder: a bylaws file sitting in a folder

@@ -13,6 +13,7 @@ import {
     type SearchScope,
 } from "@/config/search";
 import { SESSION_NUMBER } from "@/config/sga";
+import { isBillVoteQuestion, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
 import { generateJson } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
@@ -87,7 +88,7 @@ const MAX_CONTEXT_CHARS = 60_000;
  * Bumped when the prompt or the retrieval rules change, so cached answers are
  * regenerated instead of served from instructions that no longer apply.
  */
-const PROMPT_VERSION = "archive-qa-v6";
+const PROMPT_VERSION = "archive-qa-v7-voting-records";
 
 export type AnswerStatus = "fresh" | "stale" | "empty" | "failed" | "unavailable";
 
@@ -380,6 +381,24 @@ async function rosterPassages(
     return passages;
 }
 
+/** Put the archived voting register ahead of bill prose for status questions. */
+async function votingRecordPassages(scope: SearchScope, terms: string[]): Promise<RetrievedPassage[]> {
+    const documents = await prisma.document.findMany({
+        where: {reviewState: "published", ...(scope === "all" ? {} : {sessionNumber: SESSION_NUMBER}),
+            OR: [{driveFileId: PREFERRED_VOTING_RECORD_FILE}, {title: {contains: "Bill Voting Records", mode: "insensitive"}}]},
+        select: {id: true, title: true, displayTitle: true, kind: true, sessionNumber: true, contentHash: true, content: true, datedAt: true, driveCreatedTime: true},
+    });
+    return documents.flatMap(document => splitIntoPassages(document.content)
+        .filter(passage => !/^Name,Elected Position/i.test(passage.content))
+        .map((passage, index) => ({id: `voting:${document.id}:${index}`, documentId: document.id,
+            documentTitle: document.displayTitle || document.title, kind: document.kind,
+            sessionNumber: document.sessionNumber, contentHash: document.contentHash,
+            heading: passage.heading, content: passage.content,
+            score: 20 + terms.filter(term => passage.content.toLowerCase().includes(term.toLowerCase())).length,
+            date: document.datedAt ?? document.driveCreatedTime})))
+        .sort((a,b) => b.score - a.score).slice(0, 3);
+}
+
 /**
  * What "what happened" means, in the vocabulary these documents use.
  *
@@ -641,6 +660,9 @@ export async function retrieve(
 
         if (isMembershipQuestion(question)) {
             passages = [...(await rosterPassages(scope, terms)), ...passages];
+        }
+        if (isBillVoteQuestion(question)) {
+            passages = [...(await votingRecordPassages(scope, terms)), ...passages];
         }
 
         if (focus === "current") {
@@ -1008,6 +1030,7 @@ Membership:
 
 Grounding:
 - Use only the supplied passages. Never use outside knowledge, and never infer a number that is not stated.
+- For legislation passage and voting status, prefer explicit Senate results in Bill Voting Records. Committee recommendations and referral votes are not final adoption. Blank statuses or contradictory adopted/tabled entries are inconclusive; use Senate minutes where the register has no conclusive result. Bill wording alone does not establish passage.
 - Each passage is labelled with the session it belongs to, and with the date the archive files it under when it has one.
 - Questions about the rules now are answered from the most recently adopted constitution, bylaws, and standing rules. An older edition is history: do not treat it as in force unless the question asks when something changed or what the rule used to be.
 - News-Letter reporting is in play for any question it matches, including a question about the rules now. It is evidence of how something landed, not of what the rule is.

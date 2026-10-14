@@ -21,4 +21,10 @@ assert.deepEqual(rankedEditors([row(0, "Owner", baseline), row(1, "Alice", words
 assert.equal(editorDisplayName({name: "honorarose123", email: "honorarose123@gmail.com"}, [{id:"honora", name:"Honora Muratori"}]), "Honora Muratori");
 assert.equal(editorDisplayName({name:"unknown123", email:"unknown123@gmail.com"}, []), "");
 assert.equal(editorDisplayName({name:"Tyler Turner", email:""}, []), "Tyler Turner");
+const anonymous = { ...row(1, "", `${baseline} ${words("anonymous", 2000)}`), editorEmail: "" };
+const namedAfterAnonymous = `${anonymous.content} ${words("named", 40)}`;
+assert.deepEqual(rankedEditors([
+    row(0, "Owner", baseline), anonymous, row(2, "Alice", namedAfterAnonymous),
+]).get("minutes")!.map(x => [x.name, x.changedWords]), [["Alice", 40]],
+"anonymous additions neither earn credit nor suppress named writers; their text remains the baseline");
 console.log("all editor contribution checks passed");

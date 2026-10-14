@@ -9,12 +9,15 @@
 import {
     activityDate,
     authorLine,
+    collectiveResolutionAuthor,
+    isHomepageHighlight,
     calendarDay,
     chooseMeetings,
     countsAsSenateRecord,
     hasOccurred,
     legislationLane,
     passedLegislation,
+    recordedResolutionPassage,
 } from "../lib/activity";
 
 let failures = 0;
@@ -192,6 +195,14 @@ check(
     legislationLane({ title: "SGA Resolution", kind: "presentation", content: "" }) === null,
 );
 
+check("an unclassified resolution-named document is excluded", legislationLane({title: "Student Government Resolution regarding ICE", kind: "unknown"}) === null);
+
+check("senior thank-you resolution remains outside homepage highlights", !isHomepageHighlight("1GfPEmdmayF7MwY4R1XQq9YKG3KzIdYz-D1NQr8yPvDo"));
+check("other resolutions remain eligible", isHomepageHighlight("another-file"));
+check("collective sign-off earns collective credit", collectiveResolutionAuthor("In solidarity with our students,\n\nThe 112th Student Government Association\nJohns Hopkins University") === "112th Student Government Association");
+check("mentioning the body is not a signature", collectiveResolutionAuthor("The 112th Student Government Association considered this resolution.") === "");
+check("named authors earn legislation credit", authorLine([{role:"author",name:"Honora Muratori"}]) === "Honora Muratori");
+
 console.log("meetings");
 
 const now = new Date("2026-10-13T20:00:00Z");
@@ -271,5 +282,10 @@ check(
 );
 check("a bill with nobody named has an empty byline", authorLine([]) === "");
 
+check("completed resolution enactment verifies passage", recordedResolutionPassage("The Resolution hereby **PASSES** by a vote of **23** to **0** with **0** abstentions."));
+check("flattened PDF enactment verifies passage", recordedResolutionPassage("Prior text. The Resolution hereby PASSES by a vote of 23 to 0 with 0 abstentions. Signature below."));
+check("template votes do not verify passage", !recordedResolutionPassage("The Resolution hereby PASSES by a vote of XX to XX with XX abstentions."));
+check("committee recommendation does not verify passage", !recordedResolutionPassage("The committee recommends passage by a vote of 5 to 0."));
+check("losing tally does not verify passage", !recordedResolutionPassage("The Resolution hereby PASSES by a vote of 0 to 23 with 0 abstentions."));
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 if (failures > 0) process.exit(1);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
     useEffect,
+    useRef,
     useState,
     useSyncExternalStore,
     type CSSProperties,
@@ -10,7 +11,7 @@ import {
     type TransitionEvent,
 } from "react";
 
-import { ACTIVITY_CARD_LIMIT, type ActivityCard, type ActivityLane } from "@/lib/activity";
+import { ACTIVITY_CARD_LIMIT, type ActivityLane } from "@/lib/activity";
 
 import styles from "./RecentCarousel.module.css";
 
@@ -32,6 +33,8 @@ const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
  */
 export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
     const reducedMotion = usePrefersReducedMotion();
+    const carousel = useRef<HTMLDivElement>(null);
+    const [scrollStep, setScrollStep] = useState<number>();
     const [index, setIndex] = useState(0);
     const [animate, setAnimate] = useState(true);
     const [hovered, setHovered] = useState(false);
@@ -56,6 +59,19 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
         return () => window.clearInterval(timer);
     }, [running, lanes.length]);
 
+    // Window heights follow their actual font metrics. All tracks use the
+    // largest window plus a small gap, so font edits cannot desynchronize them.
+    useEffect(() => {
+        const windows = carousel.current?.querySelectorAll<HTMLElement>("[data-cycle-window]");
+        if (!windows?.length) return;
+        const measure = () => setScrollStep(Math.ceil(Math.max(...Array.from(windows,
+            window => window.getBoundingClientRect().height))) + 2);
+        const observer = new ResizeObserver(measure);
+        windows.forEach(window => observer.observe(window));
+        measure();
+        return () => observer.disconnect();
+    }, [slots]);
+
     function finishLoop(event: TransitionEvent<HTMLUListElement>) {
         if (event.target !== event.currentTarget || event.propertyName !== "transform") return;
         if (!cycling || index !== lanes.length) return;
@@ -70,12 +86,13 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
     if (lanes.length === 0 || slots === 0) return null;
 
     const motion = animate ? styles.glide : `${styles.glide} ${styles.glideInstant}`;
-    const shown = slides[shownIndex]?.cards.length ?? 1;
 
     return (
         <div
+            ref={carousel}
             className={styles.carousel}
-            style={{ "--lane-index": shownIndex, "--shown": shown } as CSSProperties}
+            style={{ "--lane-index": shownIndex, "--shown": slots,
+                "--scroll-step": scrollStep ? `${scrollStep}px` : undefined } as CSSProperties}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onFocusCapture={() => setFocused(true)}
@@ -90,7 +107,7 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
                     <span className={styles.currentLane}>
                         {slides[shownIndex]?.label}
                     </span>
-                    <span className={styles.wordWindow} aria-hidden="true">
+                    <span className={styles.wordWindow} data-cycle-window aria-hidden="true">
                         <ul className={`${styles.wordTrack} ${motion}`} onTransitionEnd={finishLoop}>
                             {slides.map((lane, position) => (
                                 <li key={`${lane.id}-${position}`}>{lane.label}</li>
@@ -101,38 +118,34 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
 
                 <div className={styles.slots}>
                     {Array.from({ length: slots }, (_, slot) => (
-                        <div className={styles.card} key={slot}>
-                            <ul className={`${styles.cardTrack} ${motion}`}>
-                                {slides.map((lane, position) => {
-                                    const card = lane.cards[slot];
-                                    const current = position === shownIndex;
-                                    return (
-                                        <li
-                                            key={`${lane.id}-${position}`}
-                                            aria-hidden={!current}
-                                            inert={!current || !card}
-                                        >
-                                            {card && <CardFace card={card} />}
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        </div>
+                        <Link
+                            className={styles.cardFace}
+                            key={slot}
+                            href={slides[shownIndex]?.cards[slot]?.href ?? "#"}
+                            aria-label={slides[shownIndex]?.cards[slot]?.title}
+                            tabIndex={slides[shownIndex]?.cards[slot] ? 0 : -1}
+                            aria-hidden={!slides[shownIndex]?.cards[slot]}
+                            style={{visibility: slides[shownIndex]?.cards[slot] ? undefined : "hidden"}}
+                        >
+                            {(["status", "dateLabel", "title", "summary", "authors"] as const).map((field) => (
+                                <span key={field} data-cycle-window className={`${styles.textWindow} ${styles[field]}`}>
+                                    <span className={styles.currentLane}>
+                                        {slides[shownIndex]?.cards[slot]?.[field]}
+                                    </span>
+                                    <span className={`${styles.textTrack} ${motion}`} aria-hidden="true">
+                                        {slides.map((lane, position) => (
+                                            <span key={`${lane.id}-${position}`} className={styles.textLine}>
+                                                {lane.cards[slot]?.[field] ?? ""}
+                                            </span>
+                                        ))}
+                                    </span>
+                                </span>
+                            ))}
+                        </Link>
                     ))}
                 </div>
             </div>
         </div>
-    );
-}
-
-function CardFace({ card }: { card: ActivityCard }) {
-    return (
-        <Link href={card.href} className={styles.cardFace}>
-            <span className={styles.status}>{card.status}</span>
-            <span className={styles.date}>{card.dateLabel}</span>
-            <span className={styles.cardTitle}>{card.title}</span>
-            <span className={styles.authors}>{card.authors}</span>
-        </Link>
     );
 }
 

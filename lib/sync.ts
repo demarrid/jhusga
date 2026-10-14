@@ -39,6 +39,7 @@ import {
     getSharePointFile,
     isSharePointFileId,
 } from "@/lib/sharepoint";
+import { PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
 import { SECONDARY_KINDS, classifyDocument } from "@/lib/kinds";
 import { lineageKeyFor } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
@@ -373,6 +374,7 @@ export async function recordKinds(): Promise<number> {
     for (const document of documents) {
         const kind = classifyDocument({
             name: document.title,
+            driveFileId: document.driveFileId,
             folderPath: document.folderPath,
             content: document.content,
             displayTitle: document.displayTitle,
@@ -710,6 +712,7 @@ async function exportIngestible(file: WalkedFile): Promise<string | null> {
 function driveMetadata(file: WalkedFile, discoveredVia: "walk" | "link") {
     const kind = classifyDocument({
         name: file.name,
+        driveFileId: file.id,
         folderPath: file.folderPath,
         mimeType: file.mimeType,
     });
@@ -755,6 +758,7 @@ export async function ingestFile(
             contentHash: true,
             driveModifiedTime: true,
             kind: true,
+            content: file.id === PREFERRED_VOTING_RECORD_FILE,
             reviewState: true,
             rejectedContentHash: true,
         },
@@ -770,7 +774,9 @@ export async function ingestFile(
         existing.driveModifiedTime &&
         existing.driveModifiedTime.getTime() === driveModifiedTime.getTime();
 
-    if (mtimeUnchanged && !options.force) {
+    const missingVotingTabs = file.id === PREFERRED_VOTING_RECORD_FILE
+        && existing && !existing.content?.includes("\f");
+    if (mtimeUnchanged && !options.force && !missingVotingTabs) {
         await prisma.document.update({
             where: { id: existing.id },
             data: metadata,
@@ -1029,6 +1035,22 @@ function worthFollowing(file: { name: string; mimeType: string }): boolean {
  * in front of the Senate. Nothing is guessed at, and a file Drive will not
  * serve is simply left where it is.
  */
+/** Bounded independent I/O; drain workers before propagating a failure. */
+async function mapSyncIo<T, R>(items: T[], task: (item: T) => Promise<R>): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(6, items.length) }, async () => {
+        while (next < items.length) {
+            const index = next++;
+            results[index] = await task(items[index]!);
+        }
+    });
+    const settled = await Promise.allSettled(workers);
+    const failed = settled.find(result => result.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+    return results;
+}
+
 export async function followLinks(
     options: SyncOptions,
     summary: SyncSummary,
@@ -1040,6 +1062,9 @@ export async function followLinks(
 
     for (let round = 0; round < MAX_LINK_ROUNDS; round += 1) {
         const targets = await unheldTargets();
+        const driveIds = [...targets.keys()].filter(id => !passedOver.has(id) && !isSharePointFileId(id));
+        const metadata = await mapSyncIo(driveIds, async id => [id, await getFile(id)] as const);
+        const metadataById = new Map(metadata);
 
         let ingestedThisRound = 0;
 
@@ -1093,7 +1118,7 @@ export async function followLinks(
                 continue;
             }
 
-            const driveFile = await getFile(fileId);
+            const driveFile = metadataById.get(fileId);
             if (!driveFile) {
                 passedOver.add(fileId);
                 continue;
@@ -1180,8 +1205,18 @@ export async function syncMasterFolder(
         summary.filesSeen = files.length;
 
         await timed(summary, "ingest", async () => {
+            const existing = await prisma.document.findMany({
+                where: { driveFileId: { in: docs.map(file => file.id) } },
+                select: { driveFileId: true, driveModifiedTime: true },
+            });
+            const modifiedById = new Map(existing.map(row => [row.driveFileId, row.driveModifiedTime?.getTime()]));
+            const unchanged = docs.filter(file => !options.force && file.id !== PREFERRED_VOTING_RECORD_FILE
+                && !!file.modifiedTime && modifiedById.get(file.id) === new Date(file.modifiedTime).getTime());
+            const unchangedIds = new Set(unchanged.map(file => file.id));
+            await mapSyncIo(unchanged, file => ingestFile(file, "walk", options, summary));
+            // Content ingestion and identity resolution retain their serial order.
             for (const file of docs) {
-                await ingestFile(file, "walk", options, summary);
+                if (!unchangedIds.has(file.id)) await ingestFile(file, "walk", options, summary);
             }
         });
 

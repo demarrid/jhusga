@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
 
-import { generateJson } from "@/lib/ai";
+import { generateJson, isAiQuotaExhausted } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
 import { documentKindLabel } from "@/lib/kinds";
@@ -197,7 +197,7 @@ export function isSummarisable(document: {
 /** Summarise one document, verify its quotes, and cache the result. */
 export async function summarizeDocument(
     documentId: string,
-    options: { force?: boolean } = {},
+    options: { force?: boolean; deadline?: number } = {},
 ): Promise<SummarizeResult> {
     const document = await prisma.document.findUnique({
         where: { id: documentId },
@@ -207,7 +207,7 @@ export async function summarizeDocument(
             kind: true,
             content: true,
             contentHash: true,
-            summary: { select: { id: true, status: true, promptHash: true, model: true } },
+            summary: { select: { id: true, status: true, promptHash: true, model: true, content: true } },
         },
     });
 
@@ -264,6 +264,7 @@ export async function summarizeDocument(
         const generated = await generateJson<ModelResponse>({
             system: summarySystemPrompt(document.kind),
             user: buildUserPrompt(document),
+            deadline: options.deadline,
         });
         response = generated.value;
         model = generated.model;
@@ -273,7 +274,7 @@ export async function summarizeDocument(
         await prisma.documentSummary.upsert({
             where: { documentId },
             create: { documentId, status: "failed", error: message },
-            update: { status: "failed", error: message },
+            update: { status: document.summary?.content.trim() ? "stale" : "failed", error: message },
         });
         return {
             ...base,
@@ -451,7 +452,7 @@ export async function summarizeStaleDocuments(
 
         let result: SummarizeResult;
         try {
-            result = await summarizeDocument(document.id, { force: options.force });
+            result = await summarizeDocument(document.id, { force: options.force, deadline: options.deadline });
         } catch (cause) {
             result = {
                 documentId: document.id,
@@ -467,6 +468,7 @@ export async function summarizeStaleDocuments(
         if (!result.skipped) calls += 1;
         results.push(result);
         options.onResult?.(result);
+        if (isAiQuotaExhausted(result.error)) break;
     }
 
     return results;

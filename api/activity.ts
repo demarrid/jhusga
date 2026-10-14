@@ -1,3 +1,7 @@
+import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
+import { REVIEWED_PASSAGE_EVIDENCE } from "@/config/passage-evidence";
+import { getContactDirectory } from "@/api/contact";
+import { nameKey } from "@/lib/contributors";
 import { SESSION_NUMBER } from "@/config/session";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { formatDateShort } from "@/lib/dates";
@@ -7,28 +11,35 @@ import {
     ACTIVITY_LANE_ORDER,
     activityDate,
     authorLine,
+    collectiveResolutionAuthor,
+    isHomepageHighlight,
     chooseMeetings,
     countsAsOccurredMeeting,
     countsAsSenateRecord,
     hasOccurred,
     legislationLane,
     passedLegislation,
+    recordedResolutionPassage,
     type ActivityCard,
     type ActivityLane,
     type ActivityLaneId,
 } from "@/lib/activity";
 import { editorDisplayName, rankedEditors } from "@/lib/editors";
 import { demoDocuments } from "@/lib/demo-data";
+import { canReadRevisionHistory } from "@/lib/drive-revisions";
+import { findQuote } from "@/lib/anchor";
 import { prisma } from "@/lib/prisma";
 
 /**
  * The three lanes of the home carousel.
  *
- * Resolutions and bills are whatever Senate minutes record as passed.
+ * Bills use explicit passage results in the archived voting records first,
+ * then Senate minutes when that sheet has no conclusive result.
  * Meetings are minutes of meetings whose date has arrived. The current
  * session is read first only because its dates are the latest: a lane with
  * fewer than three cards keeps going into earlier sessions until it has
- * three, or the archive runs out. A lane with nothing in it is left out.
+ * three, or the archive runs out. Resolutions require verified passage and
+ * always carry the "Resolution" label. Empty lanes are left out.
  */
 export async function getRecentActivity(now = new Date()): Promise<ActivityLane[]> {
     if (demoModeEnabled()) return demoActivity(now);
@@ -83,21 +94,46 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
         }
     }
 
-    const fileIds = [...passedOn.keys()];
-    const legislation = fileIds.length
-        ? await prisma.document.findMany({
-              where: { driveFileId: { in: fileIds }, reviewState: "published" },
-              select: {
-                  id: true,
-                  driveFileId: true,
-                  title: true,
-                  displayTitle: true,
-                  kind: true,
-                  content: true,
-                  summary: { select: { content: true, status: true } },
-              },
-          })
-        : [];
+    // Reviewed mappings recover passage where historical PDFs lost links.
+    // Re-verify the cited text on every read so edits cannot leave stale proof.
+    for (const evidence of REVIEWED_PASSAGE_EVIDENCE) {
+        const text = senateText.find(document => document.driveFileId === evidence.minutesFileId);
+        const minutesRecord = text ? minutes.find(document => document.id === text.id) : undefined;
+        const when = minutesRecord ? activityDate(minutesRecord) : null;
+        if (text && when && hasOccurred(when, now) && findQuote(text.content, evidence.quote)) {
+            passedOn.set(evidence.legislationFileId, when);
+        }
+    }
+
+    const votingSources = await prisma.document.findMany({
+        where: {reviewState: "published", OR: [{driveFileId: PREFERRED_VOTING_RECORD_FILE}, {title: {contains: "Bill Voting Records", mode: "insensitive"}}]},
+        select: {content: true, sessionNumber: true},
+    });
+    const votingRecords = votingSources.map(source => ({session: source.sessionNumber, records: readBillVotingRecords(source.content)}));
+    const legislation = await prisma.document.findMany({
+        where: {reviewState: "published", OR: [{kind: {startsWith: "bill."}}, {kind: "resolution"}]},
+        select: {id: true, driveFileId: true, title: true, displayTitle: true, kind: true,
+            content: true, datedAt: true, sessionNumber: true, summary: {select: {content: true, status: true}}},
+    });
+    const undatedPassage = new Set<string>();
+    for (const document of legislation) {
+        if (document.kind === "resolution" && document.datedAt && hasOccurred(document.datedAt, now)
+            && recordedResolutionPassage(document.content)) {
+            passedOn.set(document.driveFileId, document.datedAt);
+        }
+        const decision = billVoteDecision(document, votingRecords.filter(source => source.session === document.sessionNumber).flatMap(source => source.records));
+        if (decision.status === "not_passed") passedOn.delete(document.driveFileId);
+        if (decision.status === "passed") {
+            const when = decision.when ?? passedOn.get(document.driveFileId);
+            if (when && hasOccurred(when, now)) passedOn.set(document.driveFileId, when);
+            else if (!when && document.datedAt && hasOccurred(document.datedAt, now)) {
+                // The sheet verifies adoption but does not date it. Use the
+                // document's date for ordering without claiming it as the vote date.
+                passedOn.set(document.driveFileId, document.datedAt);
+                undatedPassage.add(document.driveFileId);
+            }
+        }
+    }
 
     const grouped: Record<ActivityLaneId, { card: ActivityCard; when: number }[]> = {
         resolutions: [],
@@ -106,6 +142,7 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
     };
 
     for (const document of legislation) {
+        if (!isHomepageHighlight(document.driveFileId)) continue;
         const lane = legislationLane({
             title: document.displayTitle || document.title,
             kind: document.kind,
@@ -117,10 +154,9 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
         if (!when) continue;
 
         const laneId = lane === "resolution" ? "resolutions" : "bills";
-        grouped[laneId].push({
-            when: when.getTime(),
-            card: toCard(document, when, "Passed"),
-        });
+        const card = toCard(document, when, laneId === "resolutions" ? "Resolution" : "Passed");
+        if (undatedPassage.has(document.driveFileId)) card.dateLabel = "";
+        grouped[laneId].push({when: when.getTime(), card});
     }
 
     const held = chooseMeetings(
@@ -216,7 +252,7 @@ async function attachAuthors(
             ? prisma.documentContributor.findMany({
                   where: {
                       documentId: { in: legislationIds },
-                      role: { in: ["introducer", "sponsor"] },
+                      role: { in: ["introducer", "author", "sponsor"] },
                   },
                   select: {
                       documentId: true,
@@ -271,12 +307,74 @@ async function attachAuthors(
         for (const card of lane.cards) {
             if (lane.id === "meetings") {
                 card.authors = [...new Set((authors.get(card.id) ?? [])
-                    .map(editor => editorDisplayName(editor, people)).filter(Boolean))].join(", ");
+                    .map(editor => editorDisplayName(editor, people)).filter(Boolean))].join(", ") || "Writing credit not verified";
             } else {
                 card.authors = authorLine(byDocument.get(card.id) ?? []);
             }
         }
     }
+
+    const resolutionsWithoutCredits = lanes.filter(lane => lane.id === "resolutions")
+        .flatMap(lane => lane.cards).filter(card => !card.authors);
+    if (resolutionsWithoutCredits.length) {
+        const records = await prisma.document.findMany({
+            where: {id: {in: resolutionsWithoutCredits.map(card => card.id)}},
+            select: {id: true, content: true},
+        });
+        for (const record of records) {
+            const card = resolutionsWithoutCredits.find(card => card.id === record.id);
+            if (card) card.authors = collectiveResolutionAuthor(record.content);
+        }
+    }
+
+    // Use the owner only when history access is explicitly unavailable.
+    const missingCredits = lanes.filter(lane => lane.id === "meetings")
+        .flatMap(lane => lane.cards).filter(card => card.authors === "Writing credit not verified");
+    if (missingCredits.length) {
+        const records = await prisma.document.findMany({
+            where: { id: {in: missingCredits.map(card => card.id)} },
+            select: {id: true, driveFileId: true, driveOwnerName: true, driveOwnerEmail: true},
+        });
+        for (const record of records) {
+            try {
+                if (await canReadRevisionHistory(record.driveFileId) !== false) continue;
+                const owner = editorDisplayName({name: record.driveOwnerName ?? "", email: record.driveOwnerEmail ?? ""}, people);
+                const card = missingCredits.find(card => card.id === record.id);
+                if (card && owner) card.authors = owner;
+            } catch {
+                // A transient failure does not establish missing permissions.
+            }
+        }
+    }
+
+    // A single credited person has room for their office. Resolve it against
+    // the document's session, so historical cards do not acquire today's titles.
+    const singles = lanes.flatMap(lane => lane.cards)
+        .filter(card => card.authors && !card.authors.includes(",")
+            && card.authors !== "Writing credit not verified");
+    if (!singles.length) return;
+    const sessions = await prisma.document.findMany({
+        where: { id: { in: singles.map(card => card.id) } },
+        select: { id: true, sessionNumber: true },
+    });
+    const sessionById = new Map(sessions.map(document => [document.id, document.sessionNumber]));
+    const directories = await Promise.all([...new Set(sessions.map(document => document.sessionNumber))]
+        .filter((session): session is number => session !== null)
+        .map(async session => [session, await getContactDirectory(session)] as const));
+    const directoryBySession = new Map(directories);
+    for (const card of singles) {
+        const session = sessionById.get(card.id);
+        if (session == null) continue;
+        const member = directoryBySession.get(session)?.members
+            .find(person => nameKey(person.name) === nameKey(card.authors));
+        let office = member?.positions[0];
+        if (!office) continue;
+        if (member?.group === "executive" && /^(President|Vice President|Secretary|Treasurer)$/.test(office)) {
+            office = `Student Body ${office}`;
+        }
+        card.authors = `${office} ${card.authors}`;
+    }
+
 }
 
 function demoActivity(now: Date): ActivityLane[] {

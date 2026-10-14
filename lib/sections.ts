@@ -25,7 +25,7 @@ export type SectionDefinition = {
  * it amended, so the About page reads the edition rather than the bill.
  */
 const ABOUT_SOURCE_KINDS = AUTHORITATIVE_KINDS.filter(
-    (kind) => kind !== "bill.constitution_amendment" && kind !== "bill.bylaws_amendment",
+    (kind) => kind !== "bill.constitution_amendment" && kind !== "bill.bylaws_amendment" && kind !== "bill.bylaws_constitution_amendment",
 );
 
 /** Every slot on the About page describes the SGA as it is currently constituted. */

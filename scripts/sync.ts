@@ -179,13 +179,14 @@ async function main() {
     const { SUMMARY_RUN_BUDGET, summarizeStaleDocuments } = await import(
         "../lib/summarize"
     );
-    const summaries = await phase("summaries", () =>
+    const { isAiQuotaExhausted } = await import("../lib/ai");
+    const summaries = sections.some(section => isAiQuotaExhausted(section.error)) ? [] : await phase("summaries", () =>
         summarizeStaleDocuments({
             limit: SUMMARY_RUN_BUDGET,
             // Rechecked verdicts that cost no model call are not worth a line each.
             onResult: (result) => {
                 if (!result.skipped) {
-                    console.log(`summary: ${result.status.padEnd(7)} ${result.title}`);
+                    console.log(`summary: ${result.status.padEnd(7)} ${result.title}${result.error ? ` — ${result.error}` : ""}`);
                 }
             },
         }),

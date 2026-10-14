@@ -10,6 +10,7 @@ import DocumentViewer from "@/app/(components)/DocumentViewer";
 import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
+import { documentReturnPath } from "@/lib/document-navigation";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
 import { formatDate } from "@/lib/dates";
@@ -73,11 +74,14 @@ function describeDocument(document: DocumentDetail): string {
 
 export default async function DocumentPage({
     params,
+    searchParams,
 }: {
     // Next 16 passes route params as a promise.
     params: Promise<{ documentId: string }>;
+    searchParams: Promise<{ returnTo?: string | string[] }>;
 }) {
     const { documentId } = await params;
+    const returnTo = documentReturnPath((await searchParams).returnTo);
     const document = await loadDocument(documentId);
 
     if (!document) notFound();
@@ -91,7 +95,7 @@ export default async function DocumentPage({
     return (
         <main className={styles.page}>
           <header className={styles.masthead}>
-            <Link className={styles.backLink} href="/documents">← All documents</Link>
+            <Link className={styles.backLink} href={returnTo ?? "/documents"}>{returnTo ? "← Back to search" : "← All documents"}</Link>
             <h1>{document.title}</h1>
 
             <p className={styles.metadata}>

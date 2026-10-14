@@ -30,7 +30,7 @@
 .copy {
   position: relative;
   z-index: 2;
-  width: min(47rem, 58vw);
+  width: min(47rem, 54vw);
   animation: copy-in 700ms ease-out both;
 }
 

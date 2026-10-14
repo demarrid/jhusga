@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { SESSION_NUMBER } from "@/config/sga";
-import { generateJson } from "@/lib/ai";
+import { generateJson, isAiQuotaExhausted } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
 import { currentEditions } from "@/lib/editions";
@@ -163,7 +163,7 @@ export async function sourceDocumentsFor(
 
 export async function generateSection(
     key: string,
-    options: { force?: boolean } = {},
+    options: { force?: boolean; deadline?: number } = {},
 ): Promise<GenerateSectionResult> {
     const definition = sectionDefinition(key);
     if (!definition) {
@@ -214,6 +214,7 @@ export async function generateSection(
         const generated = await generateJson<ModelResponse>({
             system: SYSTEM_PROMPT,
             user: buildUserPrompt(definition.question, documents),
+            deadline: options.deadline,
         });
         response = generated.value;
         model = generated.model;
@@ -390,6 +391,7 @@ export async function generateStaleSections(
                 error: cause instanceof Error ? cause.message : String(cause),
             });
         }
+        if (isAiQuotaExhausted(results.at(-1)?.error)) break;
     }
 
     return results;

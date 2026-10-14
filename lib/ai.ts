@@ -13,6 +13,8 @@ export type AiRequest = {
     system: string;
     user: string;
     maxTokens?: number;
+    /** Absolute pipeline deadline, shared by retries. */
+    deadline?: number;
     /** Ask the provider to constrain the reply to JSON, where it can. */
     json?: boolean;
 };
@@ -81,12 +83,15 @@ async function postJson(
     url: string,
     headers: Record<string, string>,
     body: unknown,
+    deadline?: number,
 ): Promise<unknown> {
+    const timeout = deadline === undefined ? REQUEST_TIMEOUT_MS : Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now());
+    if (timeout <= 0) throw new Error("Model work deadline reached");
     const response = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json", ...headers },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeout),
         cache: "no-store",
     });
 
@@ -137,6 +142,7 @@ export async function generateText(request: AiRequest): Promise<AiResult> {
                 system: request.system,
                 messages: [{ role: "user", content: request.user }],
             },
+            request.deadline,
         )) as {
             content?: { type: string; text?: string }[];
             stop_reason?: string;
@@ -174,6 +180,7 @@ export async function generateText(request: AiRequest): Promise<AiResult> {
                     { role: "user", content: request.user },
                 ],
             },
+            request.deadline,
         )) as {
             choices?: { message?: { content?: string }; finish_reason?: string }[];
             usage?: { completion_tokens_details?: { reasoning_tokens?: number } };
@@ -199,6 +206,7 @@ export async function generateText(request: AiRequest): Promise<AiResult> {
                 ...(request.json ? { responseMimeType: "application/json" } : {}),
             },
         },
+        request.deadline,
     )) as {
         candidates?: {
             content?: { parts?: { text?: string }[] };
@@ -301,4 +309,9 @@ export async function generateJson<T>(request: AiRequest): Promise<{
 export function activeModelDescription(): string {
     const activeProvider = provider();
     return `${activeProvider}/${modelName(activeProvider)}`;
+}
+
+/** Billing exhaustion cannot be fixed by retrying or spacing requests. */
+export function isAiQuotaExhausted(error: string | undefined): boolean {
+    return !!error && /insufficient_quota|credit_balance_exhausted|no credits remaining/i.test(error);
 }

@@ -1,3 +1,4 @@
+import { isAiQuotaExhausted } from "@/lib/ai";
 import { generateStaleSections, type GenerateSectionResult } from "@/lib/generate";
 import { pruneEphemeral } from "@/lib/prune";
 import {
@@ -14,12 +15,8 @@ import { type SyncSummary, type SyncTrigger, syncMasterFolder } from "@/lib/sync
  * summary is missing or out of date, and clear expired rows.
  */
 
-/**
- * No model call is started after this long. One already running is let
- * finish, and a single call can take tens of seconds, so the margin against
- * a five-minute maxDuration is wide.
- */
-export const MODEL_WORK_CUTOFF_MS = 210_000;
+/** Model requests and retries share this deadline, leaving time for cleanup. */
+export const MODEL_WORK_CUTOFF_MS = 105_000;
 
 export type FullSyncResult = {
     sync: SyncSummary;
@@ -60,9 +57,12 @@ export async function runFullSync(trigger: SyncTrigger): Promise<FullSyncResult>
     // is the state every new document arrives in and stays in until a run
     // gets to it -- so a quiet night is when the backlog moves.
     const summariesStarted = Date.now();
-    const summaries = await summarizeStaleDocuments({
+    const summaries = sections.some(section => isAiQuotaExhausted(section.error)) ? [] : await summarizeStaleDocuments({
         limit: SUMMARY_RUN_BUDGET,
         deadline: modelDeadline,
+        onResult: result => {
+            if (result.error && result.status === "failed") console.warn(`summary: ${result.title} — ${result.error}`);
+        },
     });
     const summariesMs = Date.now() - summariesStarted;
     console.log(`sync phase summaries: ${summariesMs}ms`);
