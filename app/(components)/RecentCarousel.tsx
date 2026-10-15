@@ -201,7 +201,7 @@ function FittingCredit({ names, expanded, paused, reducedMotion }: {
 
     return (
         <span ref={line} className={`${styles.textLine} ${styles.creditLine}`} data-expanded={paused || undefined}
-            style={{ "--credit-travel": `${width.full + 32}px`, "--credit-duration": `${Math.max(8, (width.full + 32) / 28)}s` } as CSSProperties}>
+            style={{ "--credit-travel": `${width.full + 32}px`, "--credit-duration": `${Math.max(8, (width.full + 32) / 56)}s` } as CSSProperties}>
             <span className={styles.creditCompact}>{expanded && fits ? expanded : names}</span>
             <span className={`${styles.creditFull} ${scrolling ? styles.creditScrolling : ""}`}>
                 <span className={styles.creditCopy}>{fullText}</span>

@@ -198,7 +198,7 @@
 }
 
 .creditScrolling {
-  animation: credit-loop var(--credit-duration) linear 240ms infinite;
+  animation: credit-loop var(--credit-duration) linear 10ms infinite;
 }
 
 @keyframes credit-loop {
