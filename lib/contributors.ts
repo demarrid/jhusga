@@ -297,7 +297,12 @@ function peelLeadingOffice(working: string): {
                 office: honorific ? normaliseTitle(honorific[1]!) : null,
             };
         }
-        if (looksLikeOffice(prefix)) {
+        // A prefix ending in a given name has already swallowed part of the
+        // person: "... Senator Kayla" must leave "Kayla Marie Gonzalez" intact.
+        const lastOfficeWord = parts[parts.length - length - 1] ?? "";
+        if (looksLikeOffice(prefix) && (OFFICE_WORDS.test(lastOfficeWord)
+            || /^[A-Z]{2,6}$/.test(lastOfficeWord)
+            || /\b(?:senate|affairs|programming|communications|sustainability|safety|services|organizations|elections|relations|engagement|development|diversity|inclusion|equity|finance|operations|council|caucus)$/i.test(prefix))) {
             return { name, office: tidyOffice(prefix) };
         }
     }
@@ -369,7 +374,7 @@ function isPlausibleName(candidate: string): boolean {
         parts.length === 2 &&
         parts.every(
             (part) =>
-                /^[a-z][a-z'’.-]{2,}$/.test(part) && !LOWERCASE_NAME_NOISE.has(part),
+                /^[A-Za-z][A-Za-z'’.-]{2,}$/.test(part) && !LOWERCASE_NAME_NOISE.has(part.toLowerCase()),
         )
     ) {
         return true;
@@ -390,10 +395,9 @@ const LOWERCASE_NAME_NOISE = new Set([
 
 /** Capitalise a name the minutes wrote in lowercase, so "jason" is Jason. */
 function displayName(name: string): string {
-    if (name !== name.toLowerCase()) return name;
     return name
         .split(/\s+/)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .map((part) => part === part.toLowerCase() ? part.charAt(0).toUpperCase() + part.slice(1) : part)
         .join(" ");
 }
 
@@ -404,7 +408,7 @@ function splitPeople(list: string, firstNames = false): string[] {
     }
 
     return list
-        .split(/,|;|\band\b|&|\/|\u2022/i)
+        .split(/,|;|\band\b|&|(?<!Hispanic)\/|\u2022/i)
         .map((part) => part.trim())
         .filter(Boolean);
 }

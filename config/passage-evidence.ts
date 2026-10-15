@@ -19,3 +19,12 @@ confident to discuss this resolution today.
 v. The motion to vote passed. Then, the motion to approve
 also passed.`,
 }] as const;
+
+/** User-confirmed adoption (2026-10-15), distinct from machine-read vote evidence.
+ * The September 5 record supplies ordering context, not a verified adoption date.
+ * Its "100% voted" line alone is not evidence of adoption or unanimity. */
+export const CONFIRMED_RESOLUTION_PASSAGE = [{
+    legislationFileId: "1ze1tTgXIUzN3ErSRL4cnGa-KYFyuEB7cAUSM0rWPagk",
+    orderingMinutesFileId: "1pwXD1WNdPYbHdu_2qbFjLh2ElbToOOPiTAwx-q1jya4",
+    orderingDay: "2023-09-05",
+}] as const;

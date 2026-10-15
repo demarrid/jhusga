@@ -33,6 +33,12 @@ function check(label: string, condition: boolean, detail?: unknown) {
 
 console.log("sanitizeExport");
 
+const blackJays = extractContributors("Introduced by: **Oluwanifemi ajayi**\nSponsored by: **Kayla Marie Gonzalez** and **Jazzlyn Fernandez**", "Black Jays Photoshoot Funding Bill", "bill.funding");
+check("mixed-case bill introducers retain their full name", blackJays.some(p => p.name === "Oluwanifemi Ajayi" && p.role === "introducer"));
+check("both written Black Jays co-sponsors receive credit", ["Kayla Marie Gonzalez", "Jazzlyn Fernandez"].every(name => blackJays.some(p => p.name === name && p.role === "sponsor")));
+const titledBlackJays = extractContributors("Introduced by: **Black Caucus Senator Oluwanifemi ajayi**\nSponsored by: **Hispanic/LatinE Caucus Senator Kayla Marie Gonzalez** and **FLI Caucus Senator and President of the Senate Jazzlyn Fernandez**", "Black Jays Photoshoot Funding Bill", "bill.funding");
+check("compound offices preserve complete introducer and sponsor names", ["Oluwanifemi Ajayi", "Kayla Marie Gonzalez", "Jazzlyn Fernandez"].every(name => titledBlackJays.some(p => p.name === name)) && titledBlackJays.filter(p => p.role === "sponsor").length === 2, titledBlackJays);
+
 const withImages = [
     "# Bylaws",
     "",

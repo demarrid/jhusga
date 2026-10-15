@@ -3,6 +3,7 @@
  * including the escaped form Google Docs exports.
  */
 import { extractDocumentLinks, extractDriveLinks, resolveReferences } from "../lib/links";
+import { linkedSyncTargets } from "../lib/sync";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -19,6 +20,15 @@ const BYLAWS = "1_X1PhkHiaV0CukRs1sfmKzqcOYUM_AHsmDAcE6qoW5I";
 const SHEET = "1Qvz2Vtg0eAS2Wk-13HdvF76Nx6Ic3OK_yMa4ysxH_Ok";
 
 console.log("extraction");
+
+const refreshTargets = linkedSyncTargets([
+    { driveFileId: "minutes", content: `[Nutrition](https://docs.google.com/document/d/${BILL}/edit)\n[New](https://docs.google.com/document/d/${SHEET}/edit)`, sessionNumber: 114, discoveredVia: "walk", source: "minutes-url" },
+    { driveFileId: BILL, content: "Published older bill", sessionNumber: 114, discoveredVia: "link", source: `https://docs.google.com/document/d/${BILL}/edit` },
+]);
+check("a previously imported linked bill remains eligible for refresh and review",
+    refreshTargets.has(BILL) && refreshTargets.get(BILL)?.sessionNumber === 114);
+check("new links are followed while folder-walk files are not refreshed twice",
+    refreshTargets.has(SHEET) && !refreshTargets.has("minutes") && refreshTargets.size === 2);
 
 const agenda = [
     "## Second Reading",

@@ -956,11 +956,25 @@ async function unheldTargets(): Promise<
     Map<string, { sessionNumber: number | null; url: string }>
 > {
     const documents = await prisma.document.findMany({
-        select: { driveFileId: true, content: true, sessionNumber: true },
+        select: { driveFileId: true, content: true, sessionNumber: true, discoveredVia: true, source: true },
     });
+    return linkedSyncTargets(documents);
+}
 
+/** Both newly discovered targets and previously imported files outside the folder walk. */
+export function linkedSyncTargets(documents: {
+    driveFileId: string; content: string; sessionNumber: number | null; discoveredVia: string; source: string;
+}[]): Map<string, { sessionNumber: number | null; url: string }> {
     const held = new Set(documents.map((document) => document.driveFileId));
     const targets = new Map<string, { sessionNumber: number | null; url: string }>();
+
+    // Files discovered through links do not appear in the master-folder walk.
+    // Recheck their metadata each sync, even after their first successful import.
+    for (const document of documents) {
+        if (document.discoveredVia === "link") {
+            targets.set(document.driveFileId, { sessionNumber: document.sessionNumber, url: document.source });
+        }
+    }
 
     for (const document of documents) {
         for (const link of extractDocumentLinks(document.content)) {
@@ -1070,6 +1084,8 @@ export async function followLinks(
 
         for (const [fileId, target] of targets) {
             if (passedOver.has(fileId)) continue;
+            // Check each target once per run, including successfully ingested files.
+            passedOver.add(fileId);
 
             const sessionNumber = target.sessionNumber ?? SESSION_NUMBER;
 
