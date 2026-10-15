@@ -2,7 +2,6 @@ import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE }
 import { CONFIRMED_RESOLUTION_PASSAGE, REVIEWED_PASSAGE_EVIDENCE } from "@/config/passage-evidence";
 import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
 import { getContactDirectory } from "@/api/contact";
-import { nameKey } from "@/lib/contributors";
 import { SESSION_NUMBER } from "@/config/session";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { formatDateShort } from "@/lib/dates";
@@ -14,6 +13,7 @@ import {
     latestMinutesEntry,
     latestMinutesSummary,
     authorLine,
+    contactCredit,
     collectiveResolutionAuthor,
     isHomepageHighlight,
     chooseMeetings,
@@ -386,18 +386,10 @@ async function attachAuthors(
         const session = sessionById.get(card.id);
         if (session == null) continue;
         const names = card.authors.split(", ");
-        const expanded = names.map(name => {
-            const member = directoryBySession.get(session)?.members
-                .find(person => nameKey(person.name) === nameKey(name));
-            let office = member?.positions[0];
-            if (!office) return name;
-            if (member?.group === "executive" && /^(President|Vice President|Secretary|Treasurer)$/.test(office)) {
-                office = `Student Body ${office}`;
-            }
-            return `${office} ${name}`;
-        }).join(", ");
-        if (names.length === 1) card.authors = expanded;
-        else if (expanded !== card.authors) card.authorsWithPositions = expanded;
+        const credits = names.map(name => contactCredit(name, directoryBySession.get(session)?.members ?? []));
+        card.authors = credits.map(credit => credit.name).join(", ");
+        const expanded = credits.map(credit => credit.full).join("; ");
+        if (expanded !== card.authors) card.authorsWithPositions = expanded;
     }
 
 }

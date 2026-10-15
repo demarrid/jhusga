@@ -11,6 +11,7 @@ import {
     latestMinutesEntry,
     latestMinutesSummary,
     authorLine,
+    contactCredit,
     collectiveResolutionAuthor,
     isHomepageHighlight,
     calendarDay,
@@ -23,6 +24,16 @@ import {
 } from "../lib/activity";
 
 let failures = 0;
+
+const contactPeople = [
+    { name: "Oluwanifemi Ayaji", group: "senate" as const, email: null, positions: ["Black and African-Origin Students Caucus Senator"] },
+    { name: "Kayla Gonzalez", group: "senate" as const, email: null, positions: ["Hispanic/Latine Students Caucus Senator"] },
+    { name: "Jazzlyn Fernandez", group: "executive" as const, email: null, positions: ["President of the Senate", "First-Generation Limited Income Students Caucus Senator"] },
+];
+check("the Ayaji contact spelling supplies Ajayi's caucus position", contactCredit("Oluwanifemi Ajayi", contactPeople).full === "Black and African-Origin Students Caucus Senator Oluwanifemi Ajayi");
+check("omitted contact middle names preserve the full credited name", contactCredit("Kayla Marie Gonzalez", contactPeople).full === "Hispanic/Latine Students Caucus Senator Kayla Marie Gonzalez");
+check("all contact positions precede the name", contactCredit("Jazzlyn Fernandez", contactPeople).full === "President of the Senate and First-Generation Limited Income Students Caucus Senator Jazzlyn Fernandez");
+check("ambiguous contact variants do not guess a position", contactCredit("Kayla Marie Gonzalez", [...contactPeople, { ...contactPeople[1], name: "Kayla Ana Gonzalez" }]).full === "Kayla Marie Gonzalez");
 
 check("combined card uses the last summary bullet without formatting or citation markers",
     latestMinutesSummary({status: "fresh", content: "- Earlier meeting. [1]\n- **October 14:** Discussed housing access. [2]"}) === "October 14: Discussed housing access.");

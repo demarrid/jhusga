@@ -22,6 +22,38 @@ import { academicYearStart } from "@/config/session";
 import { meetingDate } from "@/lib/meetings";
 import { sectionAnchors } from "@/lib/outline";
 import { proseLine } from "@/lib/cite";
+import type { DirectoryMember } from "@/lib/directory";
+
+/** Use the contact directory's roles, tolerating an omitted middle name or a
+ * transposed surname only when the full given name identifies one candidate. */
+export function contactCredit(name: string, members: DirectoryMember[]): { name: string; full: string } {
+    const parts = (value: string) => value.split(/\s+/).map(nameKey);
+    const author = parts(name);
+    const candidates = members.filter(member => {
+        if (nameKey(member.name) === nameKey(name)) return true;
+        const contact = parts(member.name);
+        if (author.length < 2 || contact.length < 2 || author[0] !== contact[0]) return false;
+        const a = author.at(-1)!;
+        const b = contact.at(-1)!;
+        if (a === b) return true;
+        if (a.length !== b.length) return false;
+        const changed = [...a].map((letter, index) => letter === b[index] ? -1 : index).filter(index => index >= 0);
+        return changed.length === 2 && a[changed[0]] === b[changed[1]] && a[changed[1]] === b[changed[0]];
+    });
+    const member = candidates.find(person => nameKey(person.name) === nameKey(name))
+        ?? (candidates.length === 1 ? candidates[0] : undefined);
+    if (!member) return { name, full: name };
+    const fullName = author.length >= parts(member.name).length ? name : member.name;
+    const positions = member.seats?.length ? member.seats.flatMap(seat => {
+        const title = seat.title && /\b(?:president|senator|chair|secretary|treasurer|director|justice|representative|member)\b/i.test(seat.title)
+            ? seat.title
+            : member.positions.find(position => seat.title && position.startsWith(seat.title)) ?? member.positions[0];
+        return [title, ...seat.offices].filter((position): position is string => !!position);
+    }) : member.positions;
+    const offices = [...new Set(positions)].map(position => member.group === "executive"
+        && /^(President|Vice President|Secretary|Treasurer)$/.test(position) ? `Student Body ${position}` : position);
+    return { name: fullName, full: offices.length ? `${offices.join(" and ")} ${fullName}` : fullName };
+}
 
 /** The closing summary item usually describes the latest meeting in a rolling file. */
 export function latestMinutesSummary(summary: { content: string; status: string } | null): string {

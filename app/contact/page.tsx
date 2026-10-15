@@ -91,7 +91,7 @@ export default async function Contact() {
           {/* Shared addresses belong beside individual member contact details. */}
           {directory.inboxes.length > 0 && (
             <section className={styles.generalContacts}>
-              <h3>General contacts</h3>
+              <h3>General Contacts</h3>
               <ul className={styles.inboxList}>
                 {directory.inboxes.map((inbox) => (
                   <InboxRow key={inbox.email} inbox={inbox} />
@@ -114,7 +114,7 @@ export default async function Contact() {
                   <h3>{section.label}</h3>
 
                   {section.subgroups.map((subgroup) => (
-                    <div className={`${styles.subgroup} ${subgroup.key.includes(" / ") ? styles.nestedSubgroup : ""}`} key={subgroup.key || section.group}>
+                    <div className={styles.subgroup} key={subgroup.key || section.group}>
                       {subgroup.headings.map((heading) =>
                         heading.depth === 0 ? (
                           <h4 key={heading.text}>{heading.text}</h4>

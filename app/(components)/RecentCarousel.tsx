@@ -43,6 +43,7 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
     const cycling = lanes.length > 1 && !reducedMotion;
     const slides = cycling ? [...lanes, lanes[0]!] : lanes;
     const running = !hovered && !focused && cycling;
+    const paused = hovered || focused;
     const shownIndex = cycling ? Math.min(index, lanes.length) : 0;
     const slots = Math.min(
         ACTIVITY_CARD_LIMIT,
@@ -101,7 +102,13 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
                 if (!(next instanceof Node) || !event.currentTarget.contains(next)) setFocused(false);
             }}
         >
-            <div className={styles.plate}>
+            <div className={styles.plate} data-paused={paused || undefined}>
+                <span className={styles.pauseIcon} aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                        <rect x="4" y="3" width="3" height="10" rx="0.5" />
+                        <rect x="9" y="3" width="3" height="10" rx="0.5" />
+                    </svg>
+                </span>
                 <div className={styles.label}>
                     <span className={styles.recentWord}>Recent</span>
                     <span className={styles.currentLane}>
@@ -130,14 +137,18 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
                             {(["status", "dateLabel", "title", "summary", "authors"] as const).map((field) => (
                                 <span key={field} data-cycle-window className={`${styles.textWindow} ${styles[field]}`}>
                                     <span className={styles.currentLane}>
-                                        {slides[shownIndex]?.cards[slot]?.[field]}
+                                        {field === "authors" && paused
+                                            ? slides[shownIndex]?.cards[slot]?.authorsWithPositions ?? slides[shownIndex]?.cards[slot]?.authors
+                                            : slides[shownIndex]?.cards[slot]?.[field]}
                                     </span>
                                     <span className={`${styles.textTrack} ${motion}`} aria-hidden="true">
                                         {slides.map((lane, position) => (
                                             field === "authors" ? (
                                                 <FittingCredit key={`${lane.id}-${position}`}
                                                     names={lane.cards[slot]?.authors ?? ""}
-                                                    expanded={lane.cards[slot]?.authorsWithPositions} />
+                                                    expanded={lane.cards[slot]?.authorsWithPositions}
+                                                    paused={paused && position === shownIndex}
+                                                    reducedMotion={reducedMotion} />
                                             ) : <span key={`${lane.id}-${position}`} className={styles.textLine}>
                                                 {lane.cards[slot]?.[field] ?? ""}
                                             </span>
@@ -154,18 +165,26 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
 }
 
 /** Measure the actual font and card width; keep every name ahead of optional offices. */
-function FittingCredit({ names, expanded }: { names: string; expanded?: string }) {
+function FittingCredit({ names, expanded, paused, reducedMotion }: {
+    names: string; expanded?: string; paused: boolean; reducedMotion: boolean;
+}) {
     const line = useRef<HTMLSpanElement>(null);
     const candidate = useRef<HTMLSpanElement>(null);
-    const [fits, setFits] = useState(false);
+    const [width, setWidth] = useState({ available: 0, full: 0 });
+    const fits = width.full > 0 && width.full <= width.available;
+    const fullText = expanded || names;
+    const scrolling = paused && !fits && width.full > 0 && !reducedMotion;
 
     useEffect(() => {
         const container = line.current;
         const measureText = candidate.current;
-        if (!container || !measureText || !expanded) return;
+        if (!container || !measureText) return;
         let active = true;
         const measure = () => {
-            if (active) setFits(measureText.getBoundingClientRect().width <= container.clientWidth);
+            if (active) {
+                const next = { available: container.clientWidth, full: measureText.getBoundingClientRect().width };
+                setWidth(previous => previous.available === next.available && previous.full === next.full ? previous : next);
+            }
         };
         const observer = new ResizeObserver(measure);
         observer.observe(container);
@@ -178,12 +197,17 @@ function FittingCredit({ names, expanded }: { names: string; expanded?: string }
             observer.disconnect();
             document.fonts.removeEventListener("loadingdone", measure);
         };
-    }, [expanded]);
+    }, [fullText]);
 
     return (
-        <span ref={line} className={`${styles.textLine} ${styles.creditLine}`}>
-            {expanded && fits ? expanded : names}
-            {expanded && <span ref={candidate} className={styles.creditMeasure}>{expanded}</span>}
+        <span ref={line} className={`${styles.textLine} ${styles.creditLine}`} data-expanded={paused || undefined}
+            style={{ "--credit-travel": `${width.full + 32}px`, "--credit-duration": `${Math.max(8, (width.full + 32) / 28)}s` } as CSSProperties}>
+            <span className={styles.creditCompact}>{expanded && fits ? expanded : names}</span>
+            <span className={`${styles.creditFull} ${scrolling ? styles.creditScrolling : ""}`}>
+                <span className={styles.creditCopy}>{fullText}</span>
+                {scrolling && <span className={styles.creditCopy}>{fullText}</span>}
+            </span>
+            <span ref={candidate} className={styles.creditMeasure}>{fullText}</span>
         </span>
     );
 }

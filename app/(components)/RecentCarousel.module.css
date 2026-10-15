@@ -22,6 +22,7 @@
 }
 
 .plate {
+  position: relative;
   overflow: hidden;
   box-sizing: border-box;
   height: calc(var(--pad) * 2 + var(--label-h) + var(--shown, 1) * (var(--card-h) + var(--gap)));
@@ -48,6 +49,21 @@
   letter-spacing: 0.14em;
   line-height: 1.6;
   text-transform: uppercase;
+  padding-right: 1.4rem;
+}
+
+.pauseIcon {
+  position: absolute;
+  top: var(--pad);
+  right: var(--pad);
+  color: #5593c9;
+  opacity: 0;
+  transition: opacity 240ms ease;
+  pointer-events: none;
+}
+
+.plate[data-paused] .pauseIcon {
+  opacity: 1;
 }
 
 .recentWord {
@@ -148,6 +164,45 @@
 
 .creditLine {
   position: relative;
+}
+
+.creditCompact {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 240ms ease;
+}
+
+.creditFull {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: max-content;
+  gap: 32px;
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.creditCopy {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.creditLine[data-expanded] .creditCompact {
+  opacity: 0;
+}
+
+.creditLine[data-expanded] .creditFull {
+  opacity: 1;
+}
+
+.creditScrolling {
+  animation: credit-loop var(--credit-duration) linear 240ms infinite;
+}
+
+@keyframes credit-loop {
+  to { transform: translateX(calc(-1 * var(--credit-travel))); }
 }
 
 .creditMeasure {
@@ -266,6 +321,21 @@
   .plate,
   .glide {
     transition: none;
+  }
+
+  .pauseIcon,
+  .creditCompact,
+  .creditFull {
+    transition: none;
+  }
+
+  .creditScrolling {
+    animation: none;
+  }
+
+  .creditLine[data-expanded] {
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 }
 
