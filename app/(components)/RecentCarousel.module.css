@@ -146,6 +146,18 @@
   transition: background 0.2s ease;
 }
 
+.creditLine {
+  position: relative;
+}
+
+.creditMeasure {
+  position: absolute;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .cardFace:hover {
   background: rgba(255, 255, 255, 0.94);
 }

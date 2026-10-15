@@ -63,6 +63,8 @@ export type ActivityCard = {
     summary: string;
     /** Introducer and sponsors, or the person who took the minutes. */
     authors: string;
+    /** Expanded multi-person credit, used only when the rendered line fits. */
+    authorsWithPositions?: string;
     /** "Passed" for legislation, "Minutes" for a meeting that was held. */
     status: string;
 };

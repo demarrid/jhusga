@@ -134,7 +134,11 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
                                     </span>
                                     <span className={`${styles.textTrack} ${motion}`} aria-hidden="true">
                                         {slides.map((lane, position) => (
-                                            <span key={`${lane.id}-${position}`} className={styles.textLine}>
+                                            field === "authors" ? (
+                                                <FittingCredit key={`${lane.id}-${position}`}
+                                                    names={lane.cards[slot]?.authors ?? ""}
+                                                    expanded={lane.cards[slot]?.authorsWithPositions} />
+                                            ) : <span key={`${lane.id}-${position}`} className={styles.textLine}>
                                                 {lane.cards[slot]?.[field] ?? ""}
                                             </span>
                                         ))}
@@ -146,6 +150,41 @@ export default function RecentCarousel({ lanes }: { lanes: ActivityLane[] }) {
                 </div>
             </div>
         </div>
+    );
+}
+
+/** Measure the actual font and card width; keep every name ahead of optional offices. */
+function FittingCredit({ names, expanded }: { names: string; expanded?: string }) {
+    const line = useRef<HTMLSpanElement>(null);
+    const candidate = useRef<HTMLSpanElement>(null);
+    const [fits, setFits] = useState(false);
+
+    useEffect(() => {
+        const container = line.current;
+        const measureText = candidate.current;
+        if (!container || !measureText || !expanded) return;
+        let active = true;
+        const measure = () => {
+            if (active) setFits(measureText.getBoundingClientRect().width <= container.clientWidth);
+        };
+        const observer = new ResizeObserver(measure);
+        observer.observe(container);
+        observer.observe(measureText);
+        document.fonts.addEventListener("loadingdone", measure);
+        void document.fonts.ready.then(measure);
+        measure();
+        return () => {
+            active = false;
+            observer.disconnect();
+            document.fonts.removeEventListener("loadingdone", measure);
+        };
+    }, [expanded]);
+
+    return (
+        <span ref={line} className={`${styles.textLine} ${styles.creditLine}`}>
+            {expanded && fits ? expanded : names}
+            {expanded && <span ref={candidate} className={styles.creditMeasure}>{expanded}</span>}
+        </span>
     );
 }
 

@@ -367,14 +367,14 @@ async function attachAuthors(
         }
     }
 
-    // A single credited person has room for their office. Resolve it against
-    // the document's session, so historical cards do not acquire today's titles.
-    const singles = lanes.flatMap(lane => lane.cards)
-        .filter(card => card.authors && !card.authors.includes(",")
+    // Resolve offices against the document's session. The browser measures
+    // expanded multi-person credits before choosing whether to display them.
+    const credited = lanes.flatMap(lane => lane.cards)
+        .filter(card => card.authors
             && card.authors !== "Writing credit not verified");
-    if (!singles.length) return;
+    if (!credited.length) return;
     const sessions = await prisma.document.findMany({
-        where: { id: { in: singles.map(card => card.id) } },
+        where: { id: { in: credited.map(card => card.id) } },
         select: { id: true, sessionNumber: true },
     });
     const sessionById = new Map(sessions.map(document => [document.id, document.sessionNumber]));
@@ -382,17 +382,22 @@ async function attachAuthors(
         .filter((session): session is number => session !== null)
         .map(async session => [session, await getContactDirectory(session)] as const));
     const directoryBySession = new Map(directories);
-    for (const card of singles) {
+    for (const card of credited) {
         const session = sessionById.get(card.id);
         if (session == null) continue;
-        const member = directoryBySession.get(session)?.members
-            .find(person => nameKey(person.name) === nameKey(card.authors));
-        let office = member?.positions[0];
-        if (!office) continue;
-        if (member?.group === "executive" && /^(President|Vice President|Secretary|Treasurer)$/.test(office)) {
-            office = `Student Body ${office}`;
-        }
-        card.authors = `${office} ${card.authors}`;
+        const names = card.authors.split(", ");
+        const expanded = names.map(name => {
+            const member = directoryBySession.get(session)?.members
+                .find(person => nameKey(person.name) === nameKey(name));
+            let office = member?.positions[0];
+            if (!office) return name;
+            if (member?.group === "executive" && /^(President|Vice President|Secretary|Treasurer)$/.test(office)) {
+                office = `Student Body ${office}`;
+            }
+            return `${office} ${name}`;
+        }).join(", ");
+        if (names.length === 1) card.authors = expanded;
+        else if (expanded !== card.authors) card.authorsWithPositions = expanded;
     }
 
 }
