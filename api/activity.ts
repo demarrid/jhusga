@@ -36,7 +36,9 @@ import { prisma } from "@/lib/prisma";
  * The three lanes of the home carousel.
  *
  * Bills use explicit passage results in the archived voting records first,
- * then Senate minutes when that sheet has no conclusive result.
+ * then Senate minutes when that sheet has no conclusive result. A held source
+ * edit does not withdraw the last published document: its checked text remains
+ * eligible, while heldRevision content is never used here.
  * Meetings are minutes of meetings whose date has arrived. The current
  * session is read first only because its dates are the latest: a lane with
  * fewer than three cards keeps going into earlier sessions until it has
@@ -50,7 +52,7 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
         where: {
             meetingRole: "minutes",
             kind: { startsWith: "minutes." },
-            reviewState: "published",
+            reviewState: { in: ["published", "held"] },
         },
         select: {
             id: true,
@@ -110,12 +112,12 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
     }
 
     const votingSources = await prisma.document.findMany({
-        where: {reviewState: "published", OR: [{driveFileId: PREFERRED_VOTING_RECORD_FILE}, {title: {contains: "Bill Voting Records", mode: "insensitive"}}]},
+        where: {reviewState: {in: ["published", "held"]}, OR: [{driveFileId: PREFERRED_VOTING_RECORD_FILE}, {title: {contains: "Bill Voting Records", mode: "insensitive"}}]},
         select: {content: true, sessionNumber: true},
     });
     const votingRecords = votingSources.map(source => ({session: source.sessionNumber, records: readBillVotingRecords(source.content)}));
     const legislation = await prisma.document.findMany({
-        where: {reviewState: "published", OR: [{kind: {startsWith: "bill."}}, {kind: "resolution"}]},
+        where: {reviewState: {in: ["published", "held"]}, OR: [{kind: {startsWith: "bill."}}, {kind: "resolution"}]},
         select: {id: true, driveFileId: true, title: true, displayTitle: true, kind: true,
             content: true, datedAt: true, sessionNumber: true, summary: {select: {content: true, status: true}}},
     });
@@ -133,7 +135,7 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
             passedOn.set(document.driveFileId, document.datedAt);
         }
         const decision = billVoteDecision(document, votingRecords.filter(source => source.session === document.sessionNumber).flatMap(source => source.records));
-        if (decision.status === "not_passed") passedOn.delete(document.driveFileId);
+        if (decision.status === "not_passed" || decision.status === "ambiguous") passedOn.delete(document.driveFileId);
         if (decision.status === "passed") {
             const when = decision.when ?? passedOn.get(document.driveFileId);
             if (when && hasOccurred(when, now)) passedOn.set(document.driveFileId, when);

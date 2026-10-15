@@ -159,6 +159,21 @@ const prefixed = `
 
 check("a lettered heading still belongs to its bill", ids(prefixed).includes("SURVEYBILLID123456789"), ids(prefixed));
 
+const latestSurveyVote = `22. ## **Second Reading**
+\n   a. [Survey Tabling Bill](${doc("1pxaYyqDal0SdsOSXyfJp-zXRFpy8EtawxKHM6u7XFwg")}) - Student Services Chair Veda Kommineni
+      1. passed finance committee with negative recommendations
+      2. Open-ended form because wants to be used for several years
+      3. Motion for 5 MINUTE MODERATED caucus
+         1. Kevin: physical feedback forms would increase feedback
+      6. peteR: point of info, can correct $450 to $550
+      7. Cole: motion to pass, demarri opposes
+         1. passed
+   b. [Next Bill](${doc("NEXTBILLID1234567890")})
+      1. Passed finance committee
+`;
+check("October 13 Survey vote adopts the bill despite a negative committee recommendation and an objection",
+    ids(latestSurveyVote).join() === "1pxaYyqDal0SdsOSXyfJp-zXRFpy8EtawxKHM6u7XFwg", ids(latestSurveyVote));
+
 const sameLine = `
 5. [Crab Fest Funding Bill](${doc("CRABFESTBILLID1234567")})
    5. RC: motion to pass, passes
