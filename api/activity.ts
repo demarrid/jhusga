@@ -120,11 +120,10 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
     });
     const undatedPassage = new Set<string>();
     for (const confirmation of CONFIRMED_RESOLUTION_PASSAGE) {
-        const when = new Date(`${confirmation.orderingDay}T12:00:00Z`);
+        const when = new Date(`${confirmation.passedOn}T12:00:00Z`);
         const resolution = legislation.find(document => document.driveFileId === confirmation.legislationFileId);
         if (resolution?.kind === "resolution" && when && hasOccurred(when, now)) {
             passedOn.set(resolution.driveFileId, when);
-            undatedPassage.add(resolution.driveFileId);
         }
     }
     for (const document of legislation) {
