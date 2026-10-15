@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+import { ARCHIVE_CACHE_TAG, ARCHIVE_CACHE_SECONDS } from "@/lib/archive-cache";
 import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
 import { CONFIRMED_RESOLUTION_PASSAGE, REVIEWED_PASSAGE_EVIDENCE } from "@/config/passage-evidence";
 import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
@@ -45,8 +47,20 @@ import { prisma } from "@/lib/prisma";
  * three, or the archive runs out. Resolutions require verified passage and
  * always carry the "Resolution" label. Empty lanes are left out.
  */
-export async function getRecentActivity(now = new Date()): Promise<ActivityLane[]> {
-    if (demoModeEnabled()) return demoActivity(now);
+// Keep the clock inside the cache miss: a Date argument would create a new
+// cache key on every request. Explicit dates remain useful for archive previews.
+const cachedRecentActivity = unstable_cache(
+    () => loadRecentActivity(new Date()),
+    ["recent-activity-v1"],
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+);
+
+export async function getRecentActivity(now?: Date): Promise<ActivityLane[]> {
+    if (demoModeEnabled()) return demoActivity(now ?? new Date());
+    return now ? loadRecentActivity(now) : cachedRecentActivity();
+}
+
+async function loadRecentActivity(now: Date): Promise<ActivityLane[]> {
 
     const minutes = await prisma.document.findMany({
         where: {
@@ -56,6 +70,7 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
         },
         select: {
             id: true,
+            driveFileId: true,
             title: true,
             displayTitle: true,
             kind: true,
@@ -74,13 +89,7 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
         },
     });
 
-    const senateIds = minutes.filter(countsAsSenateRecord).map((document) => document.id);
-    const senateText = senateIds.length
-        ? await prisma.document.findMany({
-              where: { id: { in: senateIds } },
-              select: { id: true, driveFileId: true, content: true },
-          })
-        : [];
+    const senateText = minutes.filter(countsAsSenateRecord);
     const textById = new Map(senateText.map((document) => [document.id, document]));
 
     const passedOn = new Map<string, Date>();

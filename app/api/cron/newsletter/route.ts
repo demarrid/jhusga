@@ -1,3 +1,4 @@
+import { invalidateArchiveCache } from "@/lib/archive-cache";
 import { timingSafeEqual } from "node:crypto";
 
 import { NEWSLETTER_RUN_BUDGET_MS } from "@/config/newsletter";
@@ -61,5 +62,7 @@ export async function GET(request: Request) {
     } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause);
         return Response.json({ ok: false, error: message }, { status: 500 });
+    } finally {
+        invalidateArchiveCache();
     }
 }

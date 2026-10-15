@@ -1,3 +1,4 @@
+import { invalidateArchiveCache } from "@/lib/archive-cache";
 import {
     MANUAL_SYNC_COOLDOWN_MS,
     SYNC_STALE_AFTER_MS,
@@ -93,5 +94,7 @@ export async function POST(request: Request) {
     } catch (cause) {
         console.error("Requested sync failed:", cause);
         return reply(500, false, "The sync failed. It will be retried tonight.");
+    } finally {
+        invalidateArchiveCache();
     }
 }

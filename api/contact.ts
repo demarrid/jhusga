@@ -1,5 +1,8 @@
 "use server";
 
+import { unstable_cache } from "next/cache";
+import { ARCHIVE_CACHE_TAG, ARCHIVE_CACHE_SECONDS } from "@/lib/archive-cache";
+
 import { SESSION_NUMBER } from "@/config/session";
 import {
     buildSessionDirectory,
@@ -24,10 +27,20 @@ export type ContactDirectory = {
     sources: DirectorySource[];
 };
 
+const cachedContactDirectory = unstable_cache(
+    loadContactDirectory,
+    ["contact-directory-v1"],
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+);
+
 export async function getContactDirectory(
     session: number = SESSION_NUMBER,
 ): Promise<ContactDirectory> {
     if (demoModeEnabled()) return demoDirectory();
+    return cachedContactDirectory(session);
+}
+
+async function loadContactDirectory(session: number): Promise<ContactDirectory> {
     const documents = await prisma.document.findMany({
         where: { sessionNumber: session },
         select: {

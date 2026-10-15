@@ -36,6 +36,7 @@ import path from "node:path";
 const SUITES = [
     "anchor",
     "archive",
+    "archive-cache",
     "accounts",
     "activity",
     "bill-votes",
