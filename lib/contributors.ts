@@ -625,7 +625,7 @@ function openContinuation(line: string): CarryingList | null {
     if (
         STACKED_LIST_ROLES.has(last.role) &&
         splitPeople(last.names).some((token) => {
-            const parsed = parsePersonToken(token);
+            const parsed = parsePersonToken(bylineToken(token, last.role));
             return parsed !== null && looksLikePersonName(parsed.name);
         })
     ) {
@@ -665,6 +665,12 @@ function openBareLabel(line: string): CarryingList | null {
  * `recordPerson` throws that away; a name still missing is a better outcome
  * than a body written down as a person.
  */
+/** Final PDFs typeset explicit legislative bylines in capitals. Blanks remain invalid. */
+function bylineToken(token: string, role: ContributorRole): string {
+    if (!STACKED_LIST_ROLES.has(role) || token !== token.toUpperCase() || /\bX{2,}\b/.test(token)) return token;
+    return token.toLowerCase().replace(/\b[a-z]/g, letter => letter.toUpperCase());
+}
+
 function harvestContinuedList(
     found: Map<string, ExtractedContributor>,
     line: string,
@@ -673,7 +679,7 @@ function harvestContinuedList(
     let recorded = 0;
     let carried = "";
     for (const candidate of splitPeople(line)) {
-        const token = carried ? `${carried} and ${candidate}` : candidate;
+        const token = bylineToken(carried ? `${carried} and ${candidate}` : candidate, carry.role);
         if (parsePersonToken(token)) {
             if (recordPerson(found, token, carry.role, carry.evidence)) recorded += 1;
             carried = "";
@@ -705,7 +711,7 @@ function harvestLabeledText(
             // "and" joins two people *and* two titles of one person
             // ("VPOTS and Chair of IA Shreemann Patel"). A fragment that is
             // only an office is held and stuck on the next name.
-            const token = carried ? `${carried} and ${candidate}` : candidate;
+            const token = bylineToken(carried ? `${carried} and ${candidate}` : candidate, segment.role);
             if (parsePersonToken(token)) {
                 if (recordPerson(found, token, segment.role, evidence)) recorded += 1;
                 carried = "";

@@ -33,6 +33,12 @@ function check(label: string, condition: boolean, detail?: unknown) {
 
 console.log("sanitizeExport");
 
+const finalPdfBylines = extractContributors("INTRODUCED BY: STUDENT BODY VICE PRESIDENT JACKSON MORRIS\nJUNIOR CLASS PRESIDENT RESHAM TALWAR\nFIRST CONSIDERED THIS 29TH DAY OF AUGUST IN THE YEAR 2023\nSPONSORED BY: JUNIOR CLASS SENATOR MOLLY KUZMA\nSOPHOMORE CLASS PRESIDENT STONE MENG\nSTUDENT BODY SECRETARY AMY LI", "Board of Trustees Resolution_final.pdf", "resolution");
+check("final PDF capitals and stacked bylines preserve both introducers and all sponsors",
+    ["Jackson Morris", "Resham Talwar"].every(name => finalPdfBylines.some(p => p.name === name && p.role === "introducer"))
+    && ["Molly Kuzma", "Stone Meng", "Amy Li"].every(name => finalPdfBylines.some(p => p.name === name && p.role === "sponsor")), finalPdfBylines);
+check("capitalized template blanks still earn no credit", !extractContributors("INTRODUCED BY: SENATOR NAME\nSPONSORED BY: SENATOR XXX", "Template", "bill.other").some(p => p.role === "introducer" || p.role === "sponsor"));
+
 const blackJays = extractContributors("Introduced by: **Oluwanifemi ajayi**\nSponsored by: **Kayla Marie Gonzalez** and **Jazzlyn Fernandez**", "Black Jays Photoshoot Funding Bill", "bill.funding");
 check("mixed-case bill introducers retain their full name", blackJays.some(p => p.name === "Oluwanifemi Ajayi" && p.role === "introducer"));
 check("both written Black Jays co-sponsors receive credit", ["Kayla Marie Gonzalez", "Jazzlyn Fernandez"].every(name => blackJays.some(p => p.name === name && p.role === "sponsor")));

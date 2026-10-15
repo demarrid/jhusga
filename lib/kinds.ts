@@ -184,7 +184,7 @@ export function classifyDocument(input: {
     // The Drive filename and the house title both count: "Copy of Senate GBM
     // #15" is still a Senate agenda once recordTitles has said so, and a
     // Google Slides file is a presentation even when it is titled "Updates".
-    const titled = `${name} ${shown}`.replace(/\s+/g, " ").trim();
+    const titled = `${name} ${shown}`.replace(/_/g, " ").replace(/\s+/g, " ").trim();
     const haystack = `${path}/${titled}`;
 
     if (/attendance/.test(haystack)) return "attendance";

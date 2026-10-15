@@ -1,5 +1,6 @@
 import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
 import { CONFIRMED_RESOLUTION_PASSAGE, REVIEWED_PASSAGE_EVIDENCE } from "@/config/passage-evidence";
+import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
 import { getContactDirectory } from "@/api/contact";
 import { nameKey } from "@/lib/contributors";
 import { SESSION_NUMBER } from "@/config/session";
@@ -153,6 +154,10 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
 
     for (const document of legislation) {
         if (!isHomepageHighlight(document.driveFileId)) continue;
+        // Prefer the adopted copy once its published vote line is verified.
+        if (LEGISLATION_EDITIONS.some(edition => edition.draftFileId === document.driveFileId
+            && legislation.some(copy => copy.driveFileId === edition.finalFileId
+                && passedOn.has(copy.driveFileId) && findQuote(copy.content, edition.passageQuote)))) continue;
         const lane = legislationLane({
             title: document.displayTitle || document.title,
             kind: document.kind,

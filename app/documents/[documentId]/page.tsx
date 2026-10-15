@@ -158,6 +158,20 @@ export default async function DocumentPage({
                 </p>
             )}
 
+            {document.legislationEdition && (
+                <p className={styles.fileNote}>
+                    {document.legislationEdition.role === "draft" ? <>
+                        Earlier draft. This resolution was adopted on {formatDate(new Date(`${document.legislationEdition.passedOn}T12:00:00Z`))}.{" "}
+                        <Link href={`/documents/${document.legislationEdition.counterpartId}`}>Read the final adopted copy and recorded vote.</Link>
+                        {" "}The summary below describes this draft.
+                    </> : <>
+                        Final adopted copy. Passed on {formatDate(new Date(`${document.legislationEdition.passedOn}T12:00:00Z`))};
+                        {" "}the Drive upload date is when this copy was added to the archive.{" "}
+                        <Link href={`/documents/${document.legislationEdition.counterpartId}`}>Earlier draft</Link>
+                    </>}
+                </p>
+            )}
+
             <div className={styles.actions}>
                 <a href={document.source} target="_blank" rel="noreferrer">
                     {originalLabel(document.source)} ↗
@@ -223,7 +237,7 @@ export default async function DocumentPage({
                 <aside className={styles.sidebar}>
                     <DoubleStickyHolder>
                         <section className={styles.sidebarSection}>
-                            <h2>Summary</h2>
+                            <h2>{document.legislationEdition?.role === "draft" ? "Draft summary" : "Summary"}</h2>
                             <DocumentRestatement restatement={document.restatement} />
                         </section>
 

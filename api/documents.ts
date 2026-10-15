@@ -1,4 +1,6 @@
 import { SESSION_NUMBER } from "@/config/sga";
+import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
+import { findQuote } from "@/lib/anchor";
 import { sheetDelimiter } from "@/lib/csv";
 import { documentFindRank } from "@/lib/document-find";
 import {
@@ -533,6 +535,7 @@ export type DocumentDetail = {
     /** False for documents belonging to a prior session. */
     isCurrentSession: boolean;
     lineageKey: string;
+    legislationEdition?: { role: "draft" | "final"; counterpartId: string; passedOn: string } | null;
     driveCreatedTime: Date | null;
     driveModifiedTime: Date | null;
     /** The date the document itself states, in its body or in its title. */
@@ -661,6 +664,18 @@ export async function getDocument(
 
     if (!document) return null;
 
+    const edition = LEGISLATION_EDITIONS.find(item => item.draftFileId === document.driveFileId || item.finalFileId === document.driveFileId);
+    const copies = edition ? await prisma.document.findMany({
+        where: { driveFileId: { in: [edition.draftFileId, edition.finalFileId] }, reviewState: "published" },
+        select: { id: true, driveFileId: true, content: true },
+    }) : [];
+    const finalCopy = edition ? copies.find(copy => copy.driveFileId === edition.finalFileId && findQuote(copy.content, edition.passageQuote)) : undefined;
+    const counterpart = edition ? copies.find(copy => copy.driveFileId !== document.driveFileId) : undefined;
+    const legislationEdition = edition && finalCopy && counterpart ? {
+        role: document.driveFileId === edition.finalFileId ? "final" as const : "draft" as const,
+        counterpartId: counterpart.id, passedOn: edition.passedOn,
+    } : null;
+
     const meetingRole = isMeetingRole(document.meetingRole)
         ? document.meetingRole
         : null;
@@ -740,6 +755,7 @@ export async function getDocument(
         sessionNumber: document.sessionNumber,
         isCurrentSession: document.sessionNumber === SESSION_NUMBER,
         lineageKey: document.lineageKey,
+        legislationEdition,
         driveCreatedTime: document.driveCreatedTime,
         driveModifiedTime: document.driveModifiedTime,
         datedAt: document.datedAt,

@@ -48,6 +48,8 @@ check(
 );
 
 console.log("\nlineageKeyFor");
+check("a final PDF joins the earlier draft despite its underscore suffix",
+    lineageKeyFor("Board of Trustees Resolution_final.pdf", "final") === lineageKeyFor("Board of Trustees Resolution", "draft"));
 
 // The whole point: the same document across sessions must collapse together.
 const current = lineageKeyFor("SGA Constitution", "a");

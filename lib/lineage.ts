@@ -46,7 +46,7 @@ export function lineageKeyFor(title: string, fallback: string, kind?: string): s
     const governing = kind ? governingLineageKey(kind, title) : null;
     if (governing) return governing;
 
-    const lowered = title.toLowerCase();
+    const lowered = title.toLowerCase().replace(/_/g, " ");
 
     // Pull dates out before stripping year ranges, so "2025-10-14" is not
     // mistaken for an academic year and removed.

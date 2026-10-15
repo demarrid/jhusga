@@ -40,6 +40,7 @@ import {
     isSharePointFileId,
 } from "@/lib/sharepoint";
 import { PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
+import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
 import { SECONDARY_KINDS, classifyDocument } from "@/lib/kinds";
 import { lineageKeyFor } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
@@ -330,13 +331,15 @@ export async function recordDates(): Promise<number> {
             content: true,
             driveCreatedTime: true,
             datedAt: true,
+            driveFileId: true,
         },
     });
 
     let dated = 0;
 
     for (const document of documents) {
-        const datedAt = documentDate(document);
+        const final = LEGISLATION_EDITIONS.find(edition => edition.finalFileId === document.driveFileId && findQuote(document.content, edition.passageQuote));
+        const datedAt = final ? new Date(`${final.passedOn}T12:00:00Z`) : documentDate(document);
         if (datedAt !== null) dated += 1;
 
         if (datedAt?.getTime() === document.datedAt?.getTime()) continue;
@@ -408,8 +411,8 @@ export async function recordKinds(): Promise<number> {
  */
 export async function recordSessions(): Promise<number> {
     const documents = await prisma.document.findMany({
-        where: { discoveredVia: "link" },
-        select: { id: true, title: true, content: true, sessionNumber: true },
+        where: { OR: [{ discoveredVia: "link" }, { driveFileId: { in: LEGISLATION_EDITIONS.map(edition => edition.finalFileId) } }] },
+        select: { id: true, title: true, content: true, sessionNumber: true, driveFileId: true },
     });
 
     let changed = 0;
@@ -417,7 +420,8 @@ export async function recordSessions(): Promise<number> {
     for (const document of documents) {
         if (document.sessionNumber === null) continue;
 
-        const inferred = linkedSession(
+        const final = LEGISLATION_EDITIONS.find(edition => edition.finalFileId === document.driveFileId && findQuote(document.content, edition.passageQuote));
+        const inferred = final?.sessionNumber ?? linkedSession(
             { title: document.title, content: document.content },
             document.sessionNumber,
         );

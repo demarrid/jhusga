@@ -9,6 +9,7 @@ import { documentKindLabel } from "@/lib/kinds";
 import { prisma } from "@/lib/prisma";
 import type { SectionStatus } from "@/lib/sections";
 import { summaryPromptVersion, summarySystemPrompt } from "@/lib/summary-prompt";
+import { recordedResolutionPassage } from "@/lib/activity";
 
 /**
  * A plain-language reading of one document.
@@ -127,10 +128,10 @@ export type SummarizeResult = {
  * actually read under, so a revision to one prompt leaves the other's cache
  * alone.
  */
-function promptFingerprint(contentHash: string, kind: string): string {
+function promptFingerprint(contentHash: string, kind: string, adopted = false): string {
     return createHash("sha256")
         .update(summaryPromptVersion(kind))
-        .update(`\u0000${kind}\u0000${contentHash}`)
+        .update(`\u0000${kind}\u0000${contentHash}${adopted ? "\u0000adopted-resolution-v1" : ""}`)
         .digest("hex");
 }
 
@@ -142,6 +143,9 @@ function buildUserPrompt(document: {
     const body = document.content.slice(0, MAX_DOCUMENT_CHARS);
 
     return [
+        document.kind === "resolution" && recordedResolutionPassage(document.content)
+            ? "This resolution records a completed passing vote. Describe it as adopted, not proposed; include the recorded vote counts with a citation to the enactment line. Calls for university action remain requests, not actions the university has taken."
+            : "",
         `<document kind="${documentKindLabel(document.kind)}" title="${document.title.replace(/"/g, "'")}">`,
         body,
         body.length < document.content.length ? "\n[document truncated]" : "",
@@ -240,7 +244,8 @@ export async function summarizeDocument(
         };
     }
 
-    const fingerprint = promptFingerprint(document.contentHash, document.kind);
+    const fingerprint = promptFingerprint(document.contentHash, document.kind,
+        document.kind === "resolution" && recordedResolutionPassage(document.content));
 
     if (
         !options.force &&
