@@ -8,6 +8,8 @@
 
 import {
     activityDate,
+    latestMinutesEntry,
+    latestMinutesSummary,
     authorLine,
     collectiveResolutionAuthor,
     isHomepageHighlight,
@@ -21,6 +23,21 @@ import {
 } from "../lib/activity";
 
 let failures = 0;
+
+check("combined card uses the last summary bullet without formatting or citation markers",
+    latestMinutesSummary({status: "fresh", content: "- Earlier meeting. [1]\n- **October 14:** Discussed housing access. [2]"}) === "October 14: Discussed housing access.");
+check("paragraph summaries use their closing sentence",
+    latestMinutesSummary({status: "stale", content: "Earlier meetings covered dining. The latest meeting addressed housing."}) === "The latest meeting addressed housing.");
+check("unavailable summaries remain empty", latestMinutesSummary(null) === "" && latestMinutesSummary({status: "pending", content: "Unpublished."}) === "");
+
+const rolling = { content: "# 9/3\n\nNotes\n\n# 10/14\n\nMeeting Minutes: 10/1\n\nUpdates\n\n# 10/21\n\nFuture notes", sessionNumber: 114 };
+const latest = latestMinutesEntry(rolling, new Date("2026-10-14T20:00:00Z"));
+check("combined minutes use the latest occurred heading, ignoring stale captions and future entries",
+    latest?.when.toISOString().startsWith("2026-10-14") === true
+    && latest.sectionId === `section-${rolling.content.indexOf("# 10/14")}`);
+check("yearless combined minutes need an archived session", latestMinutesEntry({ ...rolling, sessionNumber: null }, new Date()) === null);
+check("combined minutes use the spring year of their academic session",
+    latestMinutesEntry({ content: "# 12/3\n\nNotes\n\n# 1/14\n\nNotes", sessionNumber: 114 }, new Date("2027-01-15T20:00:00Z"))?.when.toISOString().startsWith("2027-01-14") === true);
 
 function check(label: string, condition: boolean, detail?: unknown) {
     if (condition) {

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { runsText, type Block, type InlineRun, type TableRow } from "@/lib/render";
 import styles from "@/app/documents/document-detail.module.css";
@@ -49,6 +49,16 @@ function BlockView({ block }: { block: Block }) {
         }
 
         case "paragraph": {
+            if (block.clause) {
+                const [marker, text] = splitTypedMarker(block.runs, block.clause.markerLength);
+                return (
+                    <p id={block.sectionId} className={anchorClass(styles.viewerClause, block.sectionId)}
+                        style={{ "--clause-depth": Math.min(block.clause.depth, 4), "--clause-marker-width": `${block.clause.markerLength + 1}ch` } as CSSProperties}>
+                        <span className={styles.clauseMarker}>{renderRuns(marker, false)}</span>
+                        <span>{renderRuns(text)}</span>
+                    </p>
+                );
+            }
             // pre-wrap keeps the line breaks the author typed; the export does
             // not soft-wrap, so every newline inside a paragraph is deliberate.
             // A bill's letterhead is those breaks and nothing else: five short
@@ -109,8 +119,9 @@ function BlockView({ block }: { block: Block }) {
                         <li
                             key={index}
                             id={item.sectionId}
-                            className={item.sectionId ? styles.sectionAnchor : undefined}
+                            className={[item.sectionId ? styles.sectionAnchor : "", item.checked !== undefined ? styles.taskItem : ""].filter(Boolean).join(" ") || undefined}
                         >
+                            {item.checked !== undefined && <span className={styles.taskMarker} role="img" aria-label={item.checked ? "Completed" : "Not completed"}>{item.checked ? "☑" : "☐"}</span>}
                             {renderRuns(item.runs)}
                             {renderBlocks(item.blocks)}
                         </li>

@@ -20,7 +20,32 @@ function check(label: string, condition: boolean, detail?: unknown) {
     }
 }
 
+const attendanceColumns = renderDocument("| Here:<br>Veda<br>Cole | Absent:<br>Excused:<br>Kai |\n| :---- | :---- |", []);
+check("single-row attendance keeps equal table columns without a false header",
+    attendanceColumns[0]?.kind === "table" && attendanceColumns[0].header === null && attendanceColumns[0].rows.length === 1);
+const updateColumns = renderDocument(`| ${"Updates from the committee. ".repeat(6)} | ${"Responses and next steps. ".repeat(6)} |\n| :---- | :---- |`, []);
+check("single-row minutes updates preserve both prose columns",
+    updateColumns[0]?.kind === "table" && updateColumns[0].header === null);
+const tasks = renderDocument("- [ ] Follow up with housing\n- [x] ~~Email sent~~", []);
+check("action items parse checked state and remove checkbox syntax",
+    tasks[0]?.kind === "list" && tasks[0].items[0].checked === false && tasks[0].items[1].checked === true
+    && runsText(tasks[0].items[0].runs) === "Follow up with housing" && tasks[0].items[1].runs.some(run => run.strike));
+
 /** Every run in the document, in reading order. */
+const rulesExcerpt = "**SECTION 4\\. RULES**\n4\\. Senate Meetings\n4.1. Meetings occur Tuesday.\n4.2.Agenda\n> > > 4.2.1. The agenda contains:\n4.2.1.1. Call to Order\n4.2.1.1.1 A deeper clause.\n\nAn ordinary paragraph.";
+const rulesBlocks = renderDocument(rulesExcerpt, []);
+const clauses = rulesBlocks.filter(block => block.kind === "paragraph" && block.clause);
+check("typed legislative clauses become separate blocks at their numbered depths",
+    clauses.length === 6 && clauses.every(block => block.kind === "paragraph")
+    && clauses.map(block => block.kind === "paragraph" ? block.clause?.depth : -1).join() === "0,1,1,2,3,4");
+check("quote indentation on a legislative clause does not become a blockquote",
+    !rulesBlocks.some(block => block.kind === "quote"));
+const clauseStart = rulesExcerpt.indexOf("The agenda contains:");
+const citedRules = renderDocument(rulesExcerpt, [{ id: "rules-clause", startOffset: clauseStart, endOffset: clauseStart + "The agenda contains:".length }]);
+check("numbered clauses preserve citation highlights and anchors",
+    allRuns(citedRules).filter(run => run.annotationId === "rules-clause").map(run => run.text).join("") === "The agenda contains:"
+    && allRuns(citedRules).filter(run => run.annotationId === "rules-clause" && run.anchor).length === 1);
+
 function allRuns(blocks: Block[]): InlineRun[] {
     return blocks.flatMap((block) => {
         switch (block.kind) {

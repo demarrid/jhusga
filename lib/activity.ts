@@ -18,6 +18,25 @@ import { documentDate } from "@/lib/identity";
 import { extractDocumentLinks } from "@/lib/links";
 import { toPlainText } from "@/lib/markdown";
 import { compareNamesBySurname, nameKey } from "@/lib/contributors";
+import { academicYearStart } from "@/config/session";
+import { meetingDate } from "@/lib/meetings";
+import { sectionAnchors } from "@/lib/outline";
+import { proseLine } from "@/lib/cite";
+
+/** The closing summary item usually describes the latest meeting in a rolling file. */
+export function latestMinutesSummary(summary: { content: string; status: string } | null): string {
+    if (!summary || !["fresh", "stale"].includes(summary.status)) return "";
+    const content = summary.content.trim();
+    const bullets = [...content.matchAll(/^\s*(?:[-*+] |\d+[.)] )/gm)];
+    const lastBullet = bullets[bullets.length - 1];
+    const tail = lastBullet
+        ? content.slice(lastBullet.index).replace(/^\s*(?:[-*+] |\d+[.)] )/, "")
+        : content.split(/\n\s*\n/).filter(part => part.trim() && !/^\s*#/.test(part)).at(-1) ?? "";
+    const plain = toPlainText(proseLine(tail, Number.MAX_SAFE_INTEGER));
+    const sentences = [...new Intl.Segmenter("en", { granularity: "sentence" }).segment(plain)];
+    const text = lastBullet ? plain : sentences.at(-1)?.segment.trim() ?? plain;
+    return text.length <= 220 ? text : `${text.slice(0, 219).trimEnd()}…`;
+}
 
 /** How many cards one lane of the home carousel shows. */
 export const ACTIVITY_CARD_LIMIT = 3;
@@ -347,6 +366,34 @@ export function calendarDay(date: Date): string {
 /** A meeting dated tomorrow has not happened, even if the agenda is already filed. */
 export function hasOccurred(when: Date, now: Date): boolean {
     return calendarDay(when) <= calendarDay(now);
+}
+
+/** Dated sections in a rolling minutes file, using its archived academic year. */
+export function latestMinutesEntry(input: {
+    content: string;
+    sessionNumber: number | null;
+}, now: Date): { when: Date; sectionId: string } | null {
+    const anchors = sectionAnchors(input.content);
+    const entries: { when: Date; sectionId: string }[] = [];
+    let offset = 0;
+    for (const line of input.content.split("\n")) {
+        const heading = /^\s*#{1,6}\s+(.+?)\s*$/.exec(line);
+        const title = heading ? toPlainText(heading[1]) : "";
+        const numeric = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(title);
+        let date = numeric?.[3] ? meetingDate(title) : null;
+        if (numeric && !numeric[3] && input.sessionNumber !== null) {
+            const month = Number(numeric[1]);
+            const year = academicYearStart(input.sessionNumber) + (month < 6 ? 1 : 0);
+            date = meetingDate(`${title}/${year}`);
+        }
+        const sectionId = anchors.get(offset);
+        if (date && sectionId) entries.push({ when: new Date(`${date}T12:00:00Z`), sectionId });
+        offset += line.length + 1;
+    }
+    // A single dated heading is not evidence that a file combines meetings.
+    if (entries.length < 2) return null;
+    return entries.filter(entry => hasOccurred(entry.when, now))
+        .sort((a, b) => b.when.getTime() - a.when.getTime())[0] ?? null;
 }
 
 /**

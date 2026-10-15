@@ -10,6 +10,8 @@ import {
     ACTIVITY_CARD_LIMIT,
     ACTIVITY_LANE_ORDER,
     activityDate,
+    latestMinutesEntry,
+    latestMinutesSummary,
     authorLine,
     collectiveResolutionAuthor,
     isHomepageHighlight,
@@ -26,7 +28,6 @@ import {
 } from "@/lib/activity";
 import { editorDisplayName, rankedEditors } from "@/lib/editors";
 import { demoDocuments } from "@/lib/demo-data";
-import { canReadRevisionHistory } from "@/lib/drive-revisions";
 import { findQuote } from "@/lib/anchor";
 import { prisma } from "@/lib/prisma";
 
@@ -60,6 +61,8 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
             meetingRole: true,
             datedAt: true,
             driveCreatedTime: true,
+            content: true,
+            sessionNumber: true,
             driveLastEditorName: true,
             driveLastEditorEmail: true,
             driveOwnerName: true,
@@ -162,13 +165,15 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
     const held = chooseMeetings(
         minutes.flatMap((document) => {
             if (!countsAsOccurredMeeting(document)) return [];
-            const when = activityDate(document);
+            const entry = latestMinutesEntry(document, now);
+            const when = entry?.when ?? activityDate(document);
             if (!when || !hasOccurred(when, now)) return [];
             return [
                 {
                     ...document,
                     title: document.displayTitle || document.title,
                     when: when.getTime(),
+                    entry,
                 },
             ];
         }),
@@ -177,7 +182,13 @@ export async function getRecentActivity(now = new Date()): Promise<ActivityLane[
 
     grouped.meetings = held.map((document) => ({
         when: document.when,
-        card: toCard(document, new Date(document.when), "Minutes"),
+        card: {
+            ...toCard(document, new Date(document.when), "Minutes"),
+            ...(document.entry ? {
+                href: `/documents/${document.id}#${document.entry.sectionId}`,
+                summary: latestMinutesSummary(document.summary),
+            } : {}),
+        },
     }));
 
     const lanes = ACTIVITY_LANE_ORDER.flatMap((lane) => {
@@ -327,23 +338,18 @@ async function attachAuthors(
         }
     }
 
-    // Use the owner only when history access is explicitly unavailable.
+    // Without qualifying writing history, fall back to the resolved owner.
     const missingCredits = lanes.filter(lane => lane.id === "meetings")
         .flatMap(lane => lane.cards).filter(card => card.authors === "Writing credit not verified");
     if (missingCredits.length) {
         const records = await prisma.document.findMany({
             where: { id: {in: missingCredits.map(card => card.id)} },
-            select: {id: true, driveFileId: true, driveOwnerName: true, driveOwnerEmail: true},
+            select: {id: true, driveOwnerName: true, driveOwnerEmail: true},
         });
         for (const record of records) {
-            try {
-                if (await canReadRevisionHistory(record.driveFileId) !== false) continue;
-                const owner = editorDisplayName({name: record.driveOwnerName ?? "", email: record.driveOwnerEmail ?? ""}, people);
-                const card = missingCredits.find(card => card.id === record.id);
-                if (card && owner) card.authors = owner;
-            } catch {
-                // A transient failure does not establish missing permissions.
-            }
+            const owner = editorDisplayName({name: record.driveOwnerName ?? "", email: record.driveOwnerEmail ?? ""}, people);
+            const card = missingCredits.find(card => card.id === record.id);
+            if (card && owner) card.authors = owner;
         }
     }
 

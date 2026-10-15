@@ -462,6 +462,16 @@ const listing = membersByGroup(
     ]).members,
 );
 const sectionOf = (group: string) => listing.find((section) => section.group === group);
+const cabinetListing = membersByGroup([{
+    name: "Jason Yu", group: "executive" as const, positions: ["Student Body President"],
+    seats: [{ group: "executive" as const, path: ["Cabinet"], title: "Student Body President", offices: [], committees: [], order: 0 }],
+}, {
+    name: "Sumire Sumi", group: "executive" as const, positions: ["Student Body Vice President"],
+    seats: [{ group: "executive" as const, path: ["Cabinet"], title: "Student Body Vice President", offices: [], committees: [], order: 1 }],
+}]);
+check("Student Body President appears above Cabinet while the vice president remains inside it",
+    cabinetListing[0]?.subgroups[0].key === "" && cabinetListing[0].subgroups[0].rows[0].member.name === "Jason Yu"
+    && cabinetListing[0].subgroups[1].key === "Cabinet" && cabinetListing[0].subgroups[1].rows[0].member.name === "Sumire Sumi");
 const rowsUnder = (group: string, key: string) =>
     sectionOf(group)?.subgroups.find((sub) => sub.key === key)?.rows ?? [];
 const describe = (rows: { member: { name: string }; title: string | null; offices: string[] }[]) =>
@@ -529,8 +539,8 @@ check(
 );
 check(
     "elections committee roles drop the committee's name",
-    describe(rowsUnder("cse", "")).join(" | ") === "Sajiv Harikrishnar: Chair | Alysa Peng: Financial Chair",
-    describe(rowsUnder("cse", "")),
+    !sectionOf("cse") && describe(rowsUnder("judiciary", "Committee on Student Elections")).join(" | ") === "Sajiv Harikrishnar: Chair | Alysa Peng: Financial Chair",
+    describe(rowsUnder("judiciary", "Committee on Student Elections")),
 );
 check(
     "the full office names stay on the record",

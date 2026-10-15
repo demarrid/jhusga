@@ -44,6 +44,7 @@ export type InlineRun = {
 };
 
 export type ListItem = {
+    checked?: boolean;
     runs: InlineRun[];
     /** Nested lists, and the heading Docs sometimes puts inside an item. */
     blocks: Block[];
@@ -81,7 +82,7 @@ export type HeadingBlock = {
 
 export type Block =
     | HeadingBlock
-    | { kind: "paragraph"; runs: InlineRun[]; sectionId?: string }
+    | { kind: "paragraph"; runs: InlineRun[]; sectionId?: string; clause?: { depth: number; markerLength: number } }
     | { kind: "quote"; blocks: Block[] }
     | {
         kind: "list";
@@ -354,6 +355,16 @@ function isBlank(text: string): boolean {
     return text.trim().length === 0;
 }
 
+/** Typed legislative numbering, including Docs' escaped dots and quote indentation. */
+function clauseLine(line: Line): { line: Line; depth: number; markerLength: number } | null {
+    const quote = QUOTE.exec(line.text);
+    const source = quote ? afterMarker(line, quote[0].length) : line;
+    const match = /^\s*((?:\d{1,3}(?:\\?\.\d{1,3})+)(?:\\?\.)?|\d{1,3}\\\.)(?=\s|[A-Za-z])\s*/.exec(source.text);
+    if (!match) return null;
+    const marker = match[1].replace(/\\/g, "");
+    return { line: source, depth: marker.replace(/\.$/, "").split(".").length - 1, markerLength: match[0].replace(/\\/g, "").trimEnd().length };
+}
+
 /** Whether a line opens a block of its own, and so ends the one before it. */
 function startsBlock(text: string): boolean {
     return (
@@ -361,6 +372,7 @@ function startsBlock(text: string): boolean {
         HEADING.test(text) ||
         QUOTE.test(text) ||
         TABLE_ROW.test(text) ||
+        clauseLine({ text, start: 0 }) !== null ||
         itemMarker(text) !== null
     );
 }
@@ -500,6 +512,20 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
             continue;
         }
 
+        const clause = clauseLine(line);
+        if (clause) {
+            const ranges = [lineRange(clause.line)];
+            index += 1;
+            while (index < lines.length && !isBlank(lines[index].text) && !startsBlock(lines[index].text) && !anchors.has(lines[index].start)) {
+                ranges[ranges.length - 1].end += 1;
+                ranges.push(lineRange(lines[index]));
+                index += 1;
+            }
+            blocks.push({ kind: "paragraph", runs: inline(ranges), sectionId: anchors.get(line.start),
+                clause: { depth: clause.depth, markerLength: clause.markerLength } });
+            continue;
+        }
+
         if (QUOTE.test(line.text)) {
             // Docs uses stacked `> > >` markers for indentation rather than for
             // nested quotation, so every depth collapses to one quote.
@@ -602,7 +628,7 @@ function parseTable(rows: Line[], inline: Inline): Block {
         // Docs marks the first row of every table as a header, including a
         // roll whose first row is just the chair and their status. A real
         // header names the columns; it does not mark anyone present.
-        if (header && header.cells.some((cell) => ATTENDANCE_STATUS.test(runsText(cell).trim()))) {
+        if (header && (body.length === 0 || header.cells.some((cell) => ATTENDANCE_STATUS.test(runsText(cell).trim())))) {
             return { kind: "table", header: null, rows: [header, ...body] };
         }
         return { kind: "table", header, rows: body };
@@ -623,7 +649,7 @@ function parseTable(rows: Line[], inline: Inline): Block {
  * the attendance roll: names in one cell, Present/Absent/Excused in the next.
  */
 function isValueGrid(rows: TableRow[]): boolean {
-    if (rows.length < 2) return false;
+    if (rows.length === 0) return false;
 
     const columns = rows.reduce((widest, row) => Math.max(widest, row.cells.length), 0);
     if (columns < 2) return false;
@@ -751,6 +777,7 @@ function trimmedRange(line: Line, from: number, to: number): Range {
 }
 
 type PendingItem = {
+    checked?: boolean;
     ranges: Range[];
     blocks: Block[];
     /** Non-zero when the item's own text is a heading; see below. */
@@ -834,6 +861,7 @@ function parseList(
                     ...(sectionId ? { sectionId } : {}),
                     ...value,
                     ...(current.typedMarker ? { typedMarker: current.typedMarker } : {}),
+                    ...(current.checked !== undefined ? { checked: current.checked } : {}),
                 },
         );
         current = null;
@@ -995,9 +1023,11 @@ function parseList(
         const heading = HEADING.exec(rest);
         const typed = !heading && (marker.style === "letter" || marker.style === "roman");
         const width = typed ? marker.indent : marker.width + (heading?.[0].length ?? 0);
+        const task = !first.ordered && !heading ? /^\[([ xX])\]\s+/.exec(rest) : null;
 
         current = {
-            ranges: [lineRange(afterMarker(line, width))],
+            ranges: [lineRange(afterMarker(line, width + (task?.[0].length ?? 0)))],
+            ...(task ? { checked: task[1].toLowerCase() === "x" } : {}),
             blocks: [],
             headingLevel: heading ? heading[1].length : 0,
             sectionId: anchors.get(line.start),

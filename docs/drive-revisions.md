@@ -42,9 +42,11 @@ rewrites using the same vocabulary. Tiny edits are not accumulated into credit.
 The first available snapshot is a baseline and earns no credit: its last editor
 cannot be assumed to have written everything in it. Missing exports break the
 comparison chain. Unnamed edits earn no credit and do not affect the named-writing denominator;
-their text remains the baseline so it is not attributed to the next named editor. When the OAuth account explicitly lacks revision-history access, meeting cards
-fall back to the resolved Drive owner name. Download failures and histories with
-no qualifying writer do not trigger that owner fallback. Resolved names are deduplicated while preserving rank.
+their text remains the baseline so it is not attributed to the next named editor.
+When retained history supplies no qualifying resolved writer, meeting cards fall
+back to the resolved Drive owner name, including when history has not been imported.
+If the owner cannot be resolved either, the card says writing credit is unverified.
+Resolved names are deduplicated while preserving rank.
 
 Google may omit revisions, merge edits, or omit signed-out editor identities.
 The API reports only the **last modifying user** of a retained revision. Credits

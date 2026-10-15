@@ -238,8 +238,8 @@ export type DirectorySubsection<T> = {
     rows: DirectoryRow<T>[];
 };
 
-/** The Programming Council is listed inside the Executive group. */
-const DISPLAY_GROUPS = DIRECTORY_GROUPS.filter((group) => group !== "programming");
+/** Councils sit within Executive; the elections committee sits within Judiciary. */
+const DISPLAY_GROUPS = DIRECTORY_GROUPS.filter((group) => group !== "programming" && group !== "cse");
 
 const PROGRAMMING_ORDER = 100_000;
 
@@ -305,6 +305,17 @@ function sharedPrefix(left: string[], right: string[]): number {
     return index;
 }
 
+/** Contact-page hierarchy, including corrections to inherited roster headings. */
+function displaySeat(seat: DirectorySeat): DirectorySeat {
+    if (seat.group === "cse") {
+        return { ...seat, group: "judiciary", path: ["Committee on Student Elections", ...seat.path], order: PROGRAMMING_ORDER + seat.order };
+    }
+    if (seat.group === "executive" && /^Student Body President$/i.test(seat.title ?? "")) {
+        return { ...seat, path: seat.path.filter(heading => !/\bcabinet\b/i.test(heading)), order: -1 };
+    }
+    return seat;
+}
+
 export function membersByGroup<T extends DirectoryListing>(
     members: T[],
 ): {
@@ -315,7 +326,7 @@ export function membersByGroup<T extends DirectoryListing>(
     const placed = members.flatMap((member) =>
         (member.seats?.length ? member.seats : [fallbackSeat(member)]).map((seat) => ({
             member,
-            seat,
+            seat: displaySeat(seat),
         })),
     );
 

@@ -237,18 +237,17 @@
 .subgroup h4 {
   margin: 2rem 0 0;
   color: #4c6680;
-  font-size: 0.68rem;
+  font-size: 1.08rem;
   font-weight: 720;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .subgroup h5 {
   margin: 1.5rem 0 0;
   color: #377ebc;
-  font-size: 0.64rem;
+  font-size: 0.88rem;
   font-weight: 680;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -261,6 +260,16 @@
   padding: 0;
   border-bottom: 1px solid #bdcad7;
   list-style: none;
+}
+
+.nestedSubgroup h5 {
+  margin-left: 1.25rem;
+}
+
+.nestedSubgroup ul {
+  margin-left: 1.25rem;
+  padding-left: 1rem;
+  border-left: 2px solid #d4e2ef;
 }
 
 .member {
