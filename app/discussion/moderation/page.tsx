@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cache } from "react";
 
-import { getViewer } from "@/api/auth";
-import { getHeldQueue, getModerationLog } from "@/api/forum";
+import { getViewer } from "@/server/auth";
+import { getHeldQueue, getModerationLog } from "@/server/forum";
 import ModerationControls from "@/app/(components)/ModerationControls";
 import { formatDateShort, formatDateTime } from "@/lib/dates";
 import { pageMetadata } from "@/lib/seo";

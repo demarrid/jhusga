@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { getViewer } from "@/api/auth";
-import { getCategories, getPosts, type ForumPostSummary } from "@/api/forum";
+import { getViewer } from "@/server/auth";
+import { getCategories, getPosts, type ForumPostSummary } from "@/server/forum";
 import { FORUM_CATEGORIES } from "@/config/forum";
 import { formatDateShort } from "@/lib/dates";
 import { pageMetadata } from "@/lib/seo";

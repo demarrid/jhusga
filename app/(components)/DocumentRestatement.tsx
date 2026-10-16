@@ -1,4 +1,4 @@
-import type { DocumentRestatement as Restatement, SummaryCitation } from "@/api/documents";
+import type { DocumentRestatement as Restatement, SummaryCitation } from "@/server/documents";
 import { citedIndexes, splitCitedParts, truncateAtWord } from "@/lib/cite";
 import styles from "@/app/documents/document-detail.module.css";
 

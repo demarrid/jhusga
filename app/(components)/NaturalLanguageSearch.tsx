@@ -10,7 +10,7 @@ import {
     type CSSProperties,
 } from "react";
 
-import { askArchive, askArchiveSources } from "@/api/search";
+import { askArchive, askArchiveSources } from "@/server/search";
 import CitedProse from "@/app/(components)/CitedProse";
 import LoadingBar from "@/app/(components)/LoadingBar";
 import { MAX_QUESTION_CHARS, describeQuestionReading } from "@/config/search";

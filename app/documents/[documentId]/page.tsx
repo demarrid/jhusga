@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
-import { getDocument, type DocumentDetail } from "@/api/documents";
+import { getDocument, type DocumentDetail } from "@/server/documents";
 import DocumentOutline from "@/app/(components)/DocumentOutline";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentViewer from "@/app/(components)/DocumentViewer";

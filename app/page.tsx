@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { getRecentActivity } from "@/api/activity";
+import { getRecentActivity } from "@/server/activity";
 import HeroBackground from "@/app/(components)/HeroBackground";
 import RecentCarousel from "@/app/(components)/RecentCarousel";
 import styles from "@/app/home.module.css";

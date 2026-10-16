@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
-import { signOut } from "@/api/auth";
+import { signOut } from "@/server/auth";
 import styles from "@/app/auth/auth.module.css";
 
 /**

@@ -178,7 +178,7 @@ async function main() {
     check("section marked stale", sectionAfter.status === "stale", sectionAfter);
 
     // The read path used by pages.
-    const { getSection } = await import("../api/sections");
+    const { getSection } = await import("../server/sections");
     const read = await getSection(SECTION_KEY);
     check("getSection returns both citations", read?.citations.length === 2, read?.citations.length);
     check(
@@ -193,7 +193,7 @@ async function main() {
         read?.citations[0]?.href,
     );
 
-    const { getDocument } = await import("../api/documents");
+    const { getDocument } = await import("../server/documents");
     await prisma.document.update({
         where: { id: document.id },
         data: { content: after },

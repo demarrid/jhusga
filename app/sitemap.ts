@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
-import { getDocuments } from "@/api/documents";
-import { getPosts } from "@/api/forum";
+import { getDocuments } from "@/server/documents";
+import { getPosts } from "@/server/forum";
 import { siteUrl } from "@/lib/seo";
 
 /**

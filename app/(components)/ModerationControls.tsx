@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { moderate } from "@/api/forum";
+import { moderate } from "@/server/forum";
 import styles from "@/app/discussion/discussion.module.css";
 
 /**

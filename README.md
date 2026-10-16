@@ -237,8 +237,9 @@ They are still attributed as reporting, never as an SGA record.
 | `lib/` (the paper) | `newsletter` (reads jhunewsletter.com, no database) and `coverage` (stores what it read). |
 | `lib/` (forum) | `login`, `ratelimit`, `moderate`, `resend`, `prune` -- the only modules that touch identity, and the reason each keeps so little. |
 | `config/` | Everything meant to be edited: `sga`, `search`, `office-hours`, `forum` (categories, limits), `integrity` (hold thresholds). |
-| `api/` | Server actions the pages read: `documents`, `sections`, `archive`, `search`, `community`, `auth`, `forum`. |
+| `server/` | Internal data modules and server actions the pages read: `documents`, `sections`, `archive`, `search`, `community`, `auth`, `forum`. |
 | `app/(components)/` | `SourceChip`, `DocumentViewer`, `DocumentDiff`, `CitedProse`, `NaturalLanguageSearch`, `SignIn`, `NewPostForm`, `ReplyForm`, `ModerationControls`. |
+| `app/api/documents/` | Public document pagination endpoint. Keep internal modules in `server/`: Vercel treats root `api/` files as functions, which can shadow this route. |
 | `app/api/cron/sync/` | The daily job, guarded by `CRON_SECRET`. Scheduled in `vercel.json`. |
 | `app/api/sync/` | The same job, started by the Request sync button on the documents page. Off with `MANUAL_SYNC_ENABLED=false`; one run at a time, a cooldown after each, and a per-network limit. |
 | `app/api/cron/newsletter/` | The daily News-Letter pass, same guard. Separate because it is budgeted, not finite. |

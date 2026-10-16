@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import type { MeetingCounterpart, RelatedDocument, UnresolvedLink } from "@/api/documents";
+import type { MeetingCounterpart, RelatedDocument, UnresolvedLink } from "@/server/documents";
 import { sessionOrdinal } from "@/config/session";
 import { documentKindLabel } from "@/lib/kinds";
 import { meetingRoleLabel } from "@/lib/meetings";

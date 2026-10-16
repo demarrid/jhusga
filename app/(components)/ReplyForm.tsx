@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { createReply } from "@/api/forum";
+import { createReply } from "@/server/forum";
 import Checkbox from "@/app/(components)/Checkbox";
 import { BODY_MAX_CHARS } from "@/config/forum";
 import styles from "@/app/discussion/discussion.module.css";

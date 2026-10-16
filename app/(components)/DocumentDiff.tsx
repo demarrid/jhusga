@@ -1,4 +1,4 @@
-import type { Comparison } from "@/api/archive";
+import type { Comparison } from "@/server/archive";
 import styles from "@/app/documents/document-detail.module.css";
 
 /**

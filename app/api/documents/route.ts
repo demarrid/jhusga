@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { getDocumentPage } from "@/api/documents";
+import { getDocumentPage } from "@/server/documents";
 import { SESSION_NUMBER } from "@/config/session";
 import { parseDocumentSort } from "@/lib/document-sort";
 

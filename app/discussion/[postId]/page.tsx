@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
-import { getViewer } from "@/api/auth";
-import { getPost, type ForumAuthor } from "@/api/forum";
+import { getViewer } from "@/server/auth";
+import { getPost, type ForumAuthor } from "@/server/forum";
 import ModerationControls from "@/app/(components)/ModerationControls";
 import ReplyForm from "@/app/(components)/ReplyForm";
 import { formatDateShort } from "@/lib/dates";

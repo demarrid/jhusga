@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { getSections, type Section } from "@/api/sections";
+import { getSections, type Section } from "@/server/sections";
 import GeneratedProse from "@/app/(components)/GeneratedProse";
 import { getSessionString } from "@/app/utils";
 import { SECTION_KEYS } from "@/lib/sections";

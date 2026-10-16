@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { createPost } from "@/api/forum";
+import { createPost } from "@/server/forum";
 import Checkbox from "@/app/(components)/Checkbox";
 import Select from "@/app/(components)/Select";
 import {

@@ -8,7 +8,7 @@ import {
     getAmendmentsBetween,
     getComparisonOptions,
     type LineageMember,
-} from "@/api/archive";
+} from "@/server/archive";
 import DocumentDiff from "@/app/(components)/DocumentDiff";
 import { sessionOrdinal } from "@/config/session";
 import { formatMonthYear } from "@/lib/dates";

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { getViewer } from "@/api/auth";
+import { getViewer } from "@/server/auth";
 import NewPostForm from "@/app/(components)/NewPostForm";
 import { pageMetadata } from "@/lib/seo";
 

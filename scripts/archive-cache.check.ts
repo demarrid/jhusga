@@ -27,10 +27,10 @@ async function main() {
         prisma: { document: documents, hopkinsAffiliate: documents, hopkinsCategory: documents, documentContributor: documents },
     });
     delete process.env.JHUSGA_DATA_MODE;
-    const { getRecentActivity } = await import("../api/activity");
-    const { getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse } = await import("../api/documents");
+    const { getRecentActivity } = await import("../server/activity");
+    const { getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse } = await import("../server/documents");
     const filters = [getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse];
-    const { getContactDirectory } = await import("../api/contact");
+    const { getContactDirectory } = await import("../server/contact");
     const { ARCHIVE_CACHE_SECONDS, ARCHIVE_CACHE_TAG, invalidateArchiveCache } = await import("../lib/archive-cache");
     const { workAsyncStorage } = await import("next/dist/server/app-render/work-async-storage.external");
 

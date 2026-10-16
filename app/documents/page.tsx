@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { getLineage } from "@/api/archive";
+import { getLineage } from "@/server/archive";
 import {
   getContributorRolesInUse,
   getDocumentKindsInUse,
@@ -10,7 +10,7 @@ import {
   getOfficesInUse,
   getPeopleInUse,
   getPersonFilterOption,
-} from "@/api/documents";
+} from "@/server/documents";
 import ArchiveSearch from "@/app/(components)/ArchiveSearch";
 import { DocumentQueryProvider } from "@/app/(components)/DocumentQuery";
 import SyncButton from "@/app/(components)/SyncButton";

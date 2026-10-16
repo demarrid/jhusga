@@ -804,7 +804,7 @@ const sharedRetrievals = new Map<
 /**
  * Retrieval for a question, shared with whoever else is asking for it now.
  *
- * Per-instance, like the rate limit in api/search.ts: a pair of calls that
+ * Per-instance, like the rate limit in server/search.ts: a pair of calls that
  * lands on two serverless instances simply retrieves twice, which is what it
  * would have done anyway.
  */

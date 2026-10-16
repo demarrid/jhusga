@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { sendSignInCode, submitSignInCode } from "@/api/auth";
+import { sendSignInCode, submitSignInCode } from "@/server/auth";
 import { ALLOWED_EMAIL_DOMAINS } from "@/config/forum";
 import styles from "@/app/auth/auth.module.css";
 

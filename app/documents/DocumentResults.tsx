@@ -4,7 +4,7 @@ import Link from "next/link";
 import DocumentSearchLink from "@/app/(components)/DocumentSearchLink";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import type { DocumentListing, DocumentPage } from "@/api/documents";
+import type { DocumentListing, DocumentPage } from "@/server/documents";
 import { useDocumentQuery } from "@/app/(components)/DocumentQuery";
 import LoadingBar from "@/app/(components)/LoadingBar";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";

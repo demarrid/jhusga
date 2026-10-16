@@ -3,7 +3,7 @@ import { ARCHIVE_CACHE_TAG, ARCHIVE_CACHE_SECONDS } from "@/lib/archive-cache";
 import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
 import { CONFIRMED_RESOLUTION_PASSAGE, REVIEWED_PASSAGE_EVIDENCE } from "@/config/passage-evidence";
 import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
-import { getContactDirectory } from "@/api/contact";
+import { getContactDirectory } from "@/server/contact";
 import { SESSION_NUMBER } from "@/config/session";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { formatDateShort } from "@/lib/dates";

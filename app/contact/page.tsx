@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { getContactDirectory } from "@/api/contact";
+import { getContactDirectory } from "@/server/contact";
 import SourceChip from "@/app/(components)/SourceChip";
 import { getSessionString } from "@/app/utils";
 import { OFFICE_HOURS, OFFICE_HOURS_CHECKED } from "@/config/office-hours";

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { getViewer } from "@/api/auth";
+import { getViewer } from "@/server/auth";
 import SignIn from "@/app/(components)/SignIn";
 import SignOutButton from "@/app/(components)/SignOutButton";
 import { pageMetadata } from "@/lib/seo";

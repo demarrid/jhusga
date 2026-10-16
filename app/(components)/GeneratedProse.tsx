@@ -1,4 +1,4 @@
-import type { Section } from "@/api/sections";
+import type { Section } from "@/server/sections";
 import CitedProse from "@/app/(components)/CitedProse";
 
 import styles from "./GeneratedProse.module.css";
