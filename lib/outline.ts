@@ -108,10 +108,15 @@ function isBanner(plain: string, meetingsAreSections: boolean): boolean {
     return !meetingsAreSections && isMeetingTitle(plain);
 }
 
+function isDatedMeetingHeading(plain: string): boolean {
+    return /^\d{1,2}\/\d{1,2}(?:\/(?:\d{4}|\d{2}))?$/.test(plain)
+        || /^meeting\s+#?\d+[a-z]?\s*[:—–-]/i.test(plain);
+}
+
 function isMeetingTitle(plain: string): boolean {
     return (
-        plain.length < 90 &&
-        /\b(senate|sga|committee|executive)\b/i.test(plain) &&
+        plain.length < 120 &&
+        (/\b(senate|sga|committee|executive)\b/i.test(plain) || /^meeting\s+#?\d+[a-z]?\b/i.test(plain)) &&
         /\bmeeting\b/i.test(plain) &&
         !/\b(call to order|reports|reading|business|adjourn)/i.test(plain)
     );
@@ -166,7 +171,7 @@ function isHeadingTitle(title: string, meetingsAreSections: boolean): boolean {
         title.length <= 120 &&
         !RULE.test(title) &&
         !isBanner(title, meetingsAreSections) &&
-        !isDateLine(title)
+        (!isDateLine(title) || (meetingsAreSections && (isMeetingTitle(title) || isDatedMeetingHeading(title))))
     );
 }
 
@@ -175,7 +180,7 @@ function holdsSeveralMeetings(lines: Line[]): boolean {
     let found = 0;
     for (const line of lines) {
         const text = clean(line.text.replace(/^\s*(?:>\s?)*(?:(?:\d{1,3}[.)]|[-*+])\s+)?#{0,6}\s*/, ""));
-        if (isMeetingTitle(text) && ++found > 1) return true;
+        if ((isMeetingTitle(text) || isDatedMeetingHeading(text)) && ++found > 1) return true;
     }
     return false;
 }
@@ -218,6 +223,7 @@ function isTitleCase(plain: string): boolean {
 /** Drop the export's emphasis, links, and escapes, leaving the words. */
 function clean(text: string): string {
     return text
+        .replace(/\s+\{#[^}\n]+\}\s*$/, "")
         .replace(/\\([^A-Za-z0-9\n])/g, "$1")
         .replace(/\[([^\]\n]*)\]\((?:\\.|[^)\n])*\)/g, "$1")
         .replace(/[*_~]/g, "")

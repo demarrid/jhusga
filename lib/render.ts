@@ -504,7 +504,8 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
                     : {
                         kind: "heading",
                         level: heading[1].length,
-                        runs: inline([lineRange(afterMarker(line, heading[0].length))]),
+                        // Hide exported heading IDs without changing source offsets.
+                        runs: inline([lineRange(afterMarker({ ...line, text: line.text.replace(/\s+\{#[^}\n]+\}\s*$/, "") }, heading[0].length))]),
                         ...(sectionId ? { sectionId } : {}),
                     },
             );

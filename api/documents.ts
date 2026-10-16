@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+import { ARCHIVE_CACHE_SECONDS, ARCHIVE_CACHE_TAG } from "@/lib/archive-cache";
 import { SESSION_NUMBER } from "@/config/sga";
 import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
 import { findQuote } from "@/lib/anchor";
@@ -273,7 +275,8 @@ export async function getDocumentPage(
             id: true,
             title: true,
             displayTitle: true,
-            description: true,
+            // Descriptions are only needed for search relevance.
+            description: Boolean(query),
             datedAt: true,
             driveCreatedTime: true,
             driveModifiedTime: true,
@@ -336,6 +339,18 @@ export async function getPeopleInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ id: string; name: string; count: number }[]> {
     if (demoModeEnabled()) return demoPeople(session);
+    return cachedPeopleInUse(session);
+}
+
+const cachedPeopleInUse = unstable_cache(
+    loadPeopleInUse,
+    ["getPeopleInUse-v1"],
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+);
+
+async function loadPeopleInUse(
+    session: SessionFilter = SESSION_NUMBER,
+): Promise<{ id: string; name: string; count: number }[]> {
     const people = await prisma.hopkinsAffiliate.findMany({
         where: {
             contributions: { some: { document: sessionWhere(session) } },
@@ -411,6 +426,18 @@ export async function getOfficesInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ id: string; name: string; count: number }[]> {
     if (demoModeEnabled()) return demoOffices();
+    return cachedOfficesInUse(session);
+}
+
+const cachedOfficesInUse = unstable_cache(
+    loadOfficesInUse,
+    ["getOfficesInUse-v1"],
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+);
+
+async function loadOfficesInUse(
+    session: SessionFilter = SESSION_NUMBER,
+): Promise<{ id: string; name: string; count: number }[]> {
     const held = {
         ...(session === "all" ? {} : { endedAt: null }),
         hopkinsAffiliate: {
@@ -443,6 +470,18 @@ export async function getContributorRolesInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ role: string; count: number }[]> {
     if (demoModeEnabled()) return demoRoles(session);
+    return cachedContributorRolesInUse(session);
+}
+
+const cachedContributorRolesInUse = unstable_cache(
+    loadContributorRolesInUse,
+    ["getContributorRolesInUse-v1"],
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+);
+
+async function loadContributorRolesInUse(
+    session: SessionFilter = SESSION_NUMBER,
+): Promise<{ role: string; count: number }[]> {
     const grouped = await prisma.documentContributor.groupBy({
         by: ["role"],
         where: { document: sessionWhere(session) },
@@ -624,7 +663,32 @@ export async function getDocument(
     if (demoModeEnabled()) return demoDocument(documentId);
     const document = await prisma.document.findUnique({
         where: { id: documentId },
-        include: {
+        select: {
+            id: true,
+            driveFileId: true,
+            title: true,
+            displayTitle: true,
+            description: true,
+            kind: true,
+            folderPath: true,
+            discoveredVia: true,
+            matchedPhrases: true,
+            source: true,
+            content: true,
+            sessionNumber: true,
+            lineageKey: true,
+            driveCreatedTime: true,
+            driveModifiedTime: true,
+            datedAt: true,
+            lastSyncedAt: true,
+            meetingRole: true,
+            meetingKey: true,
+            mimeType: true,
+            driveOwnerName: true,
+            driveLastEditorName: true,
+            reviewState: true,
+            heldReason: true,
+            anyoneCanEdit: true,
             documentAnnotations: {
                 where: { orphanedAt: null },
                 select: { id: true, startOffset: true, endOffset: true },
@@ -647,10 +711,15 @@ export async function getDocument(
                 orderBy: { fromDocument: { title: "asc" } },
             },
             summary: {
-                include: {
+                select: {
+                    content: true,
+                    status: true,
+                    model: true,
+                    generatedAt: true,
                     citations: {
                         orderBy: { ordinal: "asc" },
-                        include: {
+                        select: {
+                            annotationId: true,
                             annotation: {
                                 select: { id: true, content: true, orphanedAt: true },
                             },
@@ -787,6 +856,18 @@ export async function getDocumentKindsInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ kind: DocumentKind; count: number }[]> {
     if (demoModeEnabled()) return demoKinds(session);
+    return cachedDocumentKindsInUse(session);
+}
+
+const cachedDocumentKindsInUse = unstable_cache(
+    loadDocumentKindsInUse,
+    ["getDocumentKindsInUse-v1"],
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+);
+
+async function loadDocumentKindsInUse(
+    session: SessionFilter = SESSION_NUMBER,
+): Promise<{ kind: DocumentKind; count: number }[]> {
     const grouped = await prisma.document.groupBy({
         by: ["kind"],
         where: sessionWhere(session),

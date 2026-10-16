@@ -51,7 +51,7 @@ import { prisma } from "@/lib/prisma";
 // cache key on every request. Explicit dates remain useful for archive previews.
 const cachedRecentActivity = unstable_cache(
     () => loadRecentActivity(new Date()),
-    ["recent-activity-v1"],
+    ["recent-activity-v2"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 

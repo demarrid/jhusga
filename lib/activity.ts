@@ -408,26 +408,48 @@ export function latestMinutesEntry(input: {
     sessionNumber: number | null;
 }, now: Date): { when: Date; sectionId: string } | null {
     const anchors = sectionAnchors(input.content);
-    const entries: { when: Date; sectionId: string }[] = [];
+    const entries: { when: Date; sectionId: string; start: number; end: number; named: boolean }[] = [];
     let offset = 0;
     for (const line of input.content.split("\n")) {
         const heading = /^\s*#{1,6}\s+(.+?)\s*$/.exec(line);
-        const title = heading ? toPlainText(heading[1]) : "";
-        const numeric = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(title);
-        let date = numeric?.[3] ? meetingDate(title) : null;
+        const title = heading ? toPlainText(heading[1].replace(/\s+\{#[^}\n]+\}\s*$/, "")) : "";
+        // These trailing sections are examples for the secretary, not records.
+        if (/^(instructions?|templates?)(?:\s*:.*)?$/i.test(title)) {
+            if (entries.length) entries[entries.length - 1].end = offset;
+            break;
+        }
+        const numeric = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?$/.exec(title);
+        const named = /^meeting\s+#?\d+[a-z]?\s*[:—–-]/i.test(title);
+        let date = (numeric?.[3] || named) ? meetingDate(title) : null;
         if (numeric && !numeric[3] && input.sessionNumber !== null) {
             const month = Number(numeric[1]);
             const year = academicYearStart(input.sessionNumber) + (month < 6 ? 1 : 0);
             date = meetingDate(`${title}/${year}`);
         }
         const sectionId = anchors.get(offset);
-        if (date && sectionId) entries.push({ when: new Date(`${date}T12:00:00Z`), sectionId });
+        if (date && sectionId) {
+            if (entries.length) entries[entries.length - 1].end = offset;
+            entries.push({ when: new Date(`${date}T12:00:00Z`), sectionId,
+                start: offset + line.length + 1, end: input.content.length, named });
+        }
         offset += line.length + 1;
     }
     // A single dated heading is not evidence that a file combines meetings.
     if (entries.length < 2) return null;
-    return entries.filter(entry => hasOccurred(entry.when, now))
-        .sort((a, b) => b.when.getTime() - a.when.getTime())[0] ?? null;
+    const latest = entries.filter(entry => {
+        if (!hasOccurred(entry.when, now)) return false;
+        const body = input.content.slice(entry.start, entry.end);
+        // Named meeting templates can have filled attendance and agendas but
+        // still no minutes. Only the recorded discussion makes them eligible.
+        const minutes = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?Minutes(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?[ \t]*/im.exec(body);
+        if (entry.named && !minutes) return false;
+        const notes = minutes ? body.slice(minutes.index + minutes[0].length).split(/^\s*(?:\*\*|__)?Action items/im)[0] : body;
+        return notes.split("\n").some(line => {
+            const plain = toPlainText(line).replace(/^[-*+\d.)\s]+/, "").trim();
+            return plain.length > 2 && !/^(?:\d+(?:st|nd|rd|th) Johns Hopkins|Committee on |\[|n\/?a$|none$)/i.test(plain);
+        });
+    }).sort((a, b) => b.when.getTime() - a.when.getTime())[0];
+    return latest ? { when: latest.when, sectionId: latest.sectionId } : null;
 }
 
 /**

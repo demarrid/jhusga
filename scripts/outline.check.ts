@@ -1,3 +1,4 @@
+import { weeklyMinutes } from "./weekly-minutes.fixture";
 /**
  * The outline beside a document: what counts as a section, and that naming
  * one does not move the text a citation indexes.
@@ -637,6 +638,19 @@ check(
     idsOf(documentSections(notes, { anchored: blockSectionIds(noteSheet) })).length === 0,
     flat(documentSections(notes, { anchored: blockSectionIds(noteSheet) })),
 );
+
+
+const weeklyRendered = renderDocument(weeklyMinutes, []);
+const weeklyAnchors = blockSectionIds(weeklyRendered);
+const weeklyOutline = documentSections(weeklyMinutes, {kind: "minutes.committee", anchored: weeklyAnchors});
+check("weekly meeting headings survive dates, times, rooms and exported anchor IDs",
+    flat(weeklyOutline).some(title => title.includes("Meeting #6: October 15th, 2026"))
+    && !flat(weeklyOutline).some(title => title.includes("{#")), flat(weeklyOutline));
+check("weekly meeting links target rendered headings rather than the table of contents",
+    idsOf(weeklyOutline).every(id => weeklyAnchors.has(id))
+    && weeklyAnchors.has(`section-${weeklyMinutes.indexOf("# Meeting \\#6")}`));
+check("exported anchor markup is hidden in rendered headings",
+    weeklyRendered.filter(block => block.kind === "heading").every(block => !runsText(block.runs).includes("{#")));
 
 if (failures > 0) {
     console.log(`\n${failures} failed`);

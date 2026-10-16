@@ -18,13 +18,18 @@ async function main() {
         },
     };
     let reads = 0;
-    const documents = { findMany: async () => { reads++; return []; } };
+    const documents = {
+        findMany: async () => { reads++; return []; },
+        groupBy: async () => { reads++; return []; },
+    };
     Object.assign(globalThis, {
         __incrementalCache: backend,
-        prisma: { document: documents, hopkinsAffiliate: documents },
+        prisma: { document: documents, hopkinsAffiliate: documents, hopkinsCategory: documents, documentContributor: documents },
     });
     delete process.env.JHUSGA_DATA_MODE;
     const { getRecentActivity } = await import("../api/activity");
+    const { getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse } = await import("../api/documents");
+    const filters = [getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse];
     const { getContactDirectory } = await import("../api/contact");
     const { ARCHIVE_CACHE_SECONDS, ARCHIVE_CACHE_TAG, invalidateArchiveCache } = await import("../lib/archive-cache");
     const { workAsyncStorage } = await import("next/dist/server/app-render/work-async-storage.external");
@@ -56,6 +61,15 @@ async function main() {
     assert.equal((await getContactDirectory(113)).sessionNumber, 113);
     assert.ok(reads > directoryReads, "different sessions must have different cache entries");
 
+    for (const filter of filters) {
+        await filter(114);
+        const cold = reads;
+        await filter(114);
+        assert.equal(reads, cold, "filter options must be shared across requests");
+        await filter("all");
+        assert.equal(reads, cold + 1, "archive scope must have a separate cache entry");
+    }
+
     // Next records tags in the route context; its response lifecycle applies them.
     const store = { incrementalCache: backend, pendingRevalidatedTags: [] as { tag: string; profile: unknown }[] };
     workAsyncStorage.run(store as unknown as Parameters<typeof workAsyncStorage.run>[0], invalidateArchiveCache);
@@ -64,6 +78,11 @@ async function main() {
     assert.deepEqual(store.pendingRevalidatedTags[0].profile, { expire: 0 });
     for (const [key, entry] of entries) {
         if (entry.tags.includes(ARCHIVE_CACHE_TAG)) entries.delete(key);
+    }
+    for (const filter of filters) {
+        const before = reads;
+        await filter(114);
+        assert.equal(reads, before + 1, "sync invalidation must refresh each filter");
     }
     const beforeInvalidation = reads;
     await getRecentActivity();
@@ -75,10 +94,16 @@ async function main() {
     await getRecentActivity();
     await getContactDirectory(114);
     assert.ok(reads > beforeExpiry, "TTL must pick up CLI updates without a sync webhook");
+    for (const filter of filters) {
+        const before = reads;
+        await filter(114);
+        assert.equal(reads, before + 1, "filter TTL must pick up CLI updates");
+    }
     process.env.JHUSGA_DATA_MODE = "demo";
     const beforeDemo = reads;
     await getRecentActivity();
     await getContactDirectory();
+    for (const filter of filters) await filter(114);
     assert.equal(reads, beforeDemo, "demo mode must bypass live cached data and database reads");
     console.log("all archive cache checks passed");
 }

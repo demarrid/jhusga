@@ -1,3 +1,4 @@
+import { weeklyMinutes } from "./weekly-minutes.fixture";
 /**
  * What the home carousel is willing to call recent.
  *
@@ -64,6 +65,23 @@ function ids(content: string): string[] {
 }
 
 const doc = (id: string) => `https://docs.google.com/document/d/${id}/edit`;
+
+
+const weekly = {content: weeklyMinutes, sessionNumber: 114};
+const weeklyNow = new Date("2026-10-16T16:00:00Z");
+const weeklyLatest = latestMinutesEntry(weekly, weeklyNow);
+check("named weekly headings use the latest recorded meeting and its actual section anchor",
+    weeklyLatest?.when.toISOString().startsWith("2026-10-15") === true
+    && weeklyLatest.sectionId === `section-${weeklyMinutes.indexOf("# Meeting \\#6")}`);
+check("empty minutes, contents links, instructions and templates never become recent meetings",
+    latestMinutesEntry(weekly, new Date("2026-11-06T16:00:00Z"))?.sectionId === weeklyLatest?.sectionId);
+check("a future recorded meeting stays out until its date",
+    latestMinutesEntry(weekly, new Date("2026-10-14T16:00:00Z"))?.when.toISOString().startsWith("2026-09-29") === true);
+check("newly filled minutes automatically replace the previous weekly entry",
+    latestMinutesEntry({...weekly, content: weeklyMinutes.replace("**Minutes**:\n*\n", "**Minutes**:\n* Reviewed outreach results.\n")},
+        new Date("2026-10-23T16:00:00Z"))?.when.toISOString().startsWith("2026-10-22") === true);
+check("full numeric date headings also work in rolling minutes",
+    latestMinutesEntry({content: "# 10/08/2026\nNotes\n# 10/15/2026\nNotes",sessionNumber: 114}, weeklyNow)?.when.toISOString().startsWith("2026-10-15") === true);
 
 console.log("passage");
 

@@ -43,12 +43,20 @@ export async function getSection(key: string): Promise<Section | null> {
     if (demoModeEnabled()) return demoSections([key])[key] ?? null;
     const section = await prisma.generatedSection.findUnique({
         where: { key },
-        include: {
+        select: {
+            key: true,
+            content: true,
+            status: true,
+            generatedAt: true,
             citations: {
                 orderBy: { ordinal: "asc" },
-                include: {
+                select: {
+                    id: true,
+                    annotationId: true,
                     annotation: {
-                        include: {
+                        select: {
+                            content: true,
+                            orphanedAt: true,
                             document: { select: { id: true, title: true } },
                         },
                     },
