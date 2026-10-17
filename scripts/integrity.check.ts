@@ -151,6 +151,11 @@ check(
 console.log("\nheldNotice");
 
 const ratificationNotice = heldNotice(tinyEdit.reason);
+check("standalone ratification reasons start with a capital", tinyEdit.reason.startsWith("The Constitution"));
+check("an introductory phrase keeps the following article lowercase", openDoor.reason.includes(", and the Constitution"));
+check("stored lowercase notices gain sentence case and terminal punctuation",
+    heldNotice(`the Constitution (5 lines added, 5 removed)${RATIFICATION_MARKER}`)
+        .startsWith("The Constitution (5 lines added, 5 removed). You"));
 check(
     "a ratification hold tells the reader they are seeing the last adopted text",
     /last adopted/.test(ratificationNotice) && !/awaiting review/.test(ratificationNotice),

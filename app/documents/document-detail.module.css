@@ -155,6 +155,14 @@
   letter-spacing: -0.025em;
 }
 
+.sidebar h3.relatedLabel {
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
 .sidebar ul {
   margin: 0;
   padding: 0;

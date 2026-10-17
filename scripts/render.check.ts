@@ -40,6 +40,10 @@ check("typed legislative clauses become separate blocks at their numbered depths
     && clauses.map(block => block.kind === "paragraph" ? block.clause?.depth : -1).join() === "0,1,1,2,3,4");
 check("quote indentation on a legislative clause does not become a blockquote",
     !rulesBlocks.some(block => block.kind === "quote"));
+const legislativeCell = "**4.1.3.5 LIST** represented group: Disabled Students:";
+const legislativeTable = renderDocument(`| Current | Proposed |\n| --- | --- |\n| ${legislativeCell} | other |`, []);
+check("legislative cells do not mistake prose before colons for speaker names",
+    allRuns(legislativeTable).map(run => run.text).join("").includes("represented group: Disabled Students:"));
 const clauseStart = rulesExcerpt.indexOf("The agenda contains:");
 const citedRules = renderDocument(rulesExcerpt, [{ id: "rules-clause", startOffset: clauseStart, endOffset: clauseStart + "The agenda contains:".length }]);
 check("numbered clauses preserve citation highlights and anchors",

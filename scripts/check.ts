@@ -55,6 +55,7 @@ const SUITES = [
     "identity",
     "integrity",
     "meetings",
+    "relevant-documents",
     "names",
     "newsletter",
     "office",

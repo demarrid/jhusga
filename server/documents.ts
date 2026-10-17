@@ -14,10 +14,11 @@ import {
     type DocumentSort,
 } from "@/lib/document-sort";
 import { heldNotice } from "@/lib/integrity";
+import { agendaMappingKey, agendaMappingHash, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
 import { compareNamesBySurname } from "@/lib/contributors";
-import { isMeetingRole, type MeetingRole } from "@/lib/meetings";
+import { isMeetingRole, meetingForDocument, type MeetingRole } from "@/lib/meetings";
 import { prisma } from "@/lib/prisma";
 import { renderDocument, type Block } from "@/lib/render";
 import type { SectionStatus } from "@/lib/sections";
@@ -584,6 +585,9 @@ export type DocumentDetail = {
     /** Set when this document is one half of an agenda/minutes pair. */
     meetingRole: MeetingRole | null;
     counterpart: MeetingCounterpart | null;
+    agendaReferences?: RelatedDocument[];
+    agendaUnresolvedLinks?: UnresolvedLink[];
+    agendaMatches?: AgendaMatch[];
     /** Documents this one links to, in the order they appear in the text. */
     references: RelatedDocument[];
     /** Documents that link here -- usually the meetings that took this up. */
@@ -745,9 +749,10 @@ export async function getDocument(
         counterpartId: counterpart.id, passedOn: edition.passedOn,
     } : null;
 
-    const meetingRole = isMeetingRole(document.meetingRole)
+    const derivedMeeting = meetingForDocument(document);
+    const meetingRole = derivedMeeting.role || (isMeetingRole(document.meetingRole)
         ? document.meetingRole
-        : null;
+        : null);
 
     // The other side of the pair: same meeting, opposite role. Restricting to
     // the opposite role is what stops two sets of minutes for one meeting from
@@ -756,41 +761,84 @@ export async function getDocument(
         meetingRole === "agenda" ? "minutes" : meetingRole === "minutes" ? "agenda" : null;
 
     const counterpartDocuments =
-        document.meetingKey && wantedRole
+        (derivedMeeting.key || document.meetingKey) && wantedRole
             ? await prisma.document.findMany({
                 where: {
-                    meetingKey: document.meetingKey,
-                    meetingRole: wantedRole,
+                    sessionNumber: document.sessionNumber,
+                    kind: document.kind,
+                    OR: [
+                        { meetingKey: derivedMeeting.key || document.meetingKey },
+                        ...(document.meetingKey ? [{ meetingKey: document.meetingKey }] : []),
+                        ...(document.datedAt ? [{ datedAt: document.datedAt }] : []),
+                    ],
                     NOT: { id: document.id },
                 },
-                select: relatedSelect,
+                select: { ...relatedSelect, content: true, folderPath: true, datedAt: true, driveCreatedTime: true, meetingKey: true, meetingRole: true },
                 orderBy: { title: "asc" },
             })
             : [];
 
+    const matchedCounterparts = counterpartDocuments.filter(row => {
+        const other = meetingForDocument(row);
+        if (derivedMeeting.key && other.key) return other.key === derivedMeeting.key && other.role === wantedRole;
+        return !!document.meetingKey && row.meetingKey === document.meetingKey && row.meetingRole === wantedRole;
+    });
+    // Resolve only hyperlinks in the published text, including agendas whose
+    // reference graph has not yet been refreshed by sync.
+    const agendaLinks = wantedRole === "agenda"
+        ? matchedCounterparts.flatMap(row => extractDocumentLinks(row.content)) : [];
+    const mappingCache = wantedRole === "agenda" && matchedCounterparts.length
+        ? await prisma.generatedSection.findMany({ where: { key: { in: matchedCounterparts.map(row => agendaMappingKey(document.id, row.id)) }, status: "fresh" }, select: { key: true, promptHash: true, content: true } }) : [];
+    const agendaMatches = matchedCounterparts.flatMap(agenda => {
+        const cached = mappingCache.find(row => row.key === agendaMappingKey(document.id, agenda.id));
+        if (!cached || cached.promptHash !== agendaMappingHash(document.content, agenda.content)) return [];
+        try { return validateAgendaMatches(JSON.parse(cached.content), document.content, agenda.content, agenda.id); }
+        catch { return []; }
+    }).sort((a, b) => a.startOffset - b.startOffset);
+    const agendaTargets = agendaLinks.length ? await prisma.document.findMany({
+        where: { driveFileId: { in: agendaLinks.map(link => link.fileId) } },
+        select: { ...relatedSelect, driveFileId: true },
+    }) : [];
+    const agendaReferences = new Map<string, RelatedDocument>();
+    for (const match of agendaMatches) {
+        const agenda = matchedCounterparts.find(row => row.id === match.agendaId);
+        const offset = Number(match.sectionId.replace(/^section-/, ""));
+        if (!agenda || !Number.isInteger(offset)) continue;
+        const end = agenda.content.indexOf("\n", offset);
+        const links = extractDocumentLinks(agenda.content.slice(offset, end < 0 ? undefined : end));
+        match.linkedDocumentIds = agendaTargets.filter(row => links.some(link => link.fileId === row.driveFileId)).map(row => row.id);
+    }
+    const agendaUnresolvedLinks = new Map<string, UnresolvedLink>();
+    for (const link of agendaLinks) {
+        const target = agendaTargets.find(row => row.driveFileId === link.fileId);
+        if (target && target.id !== document.id && !matchedCounterparts.some(row => row.id === target.id)) {
+            if (!agendaReferences.has(target.id)) agendaReferences.set(target.id, toRelated(target, link.text));
+        } else if (!target) agendaUnresolvedLinks.set(link.fileId, { url: link.url, text: link.text, source: link.source });
+    }
+
     const outgoing = extractDocumentLinks(document.content);
-    const heldTargets =
-        outgoing.length === 0
-            ? new Set<string>()
-            : new Set(
-                (
-                    await prisma.document.findMany({
-                        where: { driveFileId: { in: outgoing.map((link) => link.fileId) } },
-                        select: { driveFileId: true },
-                    })
-                ).map((row) => row.driveFileId),
-            );
+    const linkedTargets = outgoing.length ? await prisma.document.findMany({
+        where: { driveFileId: { in: outgoing.map(link => link.fileId) } },
+        select: { ...relatedSelect, driveFileId: true },
+    }) : [];
+    const heldTargets = new Set(linkedTargets.map(row => row.driveFileId));
+    const directReferences = new Map<string, RelatedDocument>();
+    for (const link of outgoing) {
+        const target = linkedTargets.find(row => row.driveFileId === link.fileId);
+        if (target && target.id !== document.id && !directReferences.has(target.id)) directReferences.set(target.id, toRelated(target, link.text));
+    }
     const unresolvedLinks = outgoing.filter((link) => !heldTargets.has(link.fileId));
 
     return {
         meetingRole,
         counterpart:
-            wantedRole && counterpartDocuments.length > 0
-                ? { role: wantedRole, documents: counterpartDocuments.map((row) => toRelated(row)) }
+            wantedRole && matchedCounterparts.length > 0
+                ? { role: wantedRole, documents: matchedCounterparts.map((row) => toRelated(row)) }
                 : null,
-        references: document.referencesOut.map((edge) =>
-            toRelated(edge.toDocument, edge.anchorText),
-        ),
+        agendaReferences: [...agendaReferences.values()],
+        agendaUnresolvedLinks: [...agendaUnresolvedLinks.values()],
+        agendaMatches,
+        references: [...directReferences.values()],
         referencedBy: document.referencesIn.map((edge) => toRelated(edge.fromDocument)),
         unresolvedLinks: unresolvedLinks.map((link) => ({
             url: link.url,

@@ -1090,6 +1090,10 @@ function suggestCellBreaks(input: {
     text: string;
     offsets: number[];
 }): { text: string; offsets: number[] } {
+    // Legislative comparison cells are prose, not speaker transcripts.
+    // In particular, "represented group:" and "Disabled Students:" must
+    // not be split before their last word as though it were a speaker name.
+    if (/^\s*\**\d+(?:\\?\.\d+){2,}/.test(input.text)) return input;
     const characters: string[] = [];
     const offsets: number[] = [];
     let index = 0;

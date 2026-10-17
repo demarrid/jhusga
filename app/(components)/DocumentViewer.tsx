@@ -13,7 +13,33 @@ import styles from "@/app/documents/document-detail.module.css";
  * scrolls here and the :target rule emphasises the passage -- no client JS.
  */
 export default function DocumentViewer({ blocks }: { blocks: Block[] }) {
-    return <article className={styles.viewer}>{renderBlocks(blocks)}</article>;
+    // Some title pages export each centered line as a separate paragraph.
+    // Group only the opening institutional title; preserve each run and ID.
+    const title: Extract<Block, { kind: "paragraph" }>[] = [];
+    let titleLength = 0;
+    for (const block of blocks.slice(0, 6)) {
+        if (block.kind !== "paragraph" || block.clause) break;
+        title.push(block);
+        const runs = title.flatMap((part, index) => index === 0
+            ? part.runs
+            : [{ text: "\n", bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }, ...part.runs]);
+        if (!isLetterhead(runs) || !/student government association/i.test(runsText(runs))) continue;
+        if (/johns hopkins university$/i.test(runsText(runs).trim())) titleLength = title.length;
+    }
+    return (
+        <article className={styles.viewer}>
+            {titleLength > 1 && (
+                <div className={styles.viewerLetterhead}>
+                    {title.slice(0, titleLength).map((block, index) => (
+                        <div key={index} id={block.sectionId} className={block.sectionId ? styles.sectionAnchor : undefined}>
+                            {renderRuns(block.runs, false)}
+                        </div>
+                    ))}
+                </div>
+            )}
+            {renderBlocks(titleLength > 1 ? blocks.slice(titleLength) : blocks)}
+        </article>
+    );
 }
 
 function renderBlocks(blocks: Block[]): ReactNode {

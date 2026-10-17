@@ -19,6 +19,7 @@
     "newsletter": "tsx scripts/newsletter.ts",
     "generate": "tsx scripts/generate.ts",
     "summarize": "tsx scripts/summarize.ts",
+    "map:agenda": "tsx scripts/map-agenda.ts",
     "search": "tsx scripts/search.ts",
     "review": "tsx scripts/review.ts",
     "prune": "tsx scripts/prune.ts",

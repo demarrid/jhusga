@@ -435,6 +435,23 @@ export function meetingFor(input: MeetingInput): Meeting {
     return { key: `${input.sessionNumber}:${body}:${ordinal}`, role };
 }
 
+/** Pair archived meeting copies by their stated date, never their upload date. */
+export function meetingForDocument(input: MeetingInput & { datedAt: Date | null; content: string }): Meeting {
+    const copied = /^\s*copy of\s+/i.test(input.title);
+    // A copy is useful evidence only when it contains a dated, populated agenda.
+    if (copied && (!input.datedAt || !/\bagenda\b/i.test(input.content.slice(0, 500)) || input.content.length < 200)) {
+        return NO_MEETING;
+    }
+    const title = input.title.replace(/^\s*copy of\s+/i, "");
+    const explicitAgenda = /\bagenda\b/i.test(title) && /\bagenda\b/i.test(input.content.slice(0, 500));
+    const meeting = meetingFor({ ...input, title, folderPath: explicitAgenda ? "" : input.folderPath });
+    if (!meeting.key || !input.datedAt) return meeting;
+    const titleDate = meetingDate(title, input.driveCreatedTime);
+    const date = input.datedAt.toISOString().slice(0, 10);
+    if (titleDate && titleDate !== date) return NO_MEETING;
+    return { ...meeting, key: meeting.key.replace(/:[^:]+$/, `:${date}`) };
+}
+
 // ---------------------------------------------------------------------------
 // Running logs
 //

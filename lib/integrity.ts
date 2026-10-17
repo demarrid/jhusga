@@ -78,7 +78,7 @@ export function assessChange(input: {
             ...verdict,
             publish: false,
             reason:
-                `${preamble}the Constitution and Bylaws are amended only by a bill passed in a Senate meeting, ` +
+                `${preamble}${openDoor ? "the" : "The"} Constitution and Bylaws are amended only by a bill passed in a Senate meeting, ` +
                 `and this edit to the source file has not been ratified in one yet ` +
                 `(${diff.added} line${diff.added === 1 ? "" : "s"} added, ` +
                 `${diff.removed} removed) — ratified.`,
@@ -148,8 +148,11 @@ export const RATIFICATION_MARKER = " — ratified.";
  */
 export function heldNotice(reason: string): string {
     if (reason.endsWith(RATIFICATION_MARKER)) {
-        const trimmed = reason.slice(0, -RATIFICATION_MARKER.length);
-        return `${trimmed} You are reading the text last adopted by the Senate; the edit is stored and will appear here once a meeting record confirms it.`;
+        // Stored reasons may predate the sentence-case fix above.
+        const trimmed = reason.slice(0, -RATIFICATION_MARKER.length).trim();
+        const sentence = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+        const punctuation = /[.!?]$/.test(sentence) ? "" : ".";
+        return `${sentence}${punctuation} You are reading the text last adopted by the Senate; the edit is stored and will appear here once a meeting record confirms it.`;
     }
     return `The source file has changed substantially since this text was last checked — ${reason} You are reading the last checked version. The change is stored and awaiting review.`;
 }

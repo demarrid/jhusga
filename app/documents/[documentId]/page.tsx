@@ -253,6 +253,9 @@ export default async function DocumentPage({
                             references={document.references}
                             referencedBy={document.referencedBy}
                             unresolvedLinks={document.unresolvedLinks}
+                            agendaReferences={document.agendaReferences}
+                            agendaUnresolvedLinks={document.agendaUnresolvedLinks}
+                            agendaMatches={document.agendaMatches}
                         />
 
                         {document.contributors.length > 0 && (
