@@ -1,8 +1,8 @@
 # jhusga.org
 
-This repository contains the code for the unofficial website of the Student Government Association at the Johns Hopkins University. The open-source nature of this project is a commitment to transparency regarding informational flow as well as security and privacy. 
+This repository contains the code for the **unofficial** website of the Student Government Association at the Johns Hopkins University. The open-source nature of this project is a commitment to transparency regarding informational flow as well as security and privacy. 
 
-The official website, hosted on CampusGroups, is available here: [https://jhu.campusgroups.com/sga](jhu.campusgroups.com/sga). While it (usually) serves the main necessary functions an SGA website should have, CampusGroups is less corrigible than something self-hosted; hence, this repository.
+The official website, hosted on CampusGroups, is available here: [https://jhu.campusgroups.com/sga/home](https://jhu.campusgroups.com/sga/home). While it (usually) serves the main necessary functions an SGA website should have, CampusGroups is less corrigible than something self-hosted; hence, this repository.
 
 The content below, as well as the vast majority of this repository's backend, was generated using Opus 5.
 
@@ -290,5 +290,5 @@ thanks to archives for existing
 
 ## Guidelines to Adhere To
 
-Automatic removal of Director of Communications if website maintenance fails on 4 instances.
+nothing is binding, since the official website is still [https://jhu.campusgroups.com/sga/home](https://jhu.campusgroups.com/sga/home)
 
