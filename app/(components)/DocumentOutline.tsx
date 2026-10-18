@@ -204,7 +204,7 @@ function flatten(sections: DocumentSection[]): string[] {
 function DocumentLinks({ links }: { links?: DocumentSection["documentLinks"] }) {
     if (!links?.length) return null;
     return <ul className={styles.outline}>{links.map(link => (
-        <li key={link.href}><a className={styles.sectionDocumentLink} href={link.href}>{link.title} ↗</a></li>
+        <li key={link.href}><a className={styles.sectionDocumentLink} href={link.href} target="_blank" rel="noopener noreferrer">{link.title} ↗</a></li>
     ))}</ul>;
 }
 

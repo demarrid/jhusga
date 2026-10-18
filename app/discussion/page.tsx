@@ -82,7 +82,7 @@ export default async function Discussion({
               <aside className={styles.forumRail}>
                 <span>01</span>
                 <h2>Public threads</h2>
-                <Link href="/discussion/moderation">Moderation log ↗</Link>
+                <Link href="/discussion/moderation" target="_blank" rel="noopener noreferrer">Moderation log ↗</Link>
               </aside>
 
               <div className={styles.forumContent}>
@@ -203,7 +203,7 @@ function PostRow({ post, index }: { post: ForumPostSummary; index: number }) {
                 <p className={styles.postPreview}>{post.preview}</p>
             )}
             </article>
-            <Link className={styles.postArrow} href={`/discussion/${post.id}`} aria-label={`Open ${post.title}`}>↗</Link>
+            <Link className={styles.postArrow} href={`/discussion/${post.id}`} target="_blank" rel="noopener noreferrer" aria-label={`Open ${post.title}`}>↗</Link>
         </li>
     );
 }

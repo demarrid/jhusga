@@ -250,7 +250,7 @@ export default async function DocumentPage({
                         {(sections.length > 0 || agendas.length > 0) && (
                             <nav className={styles.sidebarSection} aria-labelledby="document-sections">
                                 <h2 id="document-sections">Sections{agendas.map((agenda, index) => (
-                                    <Link key={agenda.id} className={styles.sectionAgendaLink} href={`/documents/${agenda.id}`}>
+                                    <Link key={agenda.id} className={styles.sectionAgendaLink} href={`/documents/${agenda.id}`} target="_blank" rel="noopener noreferrer">
                                         {` (Agenda${agendas.length > 1 ? ` ${index + 1}` : ""} ↗)`}
                                     </Link>
                                 ))}</h2>

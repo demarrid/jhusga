@@ -129,7 +129,7 @@ export default async function About() {
 
           <p className={styles.directoryLink}>
             For who currently holds each of these positions, see the{" "}
-            <Link href="/contact">{session} contact directory <span aria-hidden="true">↗</span></Link>.
+            <Link href="/contact" target="_blank" rel="noopener noreferrer">{session} contact directory <span aria-hidden="true">↗</span></Link>.
           </p>
         </div>
       </section>

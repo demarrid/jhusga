@@ -36,7 +36,7 @@ export default async function Home() {
           </h1>
 
           {/* This prompt is an invitation to ask the archive, not browse it. */}
-          <Link className={styles.primaryLink} href="/documents?mode=ask">
+          <Link className={styles.primaryLink} href="/documents?mode=ask" target="_blank" rel="noopener noreferrer">
             <span>See what happened this week</span>
             <span className={styles.arrow} aria-hidden="true">↗</span>
           </Link>
@@ -75,7 +75,7 @@ export default async function Home() {
 
         <ul className={styles.quickLinksList}>
           <li>
-            <Link href="/documents">
+            <Link href="/documents" target="_blank" rel="noopener noreferrer">
               <span className={styles.quickLinkName}>Documents</span>
               <span className={styles.arrow} aria-hidden="true">↗</span>
               <span className={styles.quickLinkNote}>
@@ -85,7 +85,7 @@ export default async function Home() {
             </Link>
           </li>
           <li>
-            <Link href="/contact#funding">
+            <Link href="/contact#funding" target="_blank" rel="noopener noreferrer">
               <span className={styles.quickLinkName}>RSO Funding</span>
               <span className={styles.arrow} aria-hidden="true">↗</span>
               <span className={styles.quickLinkNote}>
@@ -94,7 +94,7 @@ export default async function Home() {
             </Link>
           </li>
           <li>
-            <Link href="/discussion">
+            <Link href="/discussion" target="_blank" rel="noopener noreferrer">
               <span className={styles.quickLinkName}>Discussion</span>
               <span className={styles.arrow} aria-hidden="true">↗</span>
               <span className={styles.quickLinkNote}>

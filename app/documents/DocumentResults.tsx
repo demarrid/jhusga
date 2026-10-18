@@ -292,6 +292,8 @@ function DocumentCard({
             </article>
             <DocumentSearchLink
                 className={styles.documentArrow}
+                target="_blank"
+                rel="noopener noreferrer"
                 href={`/documents/${document.id}`}
                 aria-label={`Open ${document.title}`}
             >
