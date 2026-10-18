@@ -27,6 +27,7 @@ import { sectionAnchors } from "@/lib/outline";
  */
 
 export type InlineRun = {
+    navigationId?: string;
     text: string;
     bold: boolean;
     italic: boolean;
@@ -172,7 +173,7 @@ export function renderDocument(
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
     const inline: Inline = (ranges, mode) =>
-        inlineRuns(content, ranges, resolved, anchored, mode);
+        inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets);
 
     const lines = toLines(content);
     // Same keys the outline links to. Stamping them here, rather than wrapping
@@ -206,6 +207,7 @@ export function blockSectionIds(blocks: Block[]): Set<string> {
 }
 
 export type RenderOptions = {
+    navigationTargets?: { id: string; offset: number }[];
     /**
      * Set for a spreadsheet, to the delimiter its rows use. See
      * `sheetDelimiter` in lib/csv.ts, which decides this from the mime type.
@@ -1150,6 +1152,7 @@ function inlineRuns(
     spans: ResolvedSpan[],
     anchored: Set<string>,
     mode?: "cell",
+    navigationTargets: { id: string; offset: number }[] = [],
 ): InlineRun[] {
     let flattened = flatten(content, ranges);
     // Layout cells keep an hour of notes. HTML may have restored some
@@ -1196,6 +1199,14 @@ function inlineRuns(
     }
 
     function emit(character: string, index: number) {
+        for (const target of navigationTargets) {
+            const key = `navigation:${target.id}`;
+            if (!anchored.has(key) && offsets[index] >= target.offset && ranges.some(range => range.start <= target.offset && target.offset < range.end)) {
+                flush();
+                runs.push({ text: "", bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false, navigationId: target.id });
+                anchored.add(key);
+            }
+        }
         const id = annotationAt(offsets[index]);
         if (id !== bufferId) {
             flush();

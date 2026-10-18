@@ -12,6 +12,7 @@ export type AgendaMatch = {
     startOffset: number;
     minutesHref: string;
     linkedDocumentIds?: string[];
+    ancestors?: { id: string; title: string }[];
 };
 
 export const AGENDA_MAPPING_PROMPT = `Match passages of meeting minutes to the supplied agenda items.
@@ -38,6 +39,14 @@ export function agendaMappingHash(minutes: string, agenda: string): string {
 export function validateAgendaMatches(value: unknown, minutes: string, agenda: string, agendaId: string): AgendaMatch[] {
     if (!value || typeof value !== "object" || !("matches" in value) || !Array.isArray(value.matches)) return [];
     const sections = new Map(agendaItems(agenda).map(item => [item.id, item.title]));
+    const ancestry = new Map<string, { id: string; title: string }[]>();
+    const visit = (rows: DocumentSection[], parents: { id: string; title: string }[] = []) => {
+        for (const section of rows) {
+            ancestry.set(section.id, parents);
+            visit(section.children, [...parents, { id: section.id, title: section.title }]);
+        }
+    };
+    visit(documentSections(agenda, { anchored: blockSectionIds(renderDocument(agenda, [])) }));
     const normalized = normalizeForMatch(minutes).text;
     const seen = new Set<string>();
     const matches: AgendaMatch[] = [];
@@ -55,7 +64,7 @@ export function validateAgendaMatches(value: unknown, minutes: string, agenda: s
         if (seen.has(key)) continue;
         seen.add(key);
         const sourceQuote = toPlainText(minutes.slice(anchor.startOffset, anchor.endOffset));
-        matches.push({ agendaId, sectionId: row.sectionId, title, quote: sourceQuote, startOffset: anchor.startOffset,
+        matches.push({ agendaId, sectionId: row.sectionId, title, ancestors: ancestry.get(row.sectionId) ?? [], quote: sourceQuote, startOffset: anchor.startOffset,
             minutesHref: `#:~:text=${encodeURIComponent(sourceQuote).replace(/-/g, "%2D")}` });
     }
     return matches.sort((a, b) => a.startOffset - b.startOffset);

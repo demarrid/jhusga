@@ -168,19 +168,22 @@ function OutlineList({
                 section.group ? (
                     <li key={section.id} className={styles.outlineGroup}>
                         <span>{section.title}</span>
+                        <DocumentLinks links={section.documentLinks} />
                         <OutlineList sections={section.children} active={active} onChoose={onChoose} />
                     </li>
                 ) : (
                 <li key={section.id}>
                     <a
-                        href={`#${section.id}`}
-                        aria-current={active === section.id ? "location" : undefined}
+                        href={section.href ?? `#${section.id}`}
+                        aria-current={active === (section.href?.slice(1) ?? section.id) ? "location" : undefined}
                         onClick={(event) => {
-                            if (onChoose(section.id)) event.preventDefault();
+                            const target = section.href?.startsWith("#") && !section.href.startsWith("#:~:") ? section.href.slice(1) : section.id;
+                            if (onChoose(target)) event.preventDefault();
                         }}
                     >
                         {section.title}
                     </a>
+                    <DocumentLinks links={section.documentLinks} />
                     {section.children.length > 0 && (
                         <OutlineList sections={section.children} active={active} onChoose={onChoose} />
                     )}
@@ -193,9 +196,16 @@ function OutlineList({
 
 function flatten(sections: DocumentSection[]): string[] {
     return sections.flatMap((section) => [
-        ...(section.group ? [] : [section.id]),
+        ...(section.group ? [] : section.href ? (section.href.startsWith("#") && !section.href.startsWith("#:~:") ? [section.href.slice(1)] : []) : [section.id]),
         ...flatten(section.children),
     ]);
+}
+
+function DocumentLinks({ links }: { links?: DocumentSection["documentLinks"] }) {
+    if (!links?.length) return null;
+    return <ul className={styles.outline}>{links.map(link => (
+        <li key={link.href}><a className={styles.sectionDocumentLink} href={link.href}>{link.title} ↗</a></li>
+    ))}</ul>;
 }
 
 /**

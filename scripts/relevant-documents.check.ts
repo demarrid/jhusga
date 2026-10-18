@@ -3,6 +3,7 @@ import { meetingForDocument } from "@/lib/meetings";
 import { relevantDocuments, uniqueUnresolvedLinks } from "@/lib/relevant-documents";
 import { agendaItems, agendaMappingHash, validateAgendaMatches } from "@/lib/agenda-mapping";
 import { extractDocumentLinks } from "@/lib/links";
+import { meetingOutline } from "@/lib/meeting-outline";
 
 // September 29, 2026 example: dated minutes and a numbered copied agenda.
 const agenda = `Senate General Body Meeting #6
@@ -60,3 +61,36 @@ assert.equal(validateAgendaMatches({ matches: [{ sectionId: firstReading.id, quo
 assert.notEqual(agendaMappingHash(minutes, agenda), agendaMappingHash(minutes + " changed", agenda));
 assert.notEqual(agendaMappingHash(minutes, agenda), agendaMappingHash(minutes, agenda + " changed"));
 console.log("All relevant-document and agenda-mapping checks passed.");
+
+const authored = [{ id: "section-0", title: "First Reading", children: [] }, { id: "section-30", title: "Second Reading", children: [] }];
+const enriched = result.map(match => ({ ...match, linkedDocumentIds: match.title === "First Reading" ? [] : ["a"] }));
+const outline = meetingOutline(authored, enriched, [doc("a"), doc("unmatched")]);
+assert.equal(outline[0].href, result[0].minutesHref);
+assert.equal(outline[1].children[0].documentLinks?.[0].href, "/documents/a");
+assert.equal(outline[1].children[0].href, result[1].minutesHref);
+assert.equal(outline.at(-1)?.documentLinks?.[0].href, "/documents/unmatched");
+assert.equal(authored[1].children.length, 0);
+const agendaOnly = meetingOutline([], enriched, [doc("a")]);
+assert.equal(agendaOnly.length, 2);
+assert.equal(agendaOnly[0].title, "First Reading");
+assert.equal(agendaOnly[1].title, "Second Reading");
+assert.equal(agendaOnly[1].children[0].documentLinks?.[0].href, "/documents/a");
+
+const reportsAgenda = "1. ## Reports\n   1. Cabinet Reports:\n      1. Student Body President: Jason Yu\n      2. Student Body Vice President: Sumire Sumi\n   2. Advisor Report:\n2. ## Closing and Adjournment";
+const reportsMinutes = "jason: nothing major; had some meetings with departments\nsumi: today met with Public Safety and OIS this morning";
+const reportItems = agendaItems(reportsAgenda);
+const reportsMatches = validateAgendaMatches({ matches: [
+    { sectionId: reportItems.find(row => row.title.includes("Jason Yu"))!.id, quote: "jason: nothing major; had some meetings with departments" },
+    { sectionId: reportItems.find(row => row.title.includes("Sumire Sumi"))!.id, quote: "sumi: today met with Public Safety and OIS this morning" },
+] }, reportsMinutes, reportsAgenda, "reports-agenda");
+const reportsOutline = meetingOutline([], reportsMatches, []);
+assert.equal(reportsOutline.length, 1);
+assert.equal(reportsOutline[0].title, "Reports");
+assert.equal(reportsOutline[0].children[0].title, "Cabinet Reports");
+assert.equal(reportsOutline[0].children[0].children.length, 2);
+assert.equal(reportsOutline[0].children[0].children[0].title, "Student Body President: Jason Yu");
+assert.equal(reportsOutline[0].href, reportsMatches[0].minutesHref);
+assert.equal(reportsOutline[0].children[0].href, reportsMatches[0].minutesHref);
+assert.ok(!JSON.stringify(reportsOutline).includes("Advisor Report"));
+console.log("Merged meeting outline checks passed.");
+

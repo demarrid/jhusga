@@ -594,6 +594,23 @@
   opacity: 1;
 }
 
+.sidebar .outline a.sectionDocumentLink {
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 1;
+}
+
+.sectionAgendaLink {
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: uppercase;
+}
+
 .sidebar .outline a:focus-visible {
   outline: 2px solid #68ace5;
   outline-offset: 2px;

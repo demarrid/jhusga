@@ -16,6 +16,8 @@ import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } fro
 import { formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
 import { documentSections } from "@/lib/outline";
+import { meetingOutline } from "@/lib/meeting-outline";
+import { relevantDocuments, uniqueUnresolvedLinks } from "@/lib/relevant-documents";
 import { blockSectionIds } from "@/lib/render";
 import { pageMetadata } from "@/lib/seo";
 
@@ -86,11 +88,15 @@ export default async function DocumentPage({
 
     if (!document) notFound();
 
-    const sections = documentSections(document.content, {
+    const authoredSections = documentSections(document.content, {
         titles: [document.title, document.driveTitle],
         anchored: blockSectionIds(document.blocks),
         kind: document.kind,
     });
+    const agendas = document.counterpart?.role === "agenda" ? document.counterpart.documents : [];
+    const sections = agendas.length ? meetingOutline(authoredSections, document.agendaMatches ?? [],
+        relevantDocuments(document.agendaReferences ?? [], document.references, agendas.map(row => row.id)).documents,
+        uniqueUnresolvedLinks([...(document.agendaUnresolvedLinks ?? []), ...document.unresolvedLinks])) : authoredSections;
 
     return (
         <main className={styles.page}>
@@ -241,21 +247,22 @@ export default async function DocumentPage({
                             <DocumentRestatement restatement={document.restatement} />
                         </section>
 
-                        {sections.length > 0 && (
+                        {(sections.length > 0 || agendas.length > 0) && (
                             <nav className={styles.sidebarSection} aria-labelledby="document-sections">
-                                <h2 id="document-sections">Sections</h2>
+                                <h2 id="document-sections">Sections{agendas.map((agenda, index) => (
+                                    <Link key={agenda.id} className={styles.sectionAgendaLink} href={`/documents/${agenda.id}`}>
+                                        {` (Agenda${agendas.length > 1 ? ` ${index + 1}` : ""} ↗)`}
+                                    </Link>
+                                ))}</h2>
                                 <DocumentOutline sections={sections} />
                             </nav>
                         )}
 
                         <RelatedDocuments
-                            counterpart={document.counterpart}
-                            references={document.references}
+                            counterpart={agendas.length ? null : document.counterpart}
+                            references={agendas.length ? [] : document.references}
                             referencedBy={document.referencedBy}
-                            unresolvedLinks={document.unresolvedLinks}
-                            agendaReferences={document.agendaReferences}
-                            agendaUnresolvedLinks={document.agendaUnresolvedLinks}
-                            agendaMatches={document.agendaMatches}
+                            unresolvedLinks={agendas.length ? [] : document.unresolvedLinks}
                         />
 
                         {document.contributors.length > 0 && (

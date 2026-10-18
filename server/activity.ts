@@ -51,16 +51,23 @@ import { prisma } from "@/lib/prisma";
 // cache key on every request. Explicit dates remain useful for archive previews.
 const cachedRecentActivity = unstable_cache(
     () => loadRecentActivity(new Date()),
-    ["recent-activity-v2"],
+    ["recent-activity-v3"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
 export async function getRecentActivity(now?: Date): Promise<ActivityLane[]> {
     if (demoModeEnabled()) return demoActivity(now ?? new Date());
-    return now ? loadRecentActivity(now) : cachedRecentActivity();
+    const result = now ? await loadRecentActivity(now) : await cachedRecentActivity();
+    // Run directory caching outside the activity cache: Next bypasses nested
+    // unstable_cache reads. Clone before enriching the cached base cards.
+    const lanes = structuredClone(result.lanes);
+    await attachPositions(lanes, result.sessions);
+    return lanes;
 }
 
-async function loadRecentActivity(now: Date): Promise<ActivityLane[]> {
+type CreditSession = { id: string; sessionNumber: number | null };
+
+async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; sessions: CreditSession[] }> {
 
     const minutes = await prisma.document.findMany({
         where: {
@@ -223,8 +230,8 @@ async function loadRecentActivity(now: Date): Promise<ActivityLane[]> {
         return cards.length ? [{ ...lane, cards }] : [];
     });
 
-    await attachAuthors(lanes);
-    return lanes;
+    const sessions = await attachAuthors(lanes);
+    return { lanes, sessions };
 }
 
 /**
@@ -273,7 +280,7 @@ function toCard(
  */
 async function attachAuthors(
     lanes: ActivityLane[],
-): Promise<void> {
+): Promise<CreditSession[]> {
     const legislationIds = lanes
         .filter((lane) => lane.id !== "meetings")
         .flatMap((lane) => lane.cards.map((card) => card.id));
@@ -381,11 +388,16 @@ async function attachAuthors(
     const credited = lanes.flatMap(lane => lane.cards)
         .filter(card => card.authors
             && card.authors !== "Writing credit not verified");
-    if (!credited.length) return;
-    const sessions = await prisma.document.findMany({
+    if (!credited.length) return [];
+    return prisma.document.findMany({
         where: { id: { in: credited.map(card => card.id) } },
         select: { id: true, sessionNumber: true },
     });
+}
+
+async function attachPositions(lanes: ActivityLane[], sessions: CreditSession[]): Promise<void> {
+    const credited = lanes.flatMap(lane => lane.cards)
+        .filter(card => card.authors && card.authors !== "Writing credit not verified");
     const sessionById = new Map(sessions.map(document => [document.id, document.sessionNumber]));
     const directories = await Promise.all([...new Set(sessions.map(document => document.sessionNumber))]
         .filter((session): session is number => session !== null)

@@ -18,6 +18,8 @@ export type DocumentSection = {
     id: string;
     title: string;
     children: DocumentSection[];
+    href?: string;
+    documentLinks?: { title: string; href: string }[];
     /**
      * A caption over a run of sections rather than a place in the text --
      * "Agenda" and "Minutes" when a file holds both. There is nothing on the

@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 
 import { getDocuments } from "@/server/documents";
 import { getPosts } from "@/server/forum";
+import { prisma } from "@/lib/prisma";
+import { demoModeEnabled } from "@/lib/data-mode";
 import { siteUrl } from "@/lib/seo";
 
 /**
@@ -15,8 +17,17 @@ export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const [documents, posts] = await Promise.all([
-        getDocuments({ session: "all" }),
-        getPosts(),
+        demoModeEnabled()
+            ? getDocuments({ session: "all" })
+            : prisma.document.findMany({ select: { id: true, driveModifiedTime: true } }),
+        demoModeEnabled()
+            ? getPosts().then(posts => posts.filter(post => !post.hidden))
+            : prisma.forumPost.findMany({
+                where: { hiddenAt: null, NOT: { hiddenBy: "screen" } },
+                orderBy: { createdAt: "desc" },
+                take: 100,
+                select: { id: true, createdAt: true },
+            }),
     ]);
 
     const fixed: MetadataRoute.Sitemap = [
@@ -39,7 +50,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     // Hidden threads carry their own noindex, so they are left out here too.
     const postEntries: MetadataRoute.Sitemap = posts
-        .filter((post) => !post.hidden)
         .map((post) => ({
             url: `/discussion/${post.id}`,
             lastModified: post.createdAt,

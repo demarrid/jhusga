@@ -1,7 +1,7 @@
 "use server";
 
 import { unstable_cache } from "next/cache";
-import { ARCHIVE_CACHE_TAG, ARCHIVE_CACHE_SECONDS } from "@/lib/archive-cache";
+import { ARCHIVE_CACHE_TAG, DIRECTORY_CACHE_SECONDS } from "@/lib/archive-cache";
 
 import { SESSION_NUMBER } from "@/config/session";
 import {
@@ -30,7 +30,7 @@ export type ContactDirectory = {
 const cachedContactDirectory = unstable_cache(
     loadContactDirectory,
     ["contact-directory-v1"],
-    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: DIRECTORY_CACHE_SECONDS },
 );
 
 export async function getContactDirectory(

@@ -358,6 +358,7 @@ function renderRuns(runs: InlineRun[], gaps = true): ReactNode {
 }
 
 function Run({ run, gaps }: { run: InlineRun; gaps: boolean }) {
+    if (run.navigationId) return <span id={run.navigationId} className={styles.sectionAnchor} />;
     let node: ReactNode = gaps ? withLineGaps(run.text) : run.text;
 
     if (run.strike) node = <s>{node}</s>;

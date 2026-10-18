@@ -801,6 +801,7 @@ export async function getDocument(
     }) : [];
     const agendaReferences = new Map<string, RelatedDocument>();
     for (const match of agendaMatches) {
+        match.minutesHref = `#minutes-${match.startOffset}`;
         const agenda = matchedCounterparts.find(row => row.id === match.agendaId);
         const offset = Number(match.sectionId.replace(/^section-/, ""));
         if (!agenda || !Number.isInteger(offset)) continue;
@@ -882,6 +883,7 @@ export async function getDocument(
         // The stored text is untouched -- citations still index into the CSV
         // exactly as it came out of Drive -- and only the parse differs.
         blocks: renderDocument(document.content, document.documentAnnotations, {
+            navigationTargets: agendaMatches.map(match => ({ id: `minutes-${match.startOffset}`, offset: match.startOffset })),
             sheetDelimiter: sheetDelimiter(document.mimeType),
         }),
         contributors: document.contributors.map((entry) => ({

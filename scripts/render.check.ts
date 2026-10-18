@@ -45,6 +45,15 @@ const legislativeTable = renderDocument(`| Current | Proposed |\n| --- | --- |\n
 check("legislative cells do not mistake prose before colons for speaker names",
     allRuns(legislativeTable).map(run => run.text).join("").includes("represented group: Disabled Students:"));
 const clauseStart = rulesExcerpt.indexOf("The agenda contains:");
+const navigationText = "Before **the cited passage** after.";
+const navigationOffset = navigationText.indexOf("cited");
+const navigationRuns = allRuns(renderDocument(navigationText, [{ id: "navigation-citation", startOffset: 0, endOffset: navigationText.length }], {
+    navigationTargets: [{ id: "minutes-test", offset: navigationOffset }, { id: "minutes-test", offset: navigationOffset }],
+}));
+check("navigation anchors are unique and preserve overlapping citation text",
+    navigationRuns.filter(run => run.navigationId === "minutes-test").length === 1
+    && navigationRuns.filter(run => run.annotationId === "navigation-citation").map(run => run.text).join("") === "Before the cited passage after."
+    && navigationRuns.filter(run => run.annotationId === "navigation-citation" && run.anchor).length === 1);
 const citedRules = renderDocument(rulesExcerpt, [{ id: "rules-clause", startOffset: clauseStart, endOffset: clauseStart + "The agenda contains:".length }]);
 check("numbered clauses preserve citation highlights and anchors",
     allRuns(citedRules).filter(run => run.annotationId === "rules-clause").map(run => run.text).join("") === "The agenda contains:"

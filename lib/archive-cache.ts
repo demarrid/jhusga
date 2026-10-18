@@ -6,6 +6,10 @@ export const ARCHIVE_CACHE_TAG = "archive-derived";
 // demand after 15 minutes too, including time-dependent homepage eligibility.
 export const ARCHIVE_CACHE_SECONDS = 15 * 60;
 
+// Roles change with archive updates, not the homepage clock. Sync invalidates
+// this tag immediately; the fallback also picks up out-of-band CLI changes.
+export const DIRECTORY_CACHE_SECONDS = 6 * 60 * 60;
+
 // Keep the existing router configuration: unstable_cache supports database
 // reads without the app-wide Cache Components migration required by use cache.
 export function invalidateArchiveCache(): void {
