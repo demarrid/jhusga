@@ -193,7 +193,7 @@ async function main() {
         read?.citations[0]?.href,
     );
 
-    const { getDocument } = await import("../server/documents");
+    const { loadDocument: getDocument } = await import("../server/documents");
     await prisma.document.update({
         where: { id: document.id },
         data: { content: after },

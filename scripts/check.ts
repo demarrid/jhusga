@@ -63,6 +63,7 @@ const SUITES = [
     "search",
     "summarize",
     "summary-failures",
+    "sync-batching",
     "titles",
     "render",
     "outline",

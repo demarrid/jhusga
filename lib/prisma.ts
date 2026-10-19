@@ -5,10 +5,9 @@ import { demoModeEnabled } from "@/lib/data-mode";
 /**
  * Prisma 7 connects through a driver adapter rather than a URL in the schema.
  *
- * DATABASE_URL points at Supabase's transaction-mode pooler (port 6543), which
- * is what serverless request handlers should use -- each invocation borrows a
- * connection instead of holding one open. Migrations go through DIRECT_URL
- * (port 5432) instead; see prisma.config.ts.
+ * DATABASE_URL uses the provider's pooled Postgres endpoint for serverless
+ * request handlers. Migrations use the session/direct endpoint in DIRECT_URL;
+ * see prisma.config.ts. Both Supabase and Prisma Postgres work with this adapter.
  *
  * The client is built on first query rather than on import, and that is the
  * interesting thing about this file.
@@ -40,7 +39,7 @@ function createPrismaClient() {
 
     if (url.startsWith("file:")) {
         throw new Error(
-            "DATABASE_URL points at a SQLite file, but the schema is now postgresql. Use the Supabase connection string.",
+            "DATABASE_URL points at a SQLite file, but the schema is now postgresql. Use a Postgres connection string.",
         );
     }
 

@@ -13,9 +13,9 @@ try {
 // read by the CLI (migrate, db push, studio); the running app connects through
 // the driver adapter in lib/prisma.ts.
 //
-// Migrations must not go through Supabase's transaction-mode pooler: DDL and
-// advisory locks need a session that persists across statements. DIRECT_URL is
-// the session-mode connection (port 5432) for exactly this.
+// Migrations need a session that persists across statements for DDL and advisory
+// locks. Use the provider's direct/session endpoint in DIRECT_URL, rather than
+// its transaction-mode pooler.
 export default defineConfig({
     schema: path.join(__dirname, "schema.prisma"),
     migrations: {

@@ -27,7 +27,19 @@ async function main() {
         findMany: async () => { reads++; return []; },
         groupBy: async () => { reads++; return []; },
     };
-    const archiveDocuments = { ...documents, findMany: async (query: { where?: { meetingRole?: string; sessionNumber?: number }; select?: Record<string, unknown> }) => {
+    const detail = {
+        ...meeting, id: "detail", driveFileId: "fixture-detail", kind: "bill.funding",
+        meetingKey: "", meetingRole: "", content: "A published funding bill.",
+        title: "Funding bill", description: "", lineageKey: "funding bill",
+        source: "https://example.test/document", discoveredVia: "walk", matchedPhrases: "",
+        driveLastEditorName: null, anyoneCanEdit: false,
+        driveCreatedTime: new Date("2026-01-01T12:00:00Z"), driveModifiedTime: null,
+        lastSyncedAt: new Date("2026-10-19T12:00:00Z"),
+        summary: {content: "A summary", status: "fresh", model: "fixture", generatedAt: new Date("2026-10-18T12:00:00Z"), citations: []},
+        documentAnnotations: [], contributors: [], referencesIn: [], referencesOut: [], _count: {revisions: 1},
+    };
+    const archiveDocuments = { ...documents,
+        findUnique: async () => {reads++; return detail;}, findMany: async (query: { where?: { meetingRole?: string; sessionNumber?: number }; select?: Record<string, unknown> }) => {
         reads++;
         if (query.where?.meetingRole === "minutes") return [meeting];
         if (query.where?.sessionNumber !== undefined) { directoryReads++; return []; }
@@ -41,7 +53,7 @@ async function main() {
     });
     delete process.env.JHUSGA_DATA_MODE;
     const { getRecentActivity } = await import("../server/activity");
-    const { getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse } = await import("../server/documents");
+    const { getDocument, getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse } = await import("../server/documents");
     const filters = [getPeopleInUse, getOfficesInUse, getContributorRolesInUse, getDocumentKindsInUse];
     const { getContactDirectory } = await import("../server/contact");
     const { ARCHIVE_CACHE_SECONDS, DIRECTORY_CACHE_SECONDS, ARCHIVE_CACHE_TAG, invalidateArchiveCache } = await import("../lib/archive-cache");
@@ -85,6 +97,16 @@ async function main() {
         assert.equal(reads, cold + 1, "archive scope must have a separate cache entry");
     }
 
+    const detailCold = await getDocument("detail");
+    const afterDetail = reads;
+    const detailWarm = await getDocument("detail");
+    assert.equal(reads, afterDetail, "repeat document reads must avoid all database queries");
+    assert.deepEqual(detailWarm, detailCold, "cache serialization must preserve the Date contract");
+    assert.ok(detailWarm?.datedAt instanceof Date);
+    assert.ok(detailWarm?.restatement?.generatedAt instanceof Date);
+    await getDocument("different-id");
+    assert.ok(reads > afterDetail, "document ids need separate cache entries");
+
     const beforeActivityRefresh = directoryReads;
     clock += ARCHIVE_CACHE_SECONDS + 1;
     await renderHomepage();
@@ -105,6 +127,8 @@ async function main() {
         await filter(114);
         assert.equal(reads, before + 1, "sync invalidation must refresh each filter");
     }
+    detail.content = "Updated published funding bill.";
+    assert.equal((await getDocument("detail"))?.content, detail.content, "sync invalidation refreshes document text");
     const beforeInvalidation = reads;
     await getRecentActivity();
     await getContactDirectory(114);

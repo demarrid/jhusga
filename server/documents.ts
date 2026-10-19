@@ -661,7 +661,34 @@ function normaliseStatus(status: string): SectionStatus {
         : "empty";
 }
 
-export async function getDocument(
+const cachedDocument = unstable_cache(
+    loadDocument,
+    ["document-detail-v1"],
+    { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
+);
+
+export async function getDocument(documentId: string): Promise<DocumentDetail | null> {
+    if (demoModeEnabled()) return demoDocument(documentId);
+    const document = await cachedDocument(documentId);
+    if (!document) return null;
+    // Next's Data Cache serializes Dates as strings. Keep the public contract
+    // identical on cold and warm reads, without mutating the cached object.
+    const date = (value: Date | null) => value === null ? null : new Date(value);
+    return {
+        ...document,
+        driveCreatedTime: date(document.driveCreatedTime),
+        driveModifiedTime: date(document.driveModifiedTime),
+        datedAt: date(document.datedAt),
+        lastSyncedAt: date(document.lastSyncedAt),
+        restatement: document.restatement ? {
+            ...document.restatement,
+            generatedAt: date(document.restatement.generatedAt),
+        } : null,
+    };
+}
+
+/** Uncached entry point for CLI jobs and checks outside a Next request. */
+export async function loadDocument(
     documentId: string,
 ): Promise<DocumentDetail | null> {
     if (demoModeEnabled()) return demoDocument(documentId);

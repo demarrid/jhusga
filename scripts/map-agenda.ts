@@ -16,7 +16,7 @@ async function main() {
     const minutesId = argument("--minutes");
     const agendaId = argument("--agenda");
     const { prisma } = await import("@/lib/prisma");
-    const { getDocument } = await import("@/server/documents");
+    const { loadDocument: getDocument } = await import("@/server/documents");
     const { generateJson } = await import("@/lib/ai");
     try {
         const minutes = await getDocument(minutesId);

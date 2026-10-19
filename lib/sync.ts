@@ -743,6 +743,59 @@ function driveMetadata(file: WalkedFile, discoveredVia: "walk" | "link") {
     };
 }
 
+/** Refresh metadata for stable files in bulk; changed text keeps the normal ingest path.
+ * Permissions and folder moves can change without modifiedTime, so compare all
+ * metadata before grouping the heartbeat writes. Never read document text here.
+ */
+export async function refreshUnchangedFiles(
+    files: WalkedFile[],
+    discoveredVia: "walk" | "link",
+    options: SyncOptions,
+    summary: Pick<SyncSummary, "documentsUnchanged">,
+): Promise<Set<string>> {
+    const handled = new Set<string>();
+    if (options.force || files.length === 0) return handled;
+    // The voting register needs the existing missing-tabs repair in ingestFile.
+    const candidates = files.filter(file => file.modifiedTime && file.id !== PREFERRED_VOTING_RECORD_FILE);
+    if (!candidates.length) return handled;
+    const existing = await prisma.document.findMany({
+        where: { driveFileId: { in: candidates.map(file => file.id) } },
+        select: {
+            id: true, driveFileId: true, source: true, mimeType: true, title: true,
+            kind: true, folderPath: true, discoveredVia: true, lineageKey: true,
+            driveCreatedTime: true, driveModifiedTime: true, anyoneCanEdit: true,
+            driveOwnerName: true, driveOwnerEmail: true,
+            driveLastEditorName: true, driveLastEditorEmail: true,
+        },
+    });
+    const byFile = new Map(existing.map(row => [row.driveFileId, row]));
+    const heartbeats: string[] = [];
+    for (const file of candidates) {
+        const row = byFile.get(file.id);
+        if (!row?.driveModifiedTime || row.driveModifiedTime.getTime() !== new Date(file.modifiedTime!).getTime()) continue;
+        const metadata = driveMetadata(file, discoveredVia);
+        const unchanged = Object.entries(metadata).every(([key, value]) => {
+            if (key === "lastSyncedAt" || value === undefined) return true;
+            const prior = row[key as keyof typeof row];
+            return value instanceof Date
+                ? prior instanceof Date && prior.getTime() === value.getTime()
+                : prior === value;
+        });
+        if (unchanged) heartbeats.push(row.id);
+        else await prisma.document.update({ where: { id: row.id }, data: metadata, select: { id: true } });
+        handled.add(file.id);
+    }
+    // Bound parameter counts even if the archive grows substantially.
+    for (let at = 0; at < heartbeats.length; at += 500) {
+        await prisma.document.updateMany({
+            where: { id: { in: heartbeats.slice(at, at + 500) } },
+            data: { lastSyncedAt: new Date() },
+        });
+    }
+    summary.documentsUnchanged += handled.size;
+    return handled;
+}
+
 /**
  * Store one Drive file, exporting it only if its text has actually changed.
  *
@@ -788,6 +841,7 @@ export async function ingestFile(
         await prisma.document.update({
             where: { id: existing.id },
             data: metadata,
+            select: { id: true },
         });
         summary.documentsUnchanged += 1;
         return true;
@@ -828,6 +882,7 @@ export async function ingestFile(
         await prisma.document.update({
             where: { id: existing.id },
             data: metadata,
+            select: { id: true },
         });
         summary.documentsUnchanged += 1;
         return true;
@@ -1090,6 +1145,10 @@ export async function followLinks(
         const driveIds = [...targets.keys()].filter(id => !passedOver.has(id) && !isSharePointFileId(id));
         const metadata = await mapSyncIo(driveIds, async id => [id, await getFile(id)] as const);
         const metadataById = new Map(metadata);
+        const stableFiles = metadata.flatMap(([id, file]) => file && worthFollowing(file)
+            ? [{ ...file, folderPath: "", sessionNumber: targets.get(id)?.sessionNumber ?? SESSION_NUMBER }]
+            : []);
+        const unchangedIds = await refreshUnchangedFiles(stableFiles, "link", options, summary);
 
         let ingestedThisRound = 0;
 
@@ -1140,6 +1199,12 @@ export async function followLinks(
                     passedOver.add(fileId);
                     continue;
                 }
+                ingestedThisRound += 1;
+                linkedIn += 1;
+                continue;
+            }
+
+            if (unchangedIds.has(fileId)) {
                 ingestedThisRound += 1;
                 linkedIn += 1;
                 continue;
@@ -1234,15 +1299,7 @@ export async function syncMasterFolder(
         summary.filesSeen = files.length;
 
         await timed(summary, "ingest", async () => {
-            const existing = await prisma.document.findMany({
-                where: { driveFileId: { in: docs.map(file => file.id) } },
-                select: { driveFileId: true, driveModifiedTime: true },
-            });
-            const modifiedById = new Map(existing.map(row => [row.driveFileId, row.driveModifiedTime?.getTime()]));
-            const unchanged = docs.filter(file => !options.force && file.id !== PREFERRED_VOTING_RECORD_FILE
-                && !!file.modifiedTime && modifiedById.get(file.id) === new Date(file.modifiedTime).getTime());
-            const unchangedIds = new Set(unchanged.map(file => file.id));
-            await mapSyncIo(unchanged, file => ingestFile(file, "walk", options, summary));
+            const unchangedIds = await refreshUnchangedFiles(docs, "walk", options, summary);
             // Content ingestion and identity resolution retain their serial order.
             for (const file of docs) {
                 if (!unchangedIds.has(file.id)) await ingestFile(file, "walk", options, summary);

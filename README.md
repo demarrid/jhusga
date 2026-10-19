@@ -269,8 +269,9 @@ npm run db:migrate   # apply schema changes
 ```
 
 Copy `.env.example` to `.env` before any of these. The database is Postgres: the
-app connects through Supabase's transaction pooler, and migrations go through
-`DIRECT_URL` on the session pooler.
+app connects through the provider's pooled endpoint in `DATABASE_URL`, and
+migrations use its direct/session endpoint in `DIRECT_URL`. `.env.example`
+shows Prisma Postgres endpoints.
 
 Node 20.19 or later, and 22.12 or later on the 22 line, as `engines` in
 `package.json` says. That is Prisma 7's own floor and not a preference: the
