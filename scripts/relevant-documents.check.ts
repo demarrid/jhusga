@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { meetingForDocument } from "@/lib/meetings";
 import { relevantDocuments, uniqueUnresolvedLinks } from "@/lib/relevant-documents";
-import { agendaItems, agendaMappingHash, validateAgendaMatches } from "@/lib/agenda-mapping";
+import { agendaItems, agendaMappingHash, agendaSectionLinks, validateAgendaMatches } from "@/lib/agenda-mapping";
 import { extractDocumentLinks } from "@/lib/links";
 import { meetingOutline } from "@/lib/meeting-outline";
 
@@ -47,6 +47,23 @@ const items = agendaItems(agenda);
 const firstReading = items.find(row => row.title === "First Reading")!;
 const tabling = items.find(row => row.title.includes("Tabling supplies"))!;
 assert.ok(firstReading && tabling);
+assert.equal(items.find(row => row.title === "Second Reading")?.children[0].id, tabling.id);
+const separatedLinks = `1. **Second Reading**\n   1. **Fall retreat funding bill**\n      [Fall retreat funding bill](${url})\n   2. **SAAC funding bill**\n      [SAAC funding bill](https://docs.google.com/document/d/abcdefghijklmnop1234/edit)\n2. **Adjournment**`;
+const separatedItems = agendaItems(separatedLinks);
+const retreat = separatedItems.find(row => row.title === "Fall retreat funding bill")!;
+assert.deepEqual(agendaSectionLinks(separatedLinks, retreat.id).map(link => link.url), [url]);
+assert.equal(agendaSectionLinks(separatedLinks, "section-missing").length, 0);
+assert.equal(separatedItems.find(row => row.title === "Second Reading")?.children.length, 2);
+const directOutline = meetingOutline([
+    { id: "section-0", title: "Fall retreat funding bill - Chair of Programming Grace Guan", children: [] },
+    { id: "section-90", title: "SAAC funding bill", children: [] },
+], [], [{ ...doc("retreat"), title: "Fall retreat funding bill" }]);
+assert.equal(directOutline.length, 2);
+assert.equal(directOutline[0].documentLinks?.[0].href, "/documents/retreat");
+const unresolvedOutline = meetingOutline([], [{ agendaId: "a", sectionId: retreat.id, title: retreat.title,
+    quote: "a sufficiently long passage", startOffset: 0, minutesHref: "#minutes-0", linkedUrls: [url] }], [], [{ url, text: "Fall retreat funding bill", source: "drive" }]);
+assert.equal(unresolvedOutline.length, 1);
+assert.equal(unresolvedOutline[0].documentLinks?.[0].href, url);
 const result = validateAgendaMatches({ matches: [
     { sectionId: tabling.id, quote: "veda: my bill, passed finance with positive recommendation" },
     { sectionId: firstReading.id, quote: "jazz: nothing for first reading" },

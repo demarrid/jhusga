@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { listDriveRevisions, revisionOAuthConfigured, revisionText, revisionRetryDelay } from "../lib/drive-revisions";
+import { listDriveRevisions, refreshRevisionAuthors, revisionOAuthConfigured, revisionText, revisionRetryDelay } from "../lib/drive-revisions";
 const originalFetch = globalThis.fetch;
 const originalNow = Date.now;
 const originalTimeout = globalThis.setTimeout;
@@ -83,6 +83,28 @@ async function main() {
             ? Response.json({revisions: []})
             : Response.json({capabilities: {canReadRevisions: true}});
         assert.deepEqual(await listDriveRevisions("empty-history"), []);
+        const importedFiles: string[] = [];
+        const access = { configured: () => true, importFile: async (fileId?: string) => {
+            assert.ok(fileId, "sync never requests a full-corpus revision backfill");
+            importedFiles.push(fileId);
+            return { imported: 2, failed: 0 };
+        } };
+        assert.deepEqual(await refreshRevisionAuthors([], { ...access, configured: () => { throw new Error("must not check OAuth for unchanged files"); } }),
+            { imported: 0, failed: 0, skipped: 0 });
+        assert.deepEqual(await refreshRevisionAuthors(["new-minutes", "changed-minutes", "new-minutes"], access),
+            { imported: 4, failed: 0, skipped: 0 });
+        assert.deepEqual(importedFiles, ["new-minutes", "changed-minutes"]);
+        assert.deepEqual(await refreshRevisionAuthors(["unconfigured"], { ...access, configured: () => false }),
+            { imported: 0, failed: 0, skipped: 1 });
+        assert.equal(importedFiles.length, 2);
+        const originalError = console.error;
+        try {
+            console.error = () => {};
+            assert.deepEqual(await refreshRevisionAuthors(["broken", "healthy"], { ...access, importFile: async id => {
+                if (id === "broken") throw new Error("access denied");
+                return { imported: 1, failed: 0 };
+            } }), { imported: 1, failed: 1, skipped: 0 });
+        } finally { console.error = originalError; }
         console.log("all OAuth revision checks passed");
     } finally {
         globalThis.fetch = originalFetch;

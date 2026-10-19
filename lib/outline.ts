@@ -825,7 +825,11 @@ function indexSections(content: string): Index {
                 continue;
             }
             if (agendaHeading) {
-                place(2, mark.indent, false, false, "heading", label.plain, at);
+                // Bold numbered items can themselves contain bold numbered
+                // subitems. Keep their indentation instead of flattening all
+                // of them to the top-level agenda depth.
+                const parent = [...frames].reverse().find(frame => frame.indent < mark.indent);
+                place(parent ? parent.level + 1 : 2, mark.indent, false, false, "heading", label.plain, at);
             } else if (mark.kind === "bullet") {
                 // A bullet belongs to the item it follows. Giving it that
                 // item's indent plus one keeps the next roman line from
@@ -860,7 +864,10 @@ function indexSections(content: string): Index {
         const stage = STAGE.exec(text.replace(/\\([^A-Za-z0-9\n])/g, "$1").trim());
         if (stage) {
             const title = clean(stage[1]!);
-            if (!isNoise(title) && !isSpeaker(title) && isLabel(title) && title.split(/\s+/).length <= 8) {
+            // Angle brackets also mark actions and reactions in transcripts.
+            // Keep named topics and meeting labels, not every short aside.
+            const topic = isTitleCase(title) || /^(?:(?:cabinet|senator|committee|executive|advisor|staff|officer)\s+reports?|(?:first|second)\s+reading|(?:new|old|legislative|non-legislative)\s+business|adjournment|roll\s*call)$/i.test(title);
+            if (topic && !isNoise(title) && !isSpeaker(title) && isLabel(title) && title.split(/\s+/).length <= 8) {
                 place(minorLevel(), 0, false, false, "heading", title, at);
             } else {
                 body();

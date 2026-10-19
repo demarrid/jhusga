@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { findQuote, normalizeForMatch } from "@/lib/anchor";
-import { documentSections, type DocumentSection } from "@/lib/outline";
+import { documentSections, sectionAnchors, type DocumentSection } from "@/lib/outline";
+import { extractDocumentLinks } from "@/lib/links";
 import { blockSectionIds, renderDocument } from "@/lib/render";
 import { toPlainText } from "@/lib/markdown";
 
@@ -12,6 +13,7 @@ export type AgendaMatch = {
     startOffset: number;
     minutesHref: string;
     linkedDocumentIds?: string[];
+    linkedUrls?: string[];
     ancestors?: { id: string; title: string }[];
 };
 
@@ -25,6 +27,14 @@ These matches are navigation suggestions, not hyperlinks authored in the minutes
 export function agendaItems(content: string): DocumentSection[] {
     const flatten = (rows: DocumentSection[]): DocumentSection[] => rows.flatMap(row => [row, ...flatten(row.children)]);
     return flatten(documentSections(content, { anchored: blockSectionIds(renderDocument(content, [])) })).filter(row => !row.group);
+}
+
+/** Links below a heading belong to it, up to the next authored section. */
+export function agendaSectionLinks(content: string, sectionId: string) {
+    const anchors = [...sectionAnchors(content)].sort(([a], [b]) => a - b);
+    const index = anchors.findIndex(([, id]) => id === sectionId);
+    if (index < 0) return [];
+    return extractDocumentLinks(content.slice(anchors[index][0], anchors[index + 1]?.[0]));
 }
 
 export function agendaMappingKey(minutesId: string, agendaId: string): string {

@@ -588,7 +588,11 @@
 }
 
 .sidebar .outline a:hover,
-.sidebar .outline a:focus-visible,
+.sidebar .outline a:focus-visible {
+  color: #344960;
+  text-decoration: underline;
+}
+
 .sidebar .outline a[aria-current="location"] {
   color: #002d72;
   opacity: 1;

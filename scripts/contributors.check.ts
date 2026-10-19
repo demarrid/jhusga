@@ -1167,5 +1167,11 @@ check(
     compareNamesBySurname("Mary Ann Smith", "John Smith") > 0,
 );
 
+check(
+    "committee attendance preserves Cole's hyphenated name and abbreviated vice-chair office",
+    extractContributors("| Cole Liazos-Coffey, VC | Present | Boyi Chen | Present |", undefined, "minutes.committee")
+        .some(person => person.name === "Cole Liazos-Coffey" && person.role === "present" && person.office === "Vice Chair"),
+);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

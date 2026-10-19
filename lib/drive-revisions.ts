@@ -201,3 +201,36 @@ export async function importRevisionAuthors(fileId?: string): Promise<{ imported
     }
     return { imported, failed };
 }
+
+/** Refresh just the files published by this sync, leaving content sync usable
+ * when optional OAuth access is absent or one file's history cannot be read.
+ * importRevisionAuthors enforces published native minutes eligibility.
+ */
+export async function refreshRevisionAuthors(
+    fileIds: string[],
+    access = { configured: revisionOAuthConfigured, importFile: importRevisionAuthors },
+): Promise<{ imported: number; failed: number; skipped: number }> {
+    const ids = [...new Set(fileIds)];
+    const result = { imported: 0, failed: 0, skipped: 0 };
+    if (!ids.length) return result;
+    try {
+        if (!access.configured()) {
+            console.warn("Minutes authorship refresh skipped: Drive revision OAuth is not configured");
+            return { ...result, skipped: ids.length };
+        }
+    } catch (error) {
+        console.error("Minutes authorship configuration failed:", error instanceof Error ? error.message : "unknown error");
+        return { ...result, failed: ids.length };
+    }
+    for (const id of ids) {
+        try {
+            const imported = await access.importFile(id);
+            result.imported += imported.imported;
+            result.failed += imported.failed;
+        } catch (error) {
+            result.failed += 1;
+            console.error(`Minutes authorship refresh failed for ${id}:`, error instanceof Error ? error.message : "unknown error");
+        }
+    }
+    return result;
+}

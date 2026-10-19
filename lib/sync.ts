@@ -5,6 +5,7 @@ import { matchAccount } from "@/lib/accounts";
 import { findQuote } from "@/lib/anchor";
 import { bodyForDocument } from "@/lib/bodies";
 import { extractContributors } from "@/lib/contributors";
+import { refreshRevisionAuthors } from "@/lib/drive-revisions";
 import { assessChange } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor } from "@/lib/meetings";
@@ -89,6 +90,9 @@ export type SyncSummary = {
     driveAccountsLinked: number;
     /** Sessions with at least one document whose published text changed. */
     sessionsChanged: number[];
+    /** New or changed native meeting documents; filtered to published minutes after classification. */
+    revisionAuthorFileIds: string[];
+    revisionAuthors: { imported: number; failed: number; skipped: number };
     /**
      * Milliseconds each phase took, in the order they ran. The cron has a
      * five-minute ceiling and this is how to see which phase is eating it.
@@ -909,6 +913,9 @@ export async function ingestFile(
     }
 
     summary.contributorsLinked += await recordContributors(document.id, content);
+    if (file.mimeType === GOOGLE_DOC_MIME && metadata.kind.startsWith("minutes.")) {
+        summary.revisionAuthorFileIds.push(file.id);
+    }
 
     // The search index is derived from the text that just landed, so it is
     // rebuilt here rather than in a corpus pass: a document whose clause moved
@@ -1198,6 +1205,8 @@ export async function syncMasterFolder(
         meetingsPaired: 0,
         driveAccountsLinked: 0,
         sessionsChanged: [],
+        revisionAuthorFileIds: [],
+        revisionAuthors: { imported: 0, failed: 0, skipped: 0 },
         timings: {},
     };
 
@@ -1267,6 +1276,12 @@ export async function syncMasterFolder(
         // Titles depend on the meeting keys the pass above just wrote.
         await timed(summary, "titles", () => recordTitles());
         await timed(summary, "kinds", () => recordKinds());
+        // Classification must finish first: a new file does not have its
+        // minutes role until recordMeetings runs. Never fetch history for an
+        // agenda, bill, resolution, or an edit awaiting publication review.
+        summary.revisionAuthors = await timed(summary, "revisionAuthors", () =>
+            refreshRevisionAuthors(summary.revisionAuthorFileIds),
+        );
         summary.documentsDated = await timed(summary, "dates", () => recordDates());
         summary.referencesLinked = await timed(summary, "references", () =>
             rebuildReferences(),

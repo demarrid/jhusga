@@ -250,6 +250,7 @@ function isOfficeLine(text: string): boolean {
 
 function tidyOffice(prefix: string): string {
     const collapsed = prefix.replace(/\s+/g, " ").trim();
+    if (/^VC$/i.test(collapsed)) return "Vice Chair";
     if (
         /^(?:vice[-\s]?chair|co[-\s]?chair|chairs?|vice[-\s]?president|president|secretary|treasurer|senators?|justices?|parliamentarian)$/i.test(
             collapsed,
@@ -442,9 +443,9 @@ function parsePersonToken(candidate: string): {
 
     const trailingOffice = /^(.*?),\s*([^,]+)$/.exec(working);
     let commaOffice: string | null = null;
-    if (trailingOffice && OFFICE_WORDS.test(trailingOffice[2])) {
+    if (trailingOffice && (OFFICE_WORDS.test(trailingOffice[2]) || /^(?:VC|VP|VPOTS|SBP|SBVP)$/i.test(trailingOffice[2].trim()))) {
         working = trailingOffice[1].trim();
-        commaOffice = trailingOffice[2].trim();
+        commaOffice = tidyOffice(trailingOffice[2]);
     }
 
     const peeled = peelLeadingOffice(working);

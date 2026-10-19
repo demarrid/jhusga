@@ -14,7 +14,7 @@ import {
     type DocumentSort,
 } from "@/lib/document-sort";
 import { heldNotice } from "@/lib/integrity";
-import { agendaMappingKey, agendaMappingHash, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
+import { agendaMappingKey, agendaMappingHash, agendaSectionLinks, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
 import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
 import { compareNamesBySurname } from "@/lib/contributors";
@@ -803,11 +803,10 @@ export async function getDocument(
     for (const match of agendaMatches) {
         match.minutesHref = `#minutes-${match.startOffset}`;
         const agenda = matchedCounterparts.find(row => row.id === match.agendaId);
-        const offset = Number(match.sectionId.replace(/^section-/, ""));
-        if (!agenda || !Number.isInteger(offset)) continue;
-        const end = agenda.content.indexOf("\n", offset);
-        const links = extractDocumentLinks(agenda.content.slice(offset, end < 0 ? undefined : end));
+        if (!agenda) continue;
+        const links = agendaSectionLinks(agenda.content, match.sectionId);
         match.linkedDocumentIds = agendaTargets.filter(row => links.some(link => link.fileId === row.driveFileId)).map(row => row.id);
+        match.linkedUrls = links.map(link => link.url);
     }
     const agendaUnresolvedLinks = new Map<string, UnresolvedLink>();
     for (const link of agendaLinks) {

@@ -302,6 +302,11 @@ const minutes = [
 ].join("\n");
 
 const minutesOutline = flat(documentSections(minutes));
+const transcriptAsides = "jazz: showing a video\n\n\\<hispanic heritage month video\\>\n\njazz: thanks\n\n\\<light laughter from room\\>\n\ncole: motion to adjourn";
+check("transcript actions and reactions do not invent sections", documentSections(transcriptAsides).length === 0);
+check("a lowercase meeting topic survives among transcript asides",
+    flat(documentSections(minutes + "\n\n<cabinet reports>\n\njason: another update\n\n<light laughter from room>")).includes("  cabinet reports") &&
+    !flat(documentSections(minutes + "\n\n<light laughter from room>")).some(title => title.includes("laughter")));
 check(
     "a transcript's topic lines nest under its headings, and speeches do not",
     minutesOutline.join("\n") ===

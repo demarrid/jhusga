@@ -94,7 +94,8 @@ export default async function DocumentPage({
         kind: document.kind,
     });
     const agendas = document.counterpart?.role === "agenda" ? document.counterpart.documents : [];
-    const sections = agendas.length ? meetingOutline(authoredSections, document.agendaMatches ?? [],
+    const meetingSections = document.kind.startsWith("minutes.");
+    const sections = meetingSections ? meetingOutline(authoredSections, document.agendaMatches ?? [],
         relevantDocuments(document.agendaReferences ?? [], document.references, agendas.map(row => row.id)).documents,
         uniqueUnresolvedLinks([...(document.agendaUnresolvedLinks ?? []), ...document.unresolvedLinks])) : authoredSections;
 
@@ -260,9 +261,9 @@ export default async function DocumentPage({
 
                         <RelatedDocuments
                             counterpart={agendas.length ? null : document.counterpart}
-                            references={agendas.length ? [] : document.references}
+                            references={meetingSections ? [] : document.references}
                             referencedBy={document.referencedBy}
-                            unresolvedLinks={agendas.length ? [] : document.unresolvedLinks}
+                            unresolvedLinks={meetingSections ? [] : document.unresolvedLinks}
                         />
 
                         {document.contributors.length > 0 && (

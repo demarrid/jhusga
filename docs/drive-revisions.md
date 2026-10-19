@@ -21,8 +21,12 @@ exports supply text for comparison. An API key cannot read that history.
 5. Apply migrations with `npx prisma migrate deploy`, then generate the client
    with `npx prisma generate`. Run `npm run revisions` for all published native
    Google Docs minutes, or `npm run revisions -- DRIVE_FILE_ID` for one file.
-   Re-run after syncs to capture newly retained history. This command is separate
-   from the five-minute sync cron because historical exports can be expensive.
+   Sync automatically refreshes revision history for new native Google Docs
+   minutes and minutes whose published content changes. It waits until meeting
+   classification finishes and skips unchanged text, agendas, and held edits.
+   OAuth must be configured in the sync environment. The manual command remains
+   available for backfills and retrying failed imports; failures retain stored
+   history and are reported in the sync result and logs.
 
 Keep credentials in `.env` locally and deployment secrets on the server. They
 must never use a NEXT_PUBLIC prefix. No account credentials are needed in chat.
