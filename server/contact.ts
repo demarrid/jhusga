@@ -6,6 +6,7 @@ import { ARCHIVE_CACHE_TAG, DIRECTORY_CACHE_SECONDS } from "@/lib/archive-cache"
 import { SESSION_NUMBER } from "@/config/session";
 import {
     buildSessionDirectory,
+    isEmptySeat,
     extractGroupInboxes,
     type DirectoryMember,
     type DirectorySource,
@@ -29,7 +30,7 @@ export type ContactDirectory = {
 
 const cachedContactDirectory = unstable_cache(
     loadContactDirectory,
-    ["contact-directory-v1"],
+    ["contact-directory-v2"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: DIRECTORY_CACHE_SECONDS },
 );
 
@@ -57,7 +58,7 @@ async function loadContactDirectory(session: number): Promise<ContactDirectory> 
     const directory = buildSessionDirectory(documents);
 
     const affiliates = await prisma.hopkinsAffiliate.findMany({
-        where: { nameKey: { in: directory.members.map((member) => nameKey(member.name)) } },
+        where: { nameKey: { in: directory.members.filter((member) => !isEmptySeat(member.name)).map((member) => nameKey(member.name)) } },
         select: { id: true, nameKey: true },
     });
     const ids = new Map(affiliates.map((row) => [row.nameKey, row.id]));
@@ -66,7 +67,7 @@ async function loadContactDirectory(session: number): Promise<ContactDirectory> 
         sessionNumber: session,
         members: directory.members.map((member) => ({
             ...member,
-            id: ids.get(nameKey(member.name)) ?? null,
+            id: isEmptySeat(member.name) ? null : ids.get(nameKey(member.name)) ?? null,
         })),
         inboxes: extractGroupInboxes(documents),
         sources: directory.sources,

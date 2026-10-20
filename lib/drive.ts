@@ -674,9 +674,10 @@ async function downloadFile(fileId: string): Promise<Uint8Array | null> {
 export async function extractPdfText(bytes: Uint8Array): Promise<string> {
     if (bytes.byteLength === 0) return "";
 
-    const { extractText } = await import("unpdf");
-    const { text } = await extractText(bytes, { mergePages: true });
-    return sanitizeExport(text);
+    const { extractTextItems } = await import("unpdf");
+    const { pdfItemsToText } = await import("./pdf-text");
+    const { items } = await extractTextItems(bytes);
+    return sanitizeExport(pdfItemsToText(items));
 }
 
 /**

@@ -4,12 +4,19 @@
   top: 0;
   width: 100%;
   border-bottom: 1px solid rgba(0, 45, 114, 0.16);
+  isolation: isolate;
+}
+
+.header::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
   background: rgba(255, 255, 255, 0.94);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  /* Chrome on macOS drops frames on sticky + backdrop-filter unless the header has its own compositor layer. */
-  transform: translateZ(0);
-  will-change: transform;
+  /* Keep backdrop compositing off the sticky navigation and its contents. */
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .inner {

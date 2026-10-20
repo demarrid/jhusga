@@ -8,6 +8,7 @@ import { OFFICE_HOURS, OFFICE_HOURS_CHECKED } from "@/config/office-hours";
 import { formatDateShort } from "@/lib/dates";
 import {
   membersByGroup,
+  isEmptySeat,
   type DirectoryCitation,
   type GroupInbox,
 } from "@/lib/directory";
@@ -123,15 +124,15 @@ export default async function Contact() {
                         ),
                       )}
                       <ul>
-                        {subgroup.rows.map(({ member, title, offices, committees }) => (
-                          <li className={styles.member} key={`${member.name}-${title ?? ""}`}>
+                        {subgroup.rows.map(({ member, title, offices, committees }, index) => (
+                          <li className={styles.member} key={`${member.name}-${title ?? ""}-${index}`}>
                             <div className={styles.memberIdentity}>
                               {member.id ? (
                                 <Link href={`/documents?mode=find&person=${member.id}`}>
                                   {member.name}
                                 </Link>
                               ) : (
-                                <strong>{member.name}</strong>
+                                <strong className={isEmptySeat(member.name) ? styles.emptySeat : undefined}>{member.name}</strong>
                               )}
 
                               {member.email && (

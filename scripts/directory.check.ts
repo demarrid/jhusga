@@ -579,5 +579,35 @@ const inboxes = extractGroupInboxes([
 check("sga@jhu.edu is kept when the text says to email it", inboxes.some((row) => row.email === "sga@jhu.edu"));
 check("a personal address is not an inbox", !inboxes.some((row) => row.email.includes("graham") || row.email.includes("charles")));
 
+const vacancies = buildSessionDirectory([{
+    id: "vacancies",
+    title: "114th SGA Roster",
+    content: [
+        "1. Executive Branch",
+        "   1. Treasurer",
+        "      1. Amy Xu",
+        "2. Legislative Branch",
+        "   1. Representative Senators",
+        "      1. Cultural Identity",
+        "         1. empty seat",
+        "            1. Member of Finance Committee",
+        "   2. Sophomore Class Senators",
+        "      1. Empty Seat",
+        "      2. EMPTY SEAT",
+    ].join("\n"),
+}]);
+const emptySeats = vacancies.members.filter((member) => member.name === "Empty Seat");
+check("each vacancy is preserved separately", emptySeats.length === 3, emptySeats);
+check("vacancies have no committees or email", emptySeats.every((member) =>
+    !member.email && member.committees?.length === 0 &&
+    member.seats?.every((seat) => seat.committees.length === 0 && seat.offices.length === 0),
+));
+const vacantRows = membersByGroup(vacancies.members).flatMap((group) => group.subgroups)
+    .flatMap((subgroup) => subgroup.rows).filter((row) => row.member.name === "Empty Seat");
+check("a category containing only a vacancy is preserved", vacantRows.some((row) => row.title === "Cultural Identity"), vacantRows);
+check("multiple vacancies remain in their class category", emptySeats.filter((member) =>
+    member.seats?.some((seat) => seat.path.includes("Sophomore Class Senators")),
+).length === 2);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

@@ -578,7 +578,10 @@ function labeledSegments(text: string): { role: ContributorRole; names: string; 
         const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
         const names = text.slice(colon === -1 ? start : colon + 1, end).trim();
         return { role: match.role, names, firstNames: match.firstNames };
-    }).filter((segment) => segment.names.length > 0 && segment.names.length < 400);
+    }).filter((segment) => segment.names.length > 0 && segment.names.length < 400
+        // "Event staff: $19.65/hour" is a price, not a slash-separated
+        // roster. Reject it before splitting leaves a plausible name "hour".
+        && !/[$£€]\s*\d/.test(segment.names));
 }
 
 /** Whether the line's final characters mean the list has more names coming. */

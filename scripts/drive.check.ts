@@ -8,6 +8,8 @@ import {
     isDocxFile,
     isPdfFile,
 } from "../lib/drive";
+import { pdfItemsToText, type PdfTextItem } from "../lib/pdf-text";
+import { renderDocument } from "../lib/render";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -18,6 +20,35 @@ function check(label: string, condition: boolean, detail?: unknown) {
         console.log(`  FAIL ${label}`, detail ?? "");
     }
 }
+
+function pdfLine(x: number, y: number, str: string, width = str.length * 6): PdfTextItem {
+    return { x, y, str, width, fontSize: 12, hasEOL: true };
+}
+function pdfBullet(x: number, y: number, glyph: string, body: string): PdfTextItem[] {
+    return [
+        { ...pdfLine(x, y, glyph, 6), hasEOL: false },
+        pdfLine(x + 18, y, body),
+    ];
+}
+const nestedPdf = pdfItemsToText([[
+    ...pdfBullet(72, 700, "•", "Funding streams"),
+    ...pdfBullet(108, 682, "o", "Annual allocations"),
+    ...pdfBullet(144, 664, "▪", "Request funding for"),
+    pdfLine(162, 646, "non-event expenses"),
+    ...pdfBullet(108, 628, "o", "Event grants"),
+    ...pdfBullet(72, 610, "•", "General principles"),
+    pdfLine(72, 580, "o ordinary prose"),
+]]);
+check("PDF coordinates preserve three list levels and wrapped sentences",
+    nestedPdf === "- Funding streams\n    - Annual allocations\n        - Request funding for non-event expenses\n    - Event grants\n- General principles\n\no ordinary prose", nestedPdf);
+const renderedPdf = renderDocument(nestedPdf, []);
+const rootList = renderedPdf.find(block => block.kind === "list");
+const secondList = rootList?.kind === "list" ? rootList.items[0]?.blocks[0] : undefined;
+const thirdList = secondList?.kind === "list" ? secondList.items[0]?.blocks[0] : undefined;
+check("extracted PDF bullets render as three nested lists", thirdList?.kind === "list");
+check("PDF text without bullets retains reading order and page breaks",
+    pdfItemsToText([[pdfLine(72, 700, "First")], [pdfLine(72, 700, "Second")]]) === "First\n\nSecond");
+check("empty PDF text layers remain empty", pdfItemsToText([[]]) === "");
 
 /**
  * A one-page PDF whose only content is `phrase`, using Helvetica so PDF.js

@@ -178,21 +178,11 @@
 
 .sidebar a,
 .readerLink {
-  color: rgb(71, 131, 184);
+  color: rgb(56, 108, 154);
 
-  text-decoration-color: #79addb;
-  text-underline-offset: 0.2em;
   transition: color 0.2s ease-in-out;
 }
 
-.sidebar a:hover,
-.readerLink:hover {
-  color: #164f87;
-
-  text-decoration-color: #79addb;
-  text-underline-offset: 0.2em;
-
-}
 .asideMeta {
   color: #6a7c8f;
   font-size: 0.72rem;
@@ -535,8 +525,6 @@
 
 .viewer a {
   color: #164f87;
-  text-decoration-color: #79addb;
-  text-underline-offset: 0.2em;
 }
 
 .annotation {
@@ -584,18 +572,19 @@
   overflow-wrap: anywhere;
   text-decoration: none;
   opacity: 0.5;
-  transition: opacity 0.15s ease, color 0.15s ease;
-}
-
-.sidebar .outline a:hover,
-.sidebar .outline a:focus-visible {
-  color: #344960;
-  text-decoration: underline;
+  transition: opacity 0.15s ease, color 0.2s ease-in-out;
 }
 
 .sidebar .outline a[aria-current="location"] {
   color: #002d72;
   opacity: 1;
+}
+
+.sidebar a:hover,
+.readerLink:hover,
+.sidebar .outline a:hover,
+.sidebar .outline a:focus-visible {
+  color: #035cb5;
 }
 
 .sidebar .outline a.sectionDocumentLink {

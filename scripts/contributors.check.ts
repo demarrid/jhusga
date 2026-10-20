@@ -33,6 +33,12 @@ function check(label: string, condition: boolean, detail?: unknown) {
 
 console.log("sanitizeExport");
 
+check("staff prices do not invent a person named Hour",
+    extractContributors("Event staff: $19.65/hour\nSupervisor: $22.40/hour")
+        .length === 0);
+check("actual staff names still parse",
+    extractContributors("Staff: Willow Smith").some(p => p.name === "Willow Smith" && p.role === "staff"));
+
 const finalPdfBylines = extractContributors("INTRODUCED BY: STUDENT BODY VICE PRESIDENT JACKSON MORRIS\nJUNIOR CLASS PRESIDENT RESHAM TALWAR\nFIRST CONSIDERED THIS 29TH DAY OF AUGUST IN THE YEAR 2023\nSPONSORED BY: JUNIOR CLASS SENATOR MOLLY KUZMA\nSOPHOMORE CLASS PRESIDENT STONE MENG\nSTUDENT BODY SECRETARY AMY LI", "Board of Trustees Resolution_final.pdf", "resolution");
 check("final PDF capitals and stacked bylines preserve both introducers and all sponsors",
     ["Jackson Morris", "Resham Talwar"].every(name => finalPdfBylines.some(p => p.name === name && p.role === "introducer"))

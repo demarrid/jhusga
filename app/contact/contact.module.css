@@ -236,7 +236,7 @@
 
 .subgroup h4 {
   margin: 2rem 0 0;
-  color: #286eb4;
+  color: #083c6f;
   font-size: 0.98rem;
   font-weight: 680;
   letter-spacing: 0.08em;
@@ -293,6 +293,10 @@
   line-height: 1.2;
   text-decoration-color: #79addb;
   text-underline-offset: 0.2em;
+}
+
+.memberIdentity > .emptySeat {
+  color: #6a7c8f;
 }
 
 .email {

@@ -43,6 +43,10 @@ export const DIRECTORY_GROUPS = [
 
 export type DirectoryGroup = (typeof DIRECTORY_GROUPS)[number];
 
+export function isEmptySeat(name: string): boolean {
+    return /^empty\s+seat$/i.test(name.trim());
+}
+
 export type DirectoryCitation = {
     documentId: string;
     documentTitle: string;
@@ -373,9 +377,9 @@ export function directoryGroupLabel(group: DirectoryGroup): string {
         case "executive":
             return "Executive";
         case "senate":
-            return "Senate";
+            return "Legislative"; // preferred (by me) consitency
         case "caucus":
-            return "Caucuses";
+            return "Caucuses"; // not a thing
         case "judiciary":
             return "Judiciary";
         case "cse":
@@ -383,7 +387,7 @@ export function directoryGroupLabel(group: DirectoryGroup): string {
         case "programming":
             return "Programming Council";
         case "staff":
-            return "Staff";
+            return "Advisors"; // legal(?) name
         case "other":
             return "Also listed";
     }
@@ -786,7 +790,7 @@ export function assignLeftoverEmails(
         if (used.has(email)) continue;
 
         const scored = members
-            .filter((member) => !member.email)
+            .filter((member) => !member.email && !isEmptySeat(member.name))
             .map((member) => ({ member, score: emailNameScore(member.name, email) }))
             .filter((row) => row.score >= 2)
             .sort((a, b) => b.score - a.score);
@@ -1187,6 +1191,7 @@ const OUTLINE_ROLE_WORD =
     /\b(?:senators?|president|vice|chair|co-chair|justices?|chief|committees?|councils?|class|branch|school|caucus|representatives?|secretary|treasurer|director|members?|board|programming|executive|legislative|judiciary|senate|officers?|elections)\b/i;
 
 function isOutlineName(text: string): boolean {
+    if (isEmptySeat(text)) return true;
     if (OUTLINE_ROLE_WORD.test(text)) return false;
     const tokens = text.split(/\s+/);
     if (tokens.length < 2 || tokens.length > 4) return false;
@@ -1352,7 +1357,7 @@ function readPositionsDocument(document: DirectoryDocument): Map<string, Mutable
             const listed: string[] = [];
             const committees: string[] = [];
 
-            for (const detail of outlineText(node.children)) {
+            for (const detail of isEmptySeat(node.text) ? [] : outlineText(node.children)) {
                 if (OUTLINE_NOTHING.test(detail)) continue;
 
                 if (seat.group === "judiciary" && /^chief justice$/i.test(detail)) {
@@ -1398,9 +1403,13 @@ function readPositionsDocument(document: DirectoryDocument): Map<string, Mutable
                 listed.push(detail);
             }
 
-            const key = nameKey(node.text);
+            const key = isEmptySeat(node.text) ? `empty-seat-${order}` : nameKey(node.text);
             const member =
-                current.get(key) ?? blankMember({ name: node.text, email: null, group: seat.group });
+                current.get(key) ?? blankMember({
+                    name: isEmptySeat(node.text) ? "Empty Seat" : node.text,
+                    email: null,
+                    group: seat.group,
+                });
             current.set(key, member);
 
             member.subgroup = member.subgroup ?? seat.subgroup;
@@ -1453,7 +1462,7 @@ function attachListedEmails(
         for (const person of parseEmailList(document.content)) {
             if (!person.email) continue;
             const member = findCurrentMember(current, person);
-            if (!member || member.email) continue;
+            if (!member || member.email || isEmptySeat(member.name)) continue;
             member.email = person.email;
             member.emailSource = citationFrom(document, `${person.name} ${person.email}`);
         }
@@ -1672,7 +1681,7 @@ export async function recordDirectory(
         },
     });
 
-    const { members } = buildSessionDirectory(documents);
+    const members = buildSessionDirectory(documents).members.filter((member) => !isEmptySeat(member.name));
     const isCurrent = session === SESSION_NUMBER;
     const termStart = sessionStartDate(session);
     const termEnd = isCurrent ? null : sessionEndDate(session);
