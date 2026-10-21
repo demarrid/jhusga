@@ -58,10 +58,6 @@ export default function Footer() {
 
       <div className={styles.finePrint}>
         <p>Student representation, legislation, and public records.</p>
-        <p>
-          &copy; {new Date().getFullYear()} Student Government Association at
-          Johns Hopkins University.
-        </p>
       </div>
     </footer>
   );
