@@ -1,4 +1,5 @@
 import { findQuote } from "../lib/anchor";
+import { presentBill } from "../lib/bill-presentation";
 import { toPlainText } from "../lib/markdown";
 import { documentSections, type DocumentSection } from "../lib/outline";
 import {
@@ -19,6 +20,15 @@ function check(label: string, condition: boolean, detail?: unknown) {
         console.log(`  FAIL ${label}`, detail ?? "");
     }
 }
+
+const flattenedProvisions = "**4.3.1.3 ORDER** 4.3.1.3.7 Closing of a Session 4.3.1.3.7.1 Meetings are open. 4.3.1.3.~~7~~8 Suspension of Rules";
+const provisionSource = `| Current | Proposed |\n| --- | --- |\n| ${"Existing language remains in this comparison. ".repeat(4)} | ${flattenedProvisions} |`;
+const provisionQuote = findQuote(provisionSource, "Meetings are open.")!;
+const provisionBlocks = renderDocument(provisionSource, [{ id: "provision", ...provisionQuote }]);
+check("flattened and redlined legislative provisions each start a new line",
+    provisionBlocks[0]?.kind === "table" && runsText(provisionBlocks[0].rows[0].cells[1]).includes("\n4.3.1.3.78 Suspension"), JSON.stringify(provisionBlocks));
+check("restoring provision breaks preserves citation text",
+    highlighted(provisionBlocks, "provision") === "Meetings are open.");
 
 const attendanceColumns = renderDocument("| Here:<br>Veda<br>Cole | Absent:<br>Excused:<br>Kai |\n| :---- | :---- |", []);
 check("single-row attendance keeps equal table columns without a false header",
@@ -768,6 +778,39 @@ check(
         runsText(committee) === "Committee on Internal Affairs: hears appeals. [1]",
     committee,
 );
+
+const billOpening = [
+    "**Senate**\n**of the**\n**Student Government Association**\n**of**\n**The Johns Hopkins University**",
+    "**{ *S. Bill. 114.10.20.2026-1* }**",
+    "**A Bill to Amend The Bylaws of the Senate**",
+    "**Closed Session Clarification Act**",
+    "Introduced by: **Cole**Sponsored by: **Shreemann** and **Veda**\nPresented for First Reading this **20th** day of **October** in the year **2026**",
+    "**SECTION 1. TITLE.**\nThis Act has a title.",
+    "**SECTION 6. CONSTITUTIONALLY-MANDATED NON-LEGISLATIVE ADDENDUM**",
+    "1. **FIRST SENATOR REPRESENTING THE CAUCUS**\n    1. The first Senator shall be appointed.",
+].join("\n\n");
+const billCredit = findQuote(billOpening, "Cole")!;
+const billParsed = renderDocument(billOpening, [{ id: "bill-credit", ...billCredit }]);
+const billPresented = presentBill(billParsed);
+check("standard bill title block separates number, purpose, title, credits, and reading",
+    billPresented.header.filter(line => line.kind === "number").length === 1 &&
+    billPresented.header.filter(line => line.kind === "title").length === 1 &&
+    billPresented.header.filter(line => line.kind === "credit").length === 2 &&
+    billPresented.header.filter(line => line.kind === "reading").length === 1, billPresented.header);
+check("bill sections are headings while their numbered provisions are ordinary list items",
+    billPresented.blocks.filter(block => block.kind === "heading").length === 2 &&
+    billPresented.blocks.some(block => block.kind === "list" && !block.agenda &&
+        runsText(block.items[0].runs) === "FIRST SENATOR REPRESENTING THE CAUCUS"), billPresented.blocks);
+check("bill presentation preserves section targets, body text, and citation anchors",
+    [...blockSectionIds(billParsed)].every(id => blockSectionIds(billPresented.blocks).has(id) || billPresented.header.some(line => line.sectionId === id)) &&
+    allRuns(billPresented.blocks).some(run => run.text.includes("This Act has a title.")) &&
+    billPresented.header.flatMap(line => line.runs).filter(run => run.annotationId === "bill-credit" && run.anchor).length === 1);
+const secondBill = presentBill(renderDocument(billOpening.replace("S. Bill. 114.10.20.2026-1", "S-B.114.10.13.26-1")
+    .replace("Closed Session Clarification Act", "Establishing A Transfer Student Caucus").replaceAll("**\n**", "**\n\n**"), []));
+check("alternate bill identifiers and separately exported letterhead lines share the presentation",
+    secondBill.header.some(line => line.kind === "number") && secondBill.header.some(line => line.kind === "title" && runsText(line.runs).includes("Transfer")));
+check("meeting agendas retain their original presentation",
+    presentBill(agendaBlocks).header.length === 0 && presentBill(agendaBlocks).blocks === agendaBlocks);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

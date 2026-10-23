@@ -4,7 +4,7 @@ This repository contains the code for the **unofficial** website of the Student 
 
 The official website, hosted on CampusGroups, is available here: [https://jhu.campusgroups.com/sga/home](https://jhu.campusgroups.com/sga/home). While it (usually) serves the main necessary functions an SGA website should have, CampusGroups is less corrigible than something self-hosted; hence, this repository.
 
-The content below, as well as the vast majority of this repository's backend, was generated using Opus 5.
+The content below, as well as the vast majority of this repository's backend, was generated using Opus 5 and 6 Astra.
 
 ## Architecture
 

@@ -75,6 +75,7 @@ function isLabel(plain: string): boolean {
     // "Shall assist the President..." is a duty, and a line that ends in a
     // period is a sentence. Agenda labels do neither.
     if (SENTENCE_VERB.test(plain)) return false;
+    if (/[,;]$|,\s*(?:or|and)$/i.test(plain)) return false;
     if (/[.!?\u2026]$/.test(plain)) return false;
     // A long line in sentence case is prose that happens to lack a verb from
     // the list: "Expecting around 48 people, with a possible rotation...".
@@ -802,6 +803,14 @@ function indexSections(content: string): Index {
         const mark = outlineMark(text);
         if (mark) {
             const label = emphasis(mark.raw);
+            // Explicit Article/Section/Part labels outrank sentence heuristics:
+            // "Part I - All Committees shall" introduces the duties below it.
+            const named = STRUCTURAL.exec(label.plain);
+            if (named && /^(?:\s*[:.\-–—])/.test(label.plain.slice(named[1].length + 1 + named[2].length)) && label.plain.length <= 120) {
+                place(outlineLevel(mark.indent, mark.kind, mark.value), mark.indent,
+                    true, false, mark.kind, label.plain, at);
+                continue;
+            }
             // A colon here introduces the bill or the person reporting, not a
             // speech. "Jazz: Thank you..." is never a numbered label.
             if (!isLabel(label.plain) || isBanner(label.plain, meetings)) {

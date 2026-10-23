@@ -269,6 +269,53 @@
   white-space: pre-wrap;
 }
 
+.billHeader {
+  margin: 0 0 2.5rem;
+  padding: 1.5rem clamp(0rem, 2vw, 1.5rem) 2rem;
+  border-bottom: 2px solid #b4c3d1;
+  color: #16365e;
+  text-align: center;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.billHeader [data-bill-line="institution"] {
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.billHeader [data-bill-line="number"] {
+  margin: 1.25rem 0;
+  font-family: var(--font-work-sans), Tahoma, sans-serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.billHeader [data-bill-line="purpose"] {
+  margin: 0.75rem 0;
+  font-size: 1rem;
+}
+
+.billHeader [data-bill-line="title"] {
+  margin: 0.75rem 0 1.5rem;
+  font-size: clamp(1.4rem, 2.5vw, 1.85rem);
+  line-height: 1.2;
+}
+
+.billHeader [data-bill-line="credit"],
+.billHeader [data-bill-line="reading"] {
+  margin: 0.7rem auto 0;
+  max-width: 42rem;
+  text-align: left;
+  font-size: 0.92rem;
+}
+
+.billHeader [data-bill-line="reading"] {
+  margin-top: 1.25rem;
+  color: #52677d;
+  font-style: italic;
+}
+
 /* A typed line break: more than a wrapped line, less than a new paragraph. */
 .lineGap {
   display: block;
@@ -490,10 +537,40 @@
 }
 
 /* Provisions, not a roster: the same face as the bill around the table. */
-.proseTable {
+.viewer .proseTable {
+  table-layout: fixed;
   font-family: inherit;
   font-size: 0.95rem;
   line-height: 1.55;
+}
+
+.proseTable td, .proseTable th {
+  overflow-wrap: anywhere;
+}
+
+.signatureGroup {
+  margin: 2.5rem 0;
+}
+
+.signatureGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 1.5rem 2rem;
+}
+
+.signatureCard {
+  min-width: 0;
+  padding-top: 1rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.signatureLine {
+  display: block;
+  border-top: 1px solid #aebdcb;
+  margin: 0.75rem 0;
+  font-size: 0;
 }
 
 .viewer th,

@@ -657,6 +657,13 @@ check("weekly meeting links target rendered headings rather than the table of co
 check("exported anchor markup is hidden in rendered headings",
     weeklyRendered.filter(block => block.kind === "heading").every(block => !runsText(block.runs).includes("{#")));
 
+const structuralDuties = "1. Article I - Senate\n    1. Section IV - Committees\n        1. Part I - All Committees shall\n            1. Issue reports.\n    2. Section V - Procedure\n        1. a Point of Parliamentary Inquiry, or\n        2. a Point of Personal Privilege,\n        3. Follow the rules.";
+const dutySections = flat(documentSections(structuralDuties));
+check("explicit structural headings retain introductory shall clauses",
+    dutySections.some(title => title.trim() === "Part I - All Committees shall"), dutySections);
+check("unfinished parliamentary list fragments are not sections",
+    !dutySections.some(title => title.includes("a Point of")), dutySections);
+
 if (failures > 0) {
     console.log(`\n${failures} failed`);
     process.exitCode = 1;

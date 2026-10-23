@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { runsText, type Block, type InlineRun, type TableRow } from "@/lib/render";
 import styles from "@/app/documents/document-detail.module.css";
+import { presentBill } from "@/lib/bill-presentation";
 
 /**
  * Renders a parsed document with its cited passages highlighted.
@@ -13,6 +14,8 @@ import styles from "@/app/documents/document-detail.module.css";
  * scrolls here and the :target rule emphasises the passage -- no client JS.
  */
 export default function DocumentViewer({ blocks }: { blocks: Block[] }) {
+    const bill = presentBill(blocks);
+    blocks = bill.blocks;
     // Some title pages export each centered line as a separate paragraph.
     // Group only the opening institutional title; preserve each run and ID.
     const title: Extract<Block, { kind: "paragraph" }>[] = [];
@@ -28,6 +31,16 @@ export default function DocumentViewer({ blocks }: { blocks: Block[] }) {
     }
     return (
         <article className={styles.viewer}>
+            {bill.header.length > 0 && (
+                <header className={styles.billHeader}>
+                    {bill.header.map((line, index) => (
+                        <div key={index} id={line.sectionId} data-bill-line={line.kind}
+                            className={line.sectionId ? styles.sectionAnchor : undefined}>
+                            {renderRuns(line.runs, false)}
+                        </div>
+                    ))}
+                </header>
+            )}
             {titleLength > 1 && (
                 <div className={styles.viewerLetterhead}>
                     {title.slice(0, titleLength).map((block, index) => (
@@ -43,9 +56,52 @@ export default function DocumentViewer({ blocks }: { blocks: Block[] }) {
 }
 
 function renderBlocks(blocks: Block[]): ReactNode {
-    return blocks.map((block, index) => (
-        <BlockView key={index} block={block} />
-    ));
+    const result: ReactNode[] = [];
+    for (let index = 0; index < blocks.length; index += 1) {
+        const block = blocks[index];
+        const heading = (block.kind === "paragraph" || block.kind === "heading")
+            ? /^\s*Signatures? of (?:Enactment|Ceremony):?\s*(?:\n|$)/i.exec(runsText(block.runs)) : null;
+        if (!heading || !(block.kind === "paragraph" || block.kind === "heading")) {
+            result.push(<BlockView key={index} block={block} />);
+            continue;
+        }
+        const [label, remainder] = splitTypedMarker(block.runs, heading[0].length);
+        const following = blocks[index + 1];
+        if (!runsText(remainder).trim() && following &&
+            (following.kind === "paragraph" || following.kind === "heading") &&
+            runsText(following.runs).trimStart().startsWith(heading[0].trim())) {
+            result.push(<span key={index} id={block.sectionId} className={styles.sectionAnchor} />);
+            continue;
+        }
+        const cards: { runs: InlineRun[]; sectionId?: string }[] = [];
+        if (runsText(remainder).trim()) cards.push({ runs: remainder });
+        while (index + 1 < blocks.length) {
+            const next = blocks[index + 1];
+            if (next.kind !== "paragraph" || !/^\s*_{3,}/.test(runsText(next.runs))) break;
+            cards.push(next);
+            index += 1;
+        }
+        result.push(
+            <section key={index} className={styles.signatureGroup}>
+                <h3 id={block.sectionId} className={styles.sectionAnchor}>{renderRuns(label, false)}</h3>
+                <div className={styles.signatureGrid}>
+                    {cards.map((card, cardIndex) => (
+                        <div key={cardIndex} id={card.sectionId} className={styles.signatureCard}>
+                            <Signature runs={card.runs} />
+                        </div>
+                    ))}
+                </div>
+            </section>,
+        );
+    }
+    return result;
+}
+
+function Signature({ runs }: { runs: InlineRun[] }) {
+    const line = /^\s*_{3,}\s*\n/.exec(runsText(runs));
+    if (!line) return renderRuns(runs, false);
+    const [rule, identity] = splitTypedMarker(runs, line[0].length);
+    return <><span className={styles.signatureLine}>{renderRuns(rule, false)}</span>{renderRuns(identity, false)}</>;
 }
 
 function BlockView({ block }: { block: Block }) {

@@ -1095,7 +1095,7 @@ function suggestCellBreaks(input: {
     // Legislative comparison cells are prose, not speaker transcripts.
     // In particular, "represented group:" and "Disabled Students:" must
     // not be split before their last word as though it were a speaker name.
-    if (/^\s*\**\d+(?:\\?\.\d+){2,}/.test(input.text)) return input;
+    const legislative = /^\s*[*_]*\d+(?:\\?\.\d+){2,}/.test(input.text);
     const characters: string[] = [];
     const offsets: number[] = [];
     let index = 0;
@@ -1118,7 +1118,11 @@ function suggestCellBreaks(input: {
         const rest = input.text.slice(index);
         if (atWord && index > 0 && index >= skipUntil) {
             const label = CELL_LABEL.exec(rest);
-            if (label || CELL_SPEAKER.test(rest)) {
+            // Keep redlined clause numbers together (4.3.~~7~~8.1), and
+            // restore only whitespace before a numbered provision. Offsets
+            // still refer to the original export for citation highlighting.
+            const provision = /^(?:[*_]*\d+)(?:\\?\.[\d~*_]+){2,}\.?\s+/.test(rest);
+            if (legislative ? provision : label || CELL_SPEAKER.test(rest)) {
                 if (characters.length > 0 && /\s/.test(characters[characters.length - 1]!)) {
                     characters.pop();
                     offsets.pop();
