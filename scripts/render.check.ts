@@ -1,5 +1,5 @@
 import { findQuote } from "../lib/anchor";
-import { presentBill } from "../lib/bill-presentation";
+import { presentBill, signatureCards, signatureIdentity } from "../lib/bill-presentation";
 import { toPlainText } from "../lib/markdown";
 import { documentSections, type DocumentSection } from "../lib/outline";
 import {
@@ -811,6 +811,36 @@ check("alternate bill identifiers and separately exported letterhead lines share
     secondBill.header.some(line => line.kind === "number") && secondBill.header.some(line => line.kind === "title" && runsText(line.runs).includes("Transfer")));
 check("meeting agendas retain their original presentation",
     presentBill(agendaBlocks).header.length === 0 && presentBill(agendaBlocks).blocks === agendaBlocks);
+
+const fundingBill = presentBill(renderDocument(billOpening
+    .replace("**A Bill to Amend The Bylaws of the Senate**", "**Student Athlete Caucus Chair Funding Bill**\n\n**Act to Fund T-Shirts for Student Athlete Advisory Committee (SAAC)**")
+    .replace("Closed Session Clarification Act", "SAAC T-Shirts Funding Bill"), []));
+check("SAAC funding bill recognizes Act to Fund and retains its extra introductory title",
+    fundingBill.header.some(line => line.kind === "purpose" && runsText(line.runs).includes("Act to Fund")) &&
+    fundingBill.header.some(line => line.kind === "title" && runsText(line.runs) === "SAAC T-Shirts Funding Bill") &&
+    fundingBill.header.some(line => runsText(line.runs).includes("Student Athlete Caucus Chair Funding Bill")) &&
+    fundingBill.blocks[0]?.kind === "heading");
+const ceremonyParagraphs = [
+    "__________________________________\nSophia Baleeiro\nSenator of the Johns Hopkins SGA\n__________________________________",
+    "Cole Liazos-Coffey\nSenator of the Johns Hopkins SGA\n__________________________________",
+    "Demarri Dosunmu\nSenator of the Johns Hopkins SGA",
+];
+const ceremonyCards = signatureCards(ceremonyParagraphs.map((text, index) => ({ runs: proseInlineRuns(text), sectionId: `ceremony-${index}` })));
+check("ceremony signature rules trailing the previous paragraph produce three separate cards",
+    ceremonyCards.length === 3 && ceremonyCards.every((card, index) =>
+        runsText(card.runs).includes(["Sophia Baleeiro", "Cole Liazos-Coffey", "Demarri Dosunmu"][index])) &&
+    ceremonyCards.flatMap(card => card.runs).filter(run => run.navigationId).length === 3, ceremonyCards);
+
+const multilineIdentity = signatureIdentity(proseInlineRuns("____\nJason Yu\nStudent Body President of the Johns Hopkins SGA"));
+const inlineIdentity = signatureIdentity(proseInlineRuns("____\nCole Liazos-Coffey, Religious and Spiritual Life Senator and Vice Chair of Internal Affairs"));
+check("signature names and offices separate in multiline and comma-separated templates",
+    runsText(multilineIdentity.name) === "Jason Yu" && runsText(multilineIdentity.position).startsWith("Student Body President") &&
+    runsText(inlineIdentity.name) === "Cole Liazos-Coffey" && runsText(inlineIdentity.position).trimStart().startsWith("Religious and Spiritual Life Senator"));
+const citedIdentityRuns = [{ ...proseInlineRuns("____\nJason Yu\nPresident")[0], annotationId: "signature", anchor: true }];
+const citedIdentity = signatureIdentity(citedIdentityRuns);
+check("signature styling preserves all source text and a single citation anchor",
+    runsText([...citedIdentity.rule, ...citedIdentity.name, ...citedIdentity.separator, ...citedIdentity.position]) === runsText(citedIdentityRuns) &&
+    [...citedIdentity.rule, ...citedIdentity.name, ...citedIdentity.separator, ...citedIdentity.position].filter(run => run.anchor).length === 1);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

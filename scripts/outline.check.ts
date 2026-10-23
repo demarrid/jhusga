@@ -664,6 +664,12 @@ check("explicit structural headings retain introductory shall clauses",
 check("unfinished parliamentary list fragments are not sections",
     !dutySections.some(title => title.includes("a Point of")), dutySections);
 
+const writingNotes = "# Prose\n- KSAS first-years must take Reintroduction to Writing\n    - Some courses are offered during the Fall\n- FAs across schools: KSAS vs WSE\n    - Full FAs for KSAS started two years ago\n- Legibility\n    - We know the legibility of the FAs is a real challenge\n- Credit Approval Timeline\n    - I aim for 2 weeks\n# Raw\n1. Credit approval time\n2. Orientation time\n3. Orientation office?\n\nThe original transcript continues here.";
+const writingBlocks = renderDocument(writingNotes, []);
+const writingOutline = documentSections(writingNotes, { anchored: blockSectionIds(writingBlocks) });
+check("writing meeting topic bullets with nested content become sections with working targets",
+    flat(writingOutline).join("|") === "Prose|  FAs across schools: KSAS vs WSE|  Legibility|  Credit Approval Timeline|Raw", flat(writingOutline));
+
 if (failures > 0) {
     console.log(`\n${failures} failed`);
     process.exitCode = 1;

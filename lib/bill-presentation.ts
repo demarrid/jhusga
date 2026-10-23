@@ -20,15 +20,17 @@ export type BillHeaderLine = {
 };
 
 const SECTION = /^\s*SECTION\s+(?:\d+|[IVXLC]+)[.\s:–—-]+[^\n]+/i;
+const BILL_PURPOSE = /^(?:A Bill\b|(?:An?\s+)?Act\s+to\b)/i;
 
 export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks: Block[] } {
     const opening = blocks.slice(0, 16).flatMap(block => "runs" in block ? [runsText(block.runs)] : []).join("\n");
-    if (!/Student Government Association/i.test(opening) || !/A Bill\b/i.test(opening)) {
+    if (!/Student Government Association/i.test(opening) || !opening.split("\n").some(line => BILL_PURPOSE.test(line.trim()))) {
         return { header: [], blocks };
     }
     const header: BillHeaderLine[] = [];
     let consumed = 0;
     let purposeSeen = false;
+    let numberSeen = false;
     for (const block of blocks) {
         if (!(block.kind === "paragraph" || block.kind === "heading") || SECTION.test(runsText(block.runs))) break;
         const text = runsText(block.runs);
@@ -40,10 +42,11 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
             if (!value) continue;
             const kind = /^(Introduced|Sponsored) by:/i.test(value) ? "credit"
                 : /^Presented for/i.test(value) ? "reading"
-                : /^A Bill\b/i.test(value) ? "purpose"
+                : BILL_PURPOSE.test(value) ? "purpose"
                 : /^\{?\s*S[. -]*(?:Bill|B)[.\s]/i.test(value) ? "number"
-                : purposeSeen ? "title" : "institution";
+                : purposeSeen ? "title" : numberSeen ? "purpose" : "institution";
             if (kind === "purpose") purposeSeen = true;
+            if (kind === "number") numberSeen = true;
             header.push({ kind, runs: sliceRuns(block.runs, start, end), ...(index === 0 ? { sectionId: block.sectionId } : {}) });
         }
         consumed++;
@@ -74,4 +77,30 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
         return [block];
     });
     return { header, blocks: normalize(blocks.slice(consumed)) };
+}
+
+/** Signature rules can start a paragraph or trail the previous signer's role. */
+export function signatureCards(cards: { runs: InlineRun[]; sectionId?: string }[]): { runs: InlineRun[] }[] {
+    const runs = cards.flatMap((card, index): InlineRun[] => [
+        ...(index ? [{ text: "\n", bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] : []),
+        ...(card.sectionId ? [{ text: "", navigationId: card.sectionId, bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] : []),
+        ...card.runs,
+    ]);
+    const text = runsText(runs);
+    const starts = [0, ...Array.from(text.matchAll(/^\s*_{3,}/gm), match => match.index!).filter(at => at > 0), text.length];
+    return starts.slice(0, -1).map((start, index) => ({ runs: sliceRuns(runs, start, starts[index + 1]) }));
+}
+
+export function signatureIdentity(runs: InlineRun[]): { rule: InlineRun[]; name: InlineRun[]; separator: InlineRun[]; position: InlineRun[] } {
+    const text = runsText(runs);
+    const ruleEnd = /^\s*_{3,}\s*\n/.exec(text)?.[0].length ?? 0;
+    const identity = text.slice(ruleEnd);
+    // A comma separates the name and office in the one-line ceremony template.
+    // Newline-formatted names (including suffixes) keep their commas intact.
+    const newline = identity.trimEnd().indexOf("\n");
+    const separator = newline >= 0 ? newline : identity.indexOf(",");
+    const nameEnd = separator >= 0 ? ruleEnd + separator : text.length;
+    return { rule: sliceRuns(runs, 0, ruleEnd), name: sliceRuns(runs, ruleEnd, nameEnd),
+        separator: sliceRuns(runs, nameEnd, Math.min(nameEnd + 1, text.length)),
+        position: sliceRuns(runs, Math.min(nameEnd + 1, text.length), text.length) };
 }

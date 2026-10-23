@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { runsText, type Block, type InlineRun, type TableRow } from "@/lib/render";
 import styles from "@/app/documents/document-detail.module.css";
-import { presentBill } from "@/lib/bill-presentation";
+import { presentBill, signatureCards, signatureIdentity } from "@/lib/bill-presentation";
 
 /**
  * Renders a parsed document with its cited passages highlighted.
@@ -77,7 +77,9 @@ function renderBlocks(blocks: Block[]): ReactNode {
         if (runsText(remainder).trim()) cards.push({ runs: remainder });
         while (index + 1 < blocks.length) {
             const next = blocks[index + 1];
-            if (next.kind !== "paragraph" || !/^\s*_{3,}/.test(runsText(next.runs))) break;
+            const pendingSignature = cards.length > 0 && /(?:^|\n)\s*_{3,}\s*$/.test(runsText(cards[cards.length - 1].runs));
+            if (next.kind !== "paragraph" || (!/^\s*_{3,}/.test(runsText(next.runs)) &&
+                !(pendingSignature && runsText(next.runs).length < 300 && !/^\s*(?:SECTION|Signatures?)\b/i.test(runsText(next.runs))))) break;
             cards.push(next);
             index += 1;
         }
@@ -85,8 +87,8 @@ function renderBlocks(blocks: Block[]): ReactNode {
             <section key={index} className={styles.signatureGroup}>
                 <h3 id={block.sectionId} className={styles.sectionAnchor}>{renderRuns(label, false)}</h3>
                 <div className={styles.signatureGrid}>
-                    {cards.map((card, cardIndex) => (
-                        <div key={cardIndex} id={card.sectionId} className={styles.signatureCard}>
+                    {signatureCards(cards).map((card, cardIndex) => (
+                        <div key={cardIndex} className={styles.signatureCard}>
                             <Signature runs={card.runs} />
                         </div>
                     ))}
@@ -98,10 +100,13 @@ function renderBlocks(blocks: Block[]): ReactNode {
 }
 
 function Signature({ runs }: { runs: InlineRun[] }) {
-    const line = /^\s*_{3,}\s*\n/.exec(runsText(runs));
-    if (!line) return renderRuns(runs, false);
-    const [rule, identity] = splitTypedMarker(runs, line[0].length);
-    return <><span className={styles.signatureLine}>{renderRuns(rule, false)}</span>{renderRuns(identity, false)}</>;
+    const { rule, name, separator, position } = signatureIdentity(runs);
+    return <>
+        {rule.length > 0 && <span className={styles.signatureLine}>{renderRuns(rule, false)}</span>}
+        <span className={styles.signatureName}>{renderRuns(name, false)}</span>
+        <span className={styles.signatureSeparator}>{renderRuns(separator, false)}</span>
+        {position.length > 0 && <span className={styles.signaturePosition}>{renderRuns(position, false)}</span>}
+    </>;
 }
 
 function BlockView({ block }: { block: Block }) {

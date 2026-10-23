@@ -711,8 +711,17 @@ function indexSections(content: string): Index {
 
     const lines = toLines(content);
     const meetings = holdsSeveralMeetings(lines);
+    const bulletIndent = Math.min(...lines.map(line => outlineMark(line.text))
+        .filter(mark => mark?.kind === "bullet").map(mark => mark!.indent));
+    const nextContent = new Map<number, Line>();
+    let following: Line | undefined;
+    let markdownTitle = "";
+    for (let index = lines.length - 1; index >= 0; index--) {
+        if (following) nextContent.set(index, following);
+        if (lines[index].text.trim()) following = lines[index];
+    }
 
-    for (const line of lines) {
+    for (const [lineIndex, line] of lines.entries()) {
         let text = line.text;
         let at = line.start;
 
@@ -753,6 +762,7 @@ function indexSections(content: string): Index {
         if (hashed) {
             const title = clean(hashed[2]!);
             if (isHeadingTitle(title, meetings)) {
+                markdownTitle = title;
                 place(hashed[1]!.length, 0, false, true, "heading", title, at);
             } else if (!RULE.test(title) && (isBanner(title, meetings) || isDateLine(title))) {
                 // A second copy of the meeting's banner starts its own banner
@@ -803,6 +813,14 @@ function indexSections(content: string): Index {
         const mark = outlineMark(text);
         if (mark) {
             const label = emphasis(mark.raw);
+            const next = nextContent.get(lineIndex);
+            const child = next ? outlineMark(next.text) : null;
+            const hasChildren = !!child && child.indent > mark.indent;
+            // Raw transcript prompts are notes unless they introduce nested content.
+            if (/^raw(?:\s+notes)?$/i.test(markdownTitle) && label.wrapped === null && !hasChildren) {
+                body();
+                continue;
+            }
             // Explicit Article/Section/Part labels outrank sentence heuristics:
             // "Part I - All Committees shall" introduces the duties below it.
             const named = STRUCTURAL.exec(label.plain);
@@ -820,6 +838,12 @@ function indexSections(content: string): Index {
             // A plain bullet is a note -- a point in the minutes, a name on a
             // list -- and an outline of every one is the document again.
             if (mark.kind === "bullet" && label.wrapped === null) {
+                if (hasChildren && mark.indent === bulletIndent && markdownTitle &&
+                    !isSpeaker(label.plain) && !isNoise(label.plain) &&
+                    label.plain.split(/\s+/).length <= 8 && headingShare(label.plain) >= 0.5) {
+                    place(minorLevel(), mark.indent, true, false, "bullet", label.plain, at);
+                    continue;
+                }
                 if (open) bodied.add(open);
                 continue;
             }
