@@ -609,5 +609,27 @@ check("multiple vacancies remain in their class category", emptySeats.filter((me
     member.seats?.some((seat) => seat.path.includes("Sophomore Class Senators")),
 ).length === 2);
 
+console.log("\ninline roster emails");
+const annotatedPositions = positions
+    .replace("Amy Xu", "Amy Xu (axu22@jh.edu)")
+    .replaceAll("Jazzlyn Fernandez", "Jazzlyn Fernandez ([jferna57@jh.edu](mailto:jferna57@jh.edu))")
+    .replace("Veda Kommineni", "Veda Kommineni (vkommin1@jh.edu)tit")
+    .replace("Arjun Jasuja", "Arjun Jasuja (ajasuja2@jh.edu)")
+    .replace("Katherine Zhu", "Rosanne Sarai Dueñas (rduenas2@jh.edu)");
+const annotatedDirectory = buildSessionDirectory([
+    { id: "annotated", title: "114th SGA Roster", content: annotatedPositions },
+    { id: "email", title: "114th email list", content: "Amy Xu old-address@jh.edu" },
+]);
+const annotatedMember = (name: string) => annotatedDirectory.members.find(member => member.name === name);
+check("adding emails preserves every member", annotatedDirectory.members.length === fromPositions.members.length);
+check("explicit roster email wins over the email list", annotatedMember("Amy Xu")?.email === "axu22@jh.edu");
+check("inline email cites its roster line", annotatedMember("Amy Xu")?.emailSource?.documentId === "annotated" && annotatedMember("Amy Xu")?.emailSource?.quote === "Amy Xu (axu22@jh.edu)");
+check("annotated members retain committees", annotatedMember("Amy Xu")?.committees?.includes("Finance") === true);
+check("linked emails preserve multiple seats", annotatedMember("Jazzlyn Fernandez")?.seats?.length === 2 && annotatedMember("Jazzlyn Fernandez")?.email === "jferna57@jh.edu");
+check("stray text after an email does not hide a member", annotatedMember("Veda Kommineni")?.positions.includes("Sophomore Class President") === true);
+check("headings above annotated names are not people", !annotatedMember("Cultural Identity") && annotatedMember("Arjun Jasuja")?.positions[0] === "Cultural Identity Senator");
+check("accented names retain their explicit email", annotatedMember("Rosanne Sarai Dueñas")?.email === "rduenas2@jh.edu");
+check("members without an email remain listed", annotatedMember("Kai Martin")?.email === null);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

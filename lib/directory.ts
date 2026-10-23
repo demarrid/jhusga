@@ -1191,11 +1191,21 @@ const OUTLINE_ROLE_WORD =
     /\b(?:senators?|president|vice|chair|co-chair|justices?|chief|committees?|councils?|class|branch|school|caucus|representatives?|secretary|treasurer|director|members?|board|programming|executive|legislative|judiciary|senate|officers?|elections)\b/i;
 
 function isOutlineName(text: string): boolean {
+    text = outlinePersonName(text);
     if (isEmptySeat(text)) return true;
     if (OUTLINE_ROLE_WORD.test(text)) return false;
     const tokens = text.split(/\s+/);
     if (tokens.length < 2 || tokens.length > 4) return false;
-    return tokens.every((token) => /^[A-Z][A-Za-z'’.-]*$/.test(token));
+    return tokens.every((token) => /^\p{Lu}[\p{L}\p{M}'’.-]*$/u.test(token));
+}
+
+/** Roster holders may include an explicit address after their name. */
+function outlinePersonName(text: string): string {
+    // Take the name before the address annotation, including when an editor
+    // leaves stray text after its closing parenthesis.
+    const annotated = /^(.+?)\s*\([^)]*@[^)]*\)/.exec(text);
+    if (annotated) return annotated[1]!.trim();
+    return text.replace(EMAIL_RE, "").replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -1403,14 +1413,20 @@ function readPositionsDocument(document: DirectoryDocument): Map<string, Mutable
                 listed.push(detail);
             }
 
-            const key = isEmptySeat(node.text) ? `empty-seat-${order}` : nameKey(node.text);
+            const name = outlinePersonName(node.text);
+            const key = isEmptySeat(name) ? `empty-seat-${order}` : nameKey(name);
             const member =
                 current.get(key) ?? blankMember({
-                    name: isEmptySeat(node.text) ? "Empty Seat" : node.text,
+                    name: isEmptySeat(name) ? "Empty Seat" : name,
                     email: null,
                     group: seat.group,
                 });
             current.set(key, member);
+            const email = extractEmails(node.text)[0];
+            if (email && !member.email && !isEmptySeat(name)) {
+                member.email = email;
+                member.emailSource = citationFrom(document, node.text);
+            }
 
             member.subgroup = member.subgroup ?? seat.subgroup;
             for (const office of [seatPosition, ...offices]) {
