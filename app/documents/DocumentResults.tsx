@@ -27,7 +27,8 @@ import styles from "./documents.module.css";
 const PREFETCH_MARGIN = "0px 0px 900px 0px";
 
 /** A listing as it arrives from /api/documents, with its dates still strings. */
-type WireListing = Omit<DocumentListing, "driveCreatedTime" | "driveModifiedTime" | "datedAt"> & {
+type WireListing = Omit<DocumentListing, "driveCreatedTime" | "driveModifiedTime" | "datedAt" | "createdAt"> & {
+    createdAt: string | null;
     driveCreatedTime: string | null;
     driveModifiedTime: string | null;
     datedAt: string | null;
@@ -37,6 +38,7 @@ function revive(document: WireListing): DocumentListing {
     const date = (value: string | null) => (value ? new Date(value) : null);
     return {
         ...document,
+        createdAt: date(document.createdAt),
         driveCreatedTime: date(document.driveCreatedTime),
         driveModifiedTime: date(document.driveModifiedTime),
         datedAt: date(document.datedAt),
@@ -155,18 +157,19 @@ export default function DocumentResults({
         <>
             <div className={styles.listToolbar}>
                 <LoadingBar active={pending} className={styles.listLoading} />
-                <div className={styles.sortControl} role="group" aria-labelledby="document-sort-label">
-                    <span id="document-sort-label">Sort by</span>
-                    {documentSortsFor(hasQuery).map((option) => (
-                        <button
-                            key={option}
-                            type="button"
-                            aria-pressed={chosenSort === option}
-                            onClick={() => chooseSort(option)}
-                        >
-                            {DOCUMENT_SORT_LABELS[option]}
-                        </button>
-                    ))}
+                <div className={styles.sortControl}>
+                    <label htmlFor="document-sort">Sort by</label>
+                    <select
+                        id="document-sort"
+                        value={chosenSort}
+                        onChange={(event) => chooseSort(event.target.value as DocumentSort)}
+                    >
+                        {documentSortsFor(hasQuery).map((option) => (
+                            <option key={option} value={option}>
+                                {DOCUMENT_SORT_LABELS[option]}
+                            </option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
@@ -319,6 +322,7 @@ function DocumentDates({ document, sort }: { document: DocumentListing; sort: Do
               ]
             : [document.datedAt ? ["Dated", document.datedAt] : ["Created", document.driveCreatedTime]];
     candidates.push(["Updated", document.driveModifiedTime]);
+    if (sort === "added") candidates.unshift(["Added", document.createdAt]);
 
     const shown: { label: string; date: Date }[] = [];
     for (const [label, date] of candidates) {

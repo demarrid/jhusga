@@ -17,13 +17,14 @@ function check(label: string, condition: boolean, detail?: unknown) {
 
 function doc(
     id: string,
-    dates: { dated?: string; created?: string; modified?: string } = {},
+    dates: { dated?: string; created?: string; modified?: string; added?: string } = {},
     extra: Partial<SortableDocument> = {},
 ): SortableDocument {
     return {
         id,
         title: extra.title ?? id,
         findRank: extra.findRank ?? 0,
+        createdAt: dates.added ? new Date(dates.added) : null,
         datedAt: dates.dated ? new Date(dates.dated) : null,
         driveCreatedTime: dates.created ? new Date(dates.created) : null,
         driveModifiedTime: dates.modified ? new Date(dates.modified) : null,
@@ -45,6 +46,18 @@ console.log("compareDocuments");
 check("modified is newest Drive modification first", ids("modified").join() === "template,minutes,bill,orphan", ids("modified"));
 check("dated puts documents with no date of their own last", ids("dated").join() === "minutes,bill,orphan,template", ids("dated"));
 check("created is newest Drive creation first", ids("created").join() === "bill,minutes,template,orphan", ids("created"));
+
+const newlyArchived = [
+    doc("old-file-newly-added", { created: "2020-01-01", modified: "2020-01-02", added: "2026-10-25" }),
+    doc("new-file-added-earlier", { created: "2026-10-01", modified: "2026-10-24", added: "2026-10-02" }),
+    doc("unknown-added", { modified: "2026-10-26" }),
+];
+check(
+    "added uses archive entry time, independent of Drive dates, with unknown times last",
+    newlyArchived.sort((a, b) => compareDocuments(a, b, "added")).map((d) => d.id).join() ===
+        "old-file-newly-added,new-file-added-earlier,unknown-added",
+);
+check("added is accepted with and without a query", parseDocumentSort("added", false) === "added" && parseDocumentSort("added", true) === "added");
 
 const ranked = [
     doc("old-title-match", { modified: "2020-01-01" }, { findRank: 10_000 }),

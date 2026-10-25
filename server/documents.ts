@@ -61,6 +61,8 @@ export type DocumentListing = {
     sessionNumber: number | null;
     driveCreatedTime: Date | null;
     driveModifiedTime: Date | null;
+    /** When this document first entered our archive. */
+    createdAt: Date | null;
     /** The date the document itself states, in its body or in its title. */
     datedAt: Date | null;
     /** People this document names, for the listing. */
@@ -166,6 +168,7 @@ const listingSelect = {
     sessionNumber: true,
     driveCreatedTime: true,
     driveModifiedTime: true,
+    createdAt: true,
     datedAt: true,
     summary: { select: { content: true, status: true } },
     contributors: {
@@ -281,6 +284,7 @@ export async function getDocumentPage(
             datedAt: true,
             driveCreatedTime: true,
             driveModifiedTime: true,
+            createdAt: true,
         },
     });
 

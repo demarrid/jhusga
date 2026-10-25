@@ -7,7 +7,7 @@
 
 import { updatedDate, type DatedDocument } from "@/lib/dates";
 
-export const DOCUMENT_SORTS = ["relevant", "modified", "dated", "created"] as const;
+export const DOCUMENT_SORTS = ["relevant", "modified", "dated", "created", "added"] as const;
 
 export type DocumentSort = (typeof DOCUMENT_SORTS)[number];
 
@@ -16,6 +16,7 @@ export const DOCUMENT_SORT_LABELS: Record<DocumentSort, string> = {
     modified: "Modified",
     dated: "Dated",
     created: "Created",
+    added: "Added",
 };
 
 /** Relevance only means something against a typed query. */
@@ -54,13 +55,16 @@ export function parseDocumentSort(value: string | null | undefined, hasQuery: bo
  * named: a document that states no date of its own is not dated, and putting
  * it among the dated ones under its Drive time would be a guess.
  */
-function sortDate(document: DatedDocument, sort: DocumentSort): Date | null {
+function sortDate(document: SortableDocument, sort: DocumentSort): Date | null {
+    if (sort === "added") return document.createdAt;
     if (sort === "dated") return document.datedAt;
     if (sort === "created") return document.driveCreatedTime;
     return updatedDate(document);
 }
 
 export type SortableDocument = DatedDocument & {
+    /** When this document first entered our archive. */
+    createdAt: Date | null;
     id: string;
     title: string;
     /** Relevance to the typed query; 0 when there is none. */

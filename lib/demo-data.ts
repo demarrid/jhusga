@@ -75,6 +75,8 @@ function toListing(document: RawDocument) {
         sessionNumber: document.sessionNumber,
         driveCreatedTime: date(document.driveCreatedTime),
         driveModifiedTime: date(document.driveModifiedTime),
+        // Demo fixtures do not record archive ingestion times.
+        createdAt: null,
         datedAt: date(document.driveCreatedTime),
         contributors: document.contributors.map(({ id, name, role }) => ({ id, name, role })),
     };

@@ -139,7 +139,7 @@
   margin-top: 1.1rem;
 }
 
-.sortControl span {
+.sortControl label {
   margin-right: 0.5rem;
   color: #607286;
   font-size: 0.69rem;
@@ -148,7 +148,7 @@
   text-transform: uppercase;
 }
 
-.sortControl button {
+.sortControl select {
   cursor: pointer;
   min-height: 2.1rem;
   padding: 0 0.9rem;
@@ -162,18 +162,12 @@
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
-.sortControl button:hover {
+.sortControl select:hover {
   border-color: #377ebc;
   color: #164f87;
 }
 
-.sortControl button[aria-pressed="true"] {
-  border-color: #002d72;
-  background: #002d72;
-  color: #ffffff;
-}
-
-.sortControl button:focus-visible {
+.sortControl select:focus-visible {
   outline: 2px solid #68ace5;
   outline-offset: 2px;
 }
@@ -423,7 +417,7 @@
 
   .documentCard,
   .documentArrow,
-  .sortControl button,
+  .sortControl select,
   .listPending {
     transition: none;
   }
