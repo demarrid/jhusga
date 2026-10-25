@@ -30,6 +30,7 @@
  */
 
 import { formatDateNumeric } from "@/lib/dates";
+import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 import { meetingHeaderDate } from "@/lib/identity";
 import { isSecondaryKind } from "@/lib/kinds";
 import { meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
@@ -202,6 +203,7 @@ const ROLE_SUFFIX: Record<MeetingRole, string> = {
 };
 
 export type TitleInput = {
+    driveFileId?: string;
     id: string;
     title: string;
     folderPath: string;
@@ -500,6 +502,8 @@ export function canonicalTitle(
     input: TitleInput,
     dates?: Map<string, Date>,
 ): string | null {
+    const corrected = input.driveFileId ? DOCUMENT_CORRECTIONS[input.driveFileId] : undefined;
+    if (corrected) return corrected.displayTitle;
     // Every rule below rewrites a filename into the name the SGA would have
     // given the document. A News-Letter headline is not a filename and has no
     // such name: "A fresh start for Student Council" is what the paper called

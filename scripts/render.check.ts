@@ -790,6 +790,15 @@ const billOpening = [
     "1. **FIRST SENATOR REPRESENTING THE CAUCUS**\n    1. The first Senator shall be appointed.",
 ].join("\n\n");
 const billCredit = findQuote(billOpening, "Cole")!;
+const rallyBill = presentBill(renderDocument(billOpening
+    .replace("A Bill to Amend The Bylaws of the Senate", "An SGA Funding Bill")
+    .replace("Closed Session Clarification Act", "Take Back The Night Rally Funding Bill")
+    .replace("S. Bill. 114.10.20.2026-1", "S. Bill. 26-27"), []));
+check("SGA funding bills receive the shared header, credits and section presentation",
+    rallyBill.header.some(line => line.kind === "purpose" && runsText(line.runs).trim() === "An SGA Funding Bill") &&
+    rallyBill.header.some(line => line.kind === "title" && runsText(line.runs).includes("Take Back")) &&
+    rallyBill.header.filter(line => line.kind === "credit").length === 2 &&
+    rallyBill.blocks[0]?.kind === "heading");
 const billParsed = renderDocument(billOpening, [{ id: "bill-credit", ...billCredit }]);
 const billPresented = presentBill(billParsed);
 check("standard bill title block separates number, purpose, title, credits, and reading",

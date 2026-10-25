@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { ARCHIVE_CACHE_TAG, ARCHIVE_CACHE_SECONDS } from "@/lib/archive-cache";
 import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
-import { CONFIRMED_RESOLUTION_PASSAGE, REVIEWED_PASSAGE_EVIDENCE } from "@/config/passage-evidence";
+import { CONFIRMED_BILL_PASSAGE, CONFIRMED_RESOLUTION_PASSAGE, REVIEWED_PASSAGE_EVIDENCE } from "@/config/passage-evidence";
 import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
 import { getContactDirectory } from "@/server/contact";
 import { SESSION_NUMBER } from "@/config/session";
@@ -51,7 +51,7 @@ import { prisma } from "@/lib/prisma";
 // cache key on every request. Explicit dates remain useful for archive previews.
 const cachedRecentActivity = unstable_cache(
     () => loadRecentActivity(new Date()),
-    ["recent-activity-v3"],
+    ["recent-activity-v4"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
@@ -138,6 +138,10 @@ async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; s
             content: true, datedAt: true, sessionNumber: true, summary: {select: {content: true, status: true}}},
     });
     const undatedPassage = new Set<string>();
+    for (const confirmation of CONFIRMED_BILL_PASSAGE) {
+        const when = new Date(`${confirmation.passedOn}T12:00:00Z`);
+        if (hasOccurred(when, now)) passedOn.set(confirmation.legislationFileId, when);
+    }
     for (const confirmation of CONFIRMED_RESOLUTION_PASSAGE) {
         const when = new Date(`${confirmation.passedOn}T12:00:00Z`);
         const resolution = legislation.find(document => document.driveFileId === confirmation.legislationFileId);

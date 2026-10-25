@@ -20,7 +20,7 @@ export type BillHeaderLine = {
 };
 
 const SECTION = /^\s*SECTION\s+(?:\d+|[IVXLC]+)[.\s:–—-]+[^\n]+/i;
-const BILL_PURPOSE = /^(?:A Bill\b|(?:An?\s+)?Act\s+to\b)/i;
+const BILL_PURPOSE = /^(?:A Bill\b|An?\s+(?:SGA\s+)?Funding Bill\b|(?:An?\s+)?Act\s+to\b)/i;
 
 export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks: Block[] } {
     const opening = blocks.slice(0, 16).flatMap(block => "runs" in block ? [runsText(block.runs)] : []).join("\n");

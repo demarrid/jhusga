@@ -280,6 +280,7 @@ export async function recordTitles(): Promise<number> {
     const documents = await prisma.document.findMany({
         select: {
             id: true,
+            driveFileId: true,
             title: true,
             displayTitle: true,
             folderPath: true,

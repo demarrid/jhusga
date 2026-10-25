@@ -29,6 +29,7 @@ import {
 } from "@/config/session";
 import { toPlainText } from "@/lib/markdown";
 import { meetingDate } from "@/lib/meetings";
+import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 
 /**
  * How much of the body is a caption rather than discussion.
@@ -456,10 +457,13 @@ function bylineDate(content: string): Date | null {
  * somebody copied a template, and a caller that wants it should say so.
  */
 export function documentDate(input: {
+    driveFileId?: string;
     title: string;
     content?: string;
     driveCreatedTime?: Date | null;
 }): Date | null {
+    const corrected = input.driveFileId ? DOCUMENT_CORRECTIONS[input.driveFileId]?.datedOn : undefined;
+    if (corrected) return new Date(`${corrected}T12:00:00Z`);
     const clause = dateFromClauses(header(input.title, input.content));
     if (clause) return clause;
 

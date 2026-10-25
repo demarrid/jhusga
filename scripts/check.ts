@@ -47,6 +47,7 @@ const SUITES = [
     "directory",
     "document-find",
     "document-sort",
+    "document-corrections",
     "drive",
     "drive-revisions",
     "editions",

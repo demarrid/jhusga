@@ -44,6 +44,7 @@ export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
 /** Reviewed exceptions follow Drive identity across renames and future syncs. */
 const REVIEWED_DOCUMENT_KINDS: Record<string, DocumentKind> = {
+    "1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM": "bill.funding",
     "1LGp96ElM0w4a4qpAgnNiHWndpq6fd1hv14_mgWkXjWs": "unknown",
     "12IpFP0qlLBDgPkzxJuXGSZA8KWyDSOnLdjnvuFTRzLk": "presentation",
 };

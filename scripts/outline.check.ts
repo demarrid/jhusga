@@ -670,6 +670,41 @@ const writingOutline = documentSections(writingNotes, { anchored: blockSectionId
 check("writing meeting topic bullets with nested content become sections with working targets",
     flat(writingOutline).join("|") === "Prose|  FAs across schools: KSAS vs WSE|  Legibility|  Credit Approval Timeline|Raw", flat(writingOutline));
 
+const fundingGuidelines = [
+    "SGA Finance Committee Guidelines Quick Sheet 2026-2027",
+    "- RSOs can receive funding from several streams:",
+    "    - Annual allocations",
+    "        - Request funding for non-event expenses",
+    "    - Event grants",
+    "        - Separate submissions by event",
+    "- General principles for SGA Finance Committee budget approval:",
+    "    - Budget materials must be clear, concise, and organized.",
+    "- Charity and Fundraising policies",
+    "    - Supplies or food to be sold as fundraising goods will not be funded.",
+    "- Funding caps summary — see Guidelines for more details and exceptions:",
+    "", "Category Annual cap Additional notes", "Independent", "Contractors",
+    "$3000 Must provide documentation attesting to the contractor's rate.",
+    "", "JHU Professional", "Services", "$4000 Large on-campus events",
+    "", "Policy Changes", "- All changes will be announced by email.",
+    "", "Food", "Annual Cap: $2000.00", "Categorization: Food intended for consumption.",
+    "- Funding applications must include documentation of cost.",
+    "", "Travel", "Annual Cap: $2000", "Categorization: Transportation costs",
+    "and university rentals (excluding Zipcars), where",
+    "- Provide documentation and exact cost breakdown.",
+].join("\n");
+const fundingBlocks = renderDocument(fundingGuidelines, []);
+const fundingSections = documentSections(fundingGuidelines, { anchored: blockSectionIds(fundingBlocks) });
+const fundingTitles = flat(fundingSections).map(title => title.trim());
+check("unstyled PDF guidelines yield nested funding streams and policy sections",
+    ["RSOs can receive funding from several streams", "Annual allocations", "Event grants",
+        "General principles for SGA Finance Committee budget approval", "Charity and Fundraising policies",
+        "Funding caps summary", "Policy Changes", "Food", "Travel"].every(title => fundingTitles.includes(title)) &&
+    fundingSections.some(section => section.title.includes("funding from") && section.children.length === 2), fundingTitles);
+check("flattened table cells and wrapped prose do not become PDF sections",
+    !fundingTitles.some(title => /Category Annual|JHU Professional|university rentals/.test(title)), fundingTitles);
+check("every PDF outline entry targets an actual rendered block",
+    idsOf(fundingSections).every(id => blockSectionIds(fundingBlocks).has(id)));
+
 if (failures > 0) {
     console.log(`\n${failures} failed`);
     process.exitCode = 1;

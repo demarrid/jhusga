@@ -721,6 +721,23 @@ function indexSections(content: string): Index {
         if (lines[index].text.trim()) following = lines[index];
     }
 
+    // PDF exports can lose every heading mark. Repeated top-level labels
+    // introducing nested lists still provide an authored outline. Require
+    // several such labels so one discussion bullet cannot seed an outline.
+    const plainBulletTitle = (raw: string): string | null => {
+        const title = clean(raw).replace(/\s+[—–]\s+.*$/, "").replace(/:\s*$/, "");
+        if (title.length > 110 || title.split(/\s+/).length > 16 || isNoise(title) || isSpeaker(title)) return null;
+        return isLabel(title) || (/^[^:]+:$/.test(clean(raw)) && !/[.!?]/.test(title)) ? title : null;
+    };
+    const plainBulletOutline = !lines.some(line => HASH_HEADING.test(line.text)) &&
+        lines.filter((line, index) => {
+            const mark = outlineMark(line.text);
+            const next = nextContent.get(index);
+            const child = next ? outlineMark(next.text) : null;
+            return mark?.kind === "bullet" && mark.indent === bulletIndent &&
+                child && child.indent > mark.indent && plainBulletTitle(mark.raw);
+        }).length >= 3;
+
     for (const [lineIndex, line] of lines.entries()) {
         let text = line.text;
         let at = line.start;
@@ -816,6 +833,15 @@ function indexSections(content: string): Index {
             const next = nextContent.get(lineIndex);
             const child = next ? outlineMark(next.text) : null;
             const hasChildren = !!child && child.indent > mark.indent;
+            if (plainBulletOutline && mark.kind === "bullet" &&
+                (hasChildren || (mark.indent === bulletIndent && /:\s*$/.test(mark.raw)))) {
+                const title = plainBulletTitle(mark.raw);
+                if (title) {
+                    place(mark.indent === bulletIndent ? 1 : outlineLevel(mark.indent, mark.kind, mark.value), mark.indent,
+                        true, false, "bullet", title, at);
+                    continue;
+                }
+            }
             // Raw transcript prompts are notes unless they introduce nested content.
             if (/^raw(?:\s+notes)?$/i.test(markdownTitle) && label.wrapped === null && !hasChildren) {
                 body();
@@ -931,7 +957,24 @@ function indexSections(content: string): Index {
         // A bare title-case line only counts once a section is already open.
         // Otherwise the document's own title -- "Constitution of the" on one
         // line, the university's name on the next -- becomes the outline.
-        const opened = frames.length > 0;
+        const next = nextContent.get(lineIndex);
+        if (plainBulletOutline && wrapped === null) {
+            // In unstyled PDF lists, table cells and wrapped prose otherwise
+            // look like title-case headings once the first section is open.
+            // Accept a plain label only when the following list or cap field
+            // supplies structural evidence (including short labels like Food).
+            const follows = next && (outlineMark(next.text) || /^Annual Cap:/i.test(next.text));
+            if (follows && /^\p{Lu}/u.test(text) && isLabel(plain) && !isNoise(plain) && !isSpeaker(plain)) {
+                place(1, 0, false, false, "heading", plain, at);
+            } else {
+                body();
+            }
+            continue;
+        }
+        const introducesList = !!next && !!outlineMark(next.text) &&
+            (lineIndex === 0 || !lines[lineIndex - 1].text.trim()) &&
+            isLabel(plain) && !isNoise(plain) && !isSpeaker(plain);
+        const opened = frames.length > 0 || introducesList;
         if (!signing && wrapped === null && isBreakLine(plain)) {
             place(minorLevel(), 0, false, false, "heading", plain, at);
             continue;

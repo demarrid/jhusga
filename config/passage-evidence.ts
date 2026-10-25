@@ -28,3 +28,11 @@ export const CONFIRMED_RESOLUTION_PASSAGE = [{
     minutesFileId: "1pwXD1WNdPYbHdu_2qbFjLh2ElbToOOPiTAwx-q1jya4",
     passedOn: "2023-09-05",
 }] as const;
+
+/** User-confirmed on 2026-10-25. The minutes record a motion and abstention
+ * but omit an explicit outcome; the voting register has no final result.
+ * Keep this confirmation separate from machine-read passage evidence. */
+export const CONFIRMED_BILL_PASSAGE = [{
+    legislationFileId: "1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM",
+    passedOn: "2026-10-20",
+}] as const;
