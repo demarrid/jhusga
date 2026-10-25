@@ -59,6 +59,7 @@ export default function NewPostForm({
     return (
         <form
             className={styles.form}
+            autoComplete="off"
             onSubmit={(event) => {
                 event.preventDefault();
                 submit();
