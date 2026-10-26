@@ -27,6 +27,18 @@
     background 140ms ease;
 }
 
+.small .trigger {
+  min-height: 2.2rem;
+  padding: 0 0.65rem;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+}
+
+.small .option {
+  padding: 0.45rem 0.55rem;
+  font-size: 0.75rem;
+}
+
 .trigger:hover {
   border-color: #7990aa;
   background: #ffffff;

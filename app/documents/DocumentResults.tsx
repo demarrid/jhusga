@@ -7,6 +7,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { DocumentListing, DocumentPage } from "@/server/documents";
 import { useDocumentQuery } from "@/app/(components)/DocumentQuery";
 import LoadingBar from "@/app/(components)/LoadingBar";
+import Select from "@/app/(components)/Select";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel } from "@/lib/contributors";
@@ -159,17 +160,16 @@ export default function DocumentResults({
                 <LoadingBar active={pending} className={styles.listLoading} />
                 <div className={styles.sortControl}>
                     <label htmlFor="document-sort">Sort by</label>
-                    <select
+                    <Select
                         id="document-sort"
+                        size="small"
                         value={chosenSort}
-                        onChange={(event) => chooseSort(event.target.value as DocumentSort)}
-                    >
-                        {documentSortsFor(hasQuery).map((option) => (
-                            <option key={option} value={option}>
-                                {DOCUMENT_SORT_LABELS[option]}
-                            </option>
-                        ))}
-                    </select>
+                        onChange={(value) => chooseSort(value as DocumentSort)}
+                        options={documentSortsFor(hasQuery).map((option) => ({
+                            value: option,
+                            label: DOCUMENT_SORT_LABELS[option],
+                        }))}
+                    />
                 </div>
             </div>
 

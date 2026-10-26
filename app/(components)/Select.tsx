@@ -25,6 +25,7 @@ export default function Select({
     onChange,
     id,
     ariaLabel,
+    size = "default",
 }: {
     name?: string;
     value: string;
@@ -32,6 +33,7 @@ export default function Select({
     onChange: (value: string) => void;
     id?: string;
     ariaLabel?: string;
+    size?: "default" | "small";
 }) {
     const generatedId = useId();
     const listId = `${generatedId}-list`;
@@ -124,7 +126,7 @@ export default function Select({
     }
 
     return (
-        <div ref={rootRef} className={styles.root}>
+        <div ref={rootRef} className={`${styles.root} ${size === "small" ? styles.small : ""}`}>
             <button
                 ref={triggerRef}
                 type="button"

@@ -148,28 +148,8 @@
   text-transform: uppercase;
 }
 
-.sortControl select {
-  cursor: pointer;
-  min-height: 2.1rem;
-  padding: 0 0.9rem;
-  border: 1px solid #b4c3d1;
-  background: transparent;
-  color: #52677d;
-  font-size: 0.68rem;
-  font-weight: 680;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
-}
-
-.sortControl select:hover {
-  border-color: #377ebc;
-  color: #164f87;
-}
-
-.sortControl select:focus-visible {
-  outline: 2px solid #68ace5;
-  outline-offset: 2px;
+.sortControl > div {
+  width: min(10.5rem, 100%);
 }
 
 /* The list being replaced stays readable but plainly is not the answer yet. */
@@ -417,7 +397,6 @@
 
   .documentCard,
   .documentArrow,
-  .sortControl select,
   .listPending {
     transition: none;
   }
