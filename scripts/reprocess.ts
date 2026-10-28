@@ -114,9 +114,9 @@ async function main() {
     // before meetings, whose keys include it.
     const reassigned = await recordSessions();
     const meetings = await recordMeetings();
+    const dated = await recordDates();
     const renamed = await recordTitles();
     const reclassified = await recordKinds();
-    const dated = await recordDates();
     const references = await rebuildReferences();
     const driveAccounts = await recordDriveAccounts();
 

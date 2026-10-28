@@ -8,7 +8,7 @@ import {
 import { restoreCellBreaks } from "@/lib/cells";
 import { appendWorkbookSheets, formatDelimited } from "@/lib/csv";
 import { sanitizeExport } from "@/lib/markdown";
-import { docxToText, xlsxSheets } from "@/lib/office";
+import { docxToText, docxToMarkdown, xlsxSheets } from "@/lib/office";
 
 /**
  * Read-only Google Drive access.
@@ -700,7 +700,7 @@ export async function exportPdfAsText(fileId: string): Promise<string> {
 }
 
 /**
- * Download an uploaded Word document and flatten its paragraphs to text.
+ * Download an uploaded Word document and preserve its structure as Markdown.
  *
  * Drive cannot `/export` native Office files, so they use the same `alt=media`
  * path as PDFs. A malformed or unsupported DOCX remains a visible archive row
@@ -708,7 +708,7 @@ export async function exportPdfAsText(fileId: string): Promise<string> {
  */
 export function extractDocxText(bytes: Uint8Array): string {
     if (bytes.byteLength === 0) return "";
-    return sanitizeExport(docxToText(Buffer.from(bytes)) ?? "");
+    return sanitizeExport(docxToMarkdown(Buffer.from(bytes)) ?? "");
 }
 
 export async function exportDocxAsText(fileId: string): Promise<string> {
@@ -720,6 +720,15 @@ export async function exportDocxAsText(fileId: string): Promise<string> {
         if (cause instanceof Error) return "";
         throw cause;
     }
+}
+
+
+/** Both parsers read the same bytes, allowing a safe formatting-only migration. */
+export async function exportDocxVersions(fileId: string): Promise<{ legacy: string; content: string } | null> {
+    const bytes = await downloadFile(fileId);
+    if (!bytes?.byteLength) return null;
+    const buffer = Buffer.from(bytes);
+    return { legacy: sanitizeExport(docxToText(buffer) ?? ""), content: sanitizeExport(docxToMarkdown(buffer) ?? "") };
 }
 
 /** Stable link back to the original, for "open in Google Docs". */

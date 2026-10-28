@@ -131,6 +131,7 @@ export type SummarizeResult = {
 function promptFingerprint(contentHash: string, kind: string, adopted = false): string {
     return createHash("sha256")
         .update(summaryPromptVersion(kind))
+        .update(kind.startsWith("minutes.") ? "\\0omit-meeting-date-v1" : "")
         .update(`\u0000${kind}\u0000${contentHash}${adopted ? "\u0000adopted-resolution-v1" : ""}`)
         .digest("hex");
 }
@@ -146,6 +147,7 @@ function buildUserPrompt(document: {
         document.kind === "resolution" && recordedResolutionPassage(document.content)
             ? "This resolution records a completed passing vote. Describe it as adopted, not proposed; include the recorded vote counts with a citation to the enactment line. Calls for university action remain requests, not actions the university has taken."
             : "",
+        document.kind.startsWith("minutes.") ? "Omit the meeting date from the summary. The page provides reconciled date metadata; copied meeting headers can contain an earlier meeting date." : "",
         `<document kind="${documentKindLabel(document.kind)}" title="${document.title.replace(/"/g, "'")}">`,
         body,
         body.length < document.content.length ? "\n[document truncated]" : "",

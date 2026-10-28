@@ -508,10 +508,12 @@ export type RelatedDocument = {
     sessionNumber: number | null;
     /** The link text the author wrote, when there was one. */
     anchorText?: string;
+    sourceOffset?: number;
 };
 
 /** A link the author typed whose target has not been ingested. */
 export type UnresolvedLink = {
+    sourceOffset?: number;
     url: string;
     text: string;
     source: "drive" | "sharepoint";
@@ -667,7 +669,7 @@ function normaliseStatus(status: string): SectionStatus {
 
 const cachedDocument = unstable_cache(
     loadDocument,
-    ["document-detail-v1"],
+    ["document-detail-v2"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
@@ -841,6 +843,7 @@ export async function loadDocument(
     }
     const agendaUnresolvedLinks = new Map<string, UnresolvedLink>();
     for (const link of agendaLinks) {
+        if (!agendaMatches.some(match => match.linkedUrls?.includes(link.url))) continue;
         const target = agendaTargets.find(row => row.driveFileId === link.fileId);
         if (target && target.id !== document.id && !matchedCounterparts.some(row => row.id === target.id)) {
             if (!agendaReferences.has(target.id)) agendaReferences.set(target.id, toRelated(target, link.text));
@@ -856,7 +859,7 @@ export async function loadDocument(
     const directReferences = new Map<string, RelatedDocument>();
     for (const link of outgoing) {
         const target = linkedTargets.find(row => row.driveFileId === link.fileId);
-        if (target && target.id !== document.id && !directReferences.has(target.id)) directReferences.set(target.id, toRelated(target, link.text));
+        if (target && target.id !== document.id && !directReferences.has(target.id)) directReferences.set(target.id, { ...toRelated(target, link.text), sourceOffset: link.offset });
     }
     const unresolvedLinks = outgoing.filter((link) => !heldTargets.has(link.fileId));
 
@@ -872,6 +875,7 @@ export async function loadDocument(
         references: [...directReferences.values()],
         referencedBy: document.referencesIn.map((edge) => toRelated(edge.fromDocument)),
         unresolvedLinks: unresolvedLinks.map((link) => ({
+            sourceOffset: link.offset,
             url: link.url,
             text: link.text,
             source: link.source,

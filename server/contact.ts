@@ -30,7 +30,7 @@ export type ContactDirectory = {
 
 const cachedContactDirectory = unstable_cache(
     loadContactDirectory,
-    ["contact-directory-v3"],
+    ["contact-directory-v4"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: DIRECTORY_CACHE_SECONDS },
 );
 

@@ -37,6 +37,7 @@ const SUITES = [
     "anchor",
     "archive",
     "archive-cache",
+    "archive-quality",
     "accounts",
     "activity",
     "bill-votes",

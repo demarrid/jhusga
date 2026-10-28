@@ -1259,13 +1259,13 @@ function outlineSeat(context: string[]): OutlineSeat {
         return { position: nearest, group: "executive", subgroup: null, path: outer, title: nearest };
     }
     if (/^judicia/i.test(branch)) {
-        if (/student elections/i.test(nearest)) {
+        if (headings.some(heading => /student elections/i.test(heading))) {
             return {
-                position: "Committee on Student Elections",
+                position: /student elections/i.test(nearest) ? "Committee on Student Elections" : `${nearest} of the Committee on Student Elections`,
                 group: "cse",
                 subgroup: null,
                 path: [],
-                title: null,
+                title: /student elections/i.test(nearest) ? null : nearest,
             };
         }
         return { position: "Justice", group: "judiciary", subgroup: null, path: [], title: "Justice" };

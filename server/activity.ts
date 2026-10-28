@@ -1,3 +1,4 @@
+import { reconcileMeetingDates, passageDateFitsDocument } from "@/lib/meeting-dates";
 import { unstable_cache } from "next/cache";
 import { ARCHIVE_CACHE_TAG, ARCHIVE_CACHE_SECONDS } from "@/lib/archive-cache";
 import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
@@ -96,6 +97,11 @@ async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; s
         },
     });
 
+    const reconciled = reconcileMeetingDates(minutes);
+    for (const document of minutes) {
+        const correction = reconciled.get(document.id);
+        if (correction) document.datedAt = correction.date;
+    }
     const senateText = minutes.filter(countsAsSenateRecord);
     const textById = new Map(senateText.map((document) => [document.id, document]));
 
@@ -188,7 +194,7 @@ async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; s
         if (!lane) continue;
 
         const when = passedOn.get(document.driveFileId);
-        if (!when) continue;
+        if (!when || !passageDateFitsDocument(when, document)) continue;
 
         const laneId = lane === "resolution" ? "resolutions" : "bills";
         const card = toCard(document, when, laneId === "resolutions" ? "Resolution" : "Passed");

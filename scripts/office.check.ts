@@ -10,7 +10,7 @@
  */
 import { deflateRawSync } from "node:zlib";
 import { csvCellRanges, formatDelimited, parseCsvLine } from "../lib/csv";
-import { docxToText, xlsxSheets, xlsxToText } from "../lib/office";
+import { docxToMarkdown, docxToText, xlsxSheets, xlsxToText } from "../lib/office";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -289,6 +289,25 @@ check(
     !tsv.includes("\n") && !tsv.includes("\f") && tsv.split("\t").length === 5,
     JSON.stringify(tsv),
 );
+
+
+const styled = encodeZip({
+    "word/document.xml": '<w:document><w:body>' +
+        '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Access to tools</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Equal access</w:t></w:r><w:r><w:br/><w:t>For students</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:rPr><w:b w:val="0"/><w:i/></w:rPr><w:t>Request</w:t></w:r></w:p>' +
+        '<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>First item</w:t></w:r></w:p>' +
+        '<w:p><w:hyperlink r:id="rId1"><w:r><w:t>Source</w:t></w:r></w:hyperlink></w:p>' +
+        '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Name</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Role</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+        '</w:body></w:document>',
+    "word/_rels/document.xml.rels": '<Relationships><Relationship Id="rId1" Target="https://example.org/source?a=1&amp;b=2"/></Relationships>',
+    "word/numbering.xml": '<w:numbering><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="1"><w:numFmt w:val="bullet"/></w:lvl></w:abstractNum><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>',
+});
+const markdown = docxToMarkdown(styled)!;
+check("Word headings and paragraph breaks survive", markdown.startsWith("# Access to tools\n\n**Equal access**\nFor students\n\n*Request*"), markdown);
+check("Word list nesting survives", markdown.includes("   - First item"), markdown);
+check("Word hyperlinks survive", markdown.includes("[Source](https://example.org/source?a=1&b=2)"), markdown);
+check("Word table cells survive", markdown.includes("| Name | Role |\n| --- | --- |"), markdown);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

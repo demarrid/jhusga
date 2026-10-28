@@ -8,7 +8,7 @@ export function relevantDocuments(agenda: RelatedDocument[], minutes: RelatedDoc
     for (const [label, rows] of [["Agenda", agenda], ["Minutes", minutes]] as const) {
         for (const row of rows) {
             if (excluded.includes(row.id)) continue;
-            if (!documents.has(row.id)) documents.set(row.id, row);
+            if (!documents.has(row.id) || label === "Minutes") documents.set(row.id, row);
             const labels = sources[row.id] ??= [];
             if (!labels.includes(label)) labels.push(label);
         }

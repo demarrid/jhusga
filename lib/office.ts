@@ -3,8 +3,8 @@
  *
  * SharePoint sharing links serve .docx (and occasionally .xlsx) rather than
  * a Google Docs markdown export. Citation offsets still need a stable string,
- * so this is a lossy but deterministic flattening: paragraphs become lines,
- * and everything else is dropped.
+ * so extraction is deterministic. The text reader supports legacy comparison;
+ * the Markdown reader keeps structural formatting for publication.
  */
 
 import { inflateRawSync } from "node:zlib";
@@ -155,6 +155,89 @@ export function docxToText(buffer: Buffer): string | null {
 
     const text = lines.join("\n").trim();
     return text || null;
+}
+
+
+/** Preserve Word's paragraph boundaries, emphasis, headings, lists and tables. */
+export function docxToMarkdown(buffer: Buffer): string | null {
+    const zip = openZip(buffer);
+    const xml = zip?.read("word/document.xml")?.toString("utf8");
+    if (!xml) return null;
+    const numbering = zip?.read("word/numbering.xml")?.toString("utf8") ?? "";
+    const relationships = zip?.read("word/_rels/document.xml.rels")?.toString("utf8") ?? "";
+    const links = new Map<string, string>();
+    for (const match of relationships.matchAll(/<Relationship\b([^>]+)\/?>/g)) {
+        const id = /\bId="([^"]+)"/.exec(match[1])?.[1];
+        const target = /\bTarget="([^"]+)"/.exec(match[1])?.[1];
+        if (id && target && /^https?:\/\//i.test(target)) links.set(id, decodeXml(target));
+    }
+    const escape = (text: string) => text.replace(/([\\*_[\]\x60|])/g, "\\$1");
+    const runs = (fragment: string): string => {
+        const groups: { text: string; marker: string }[] = [];
+        for (const match of fragment.matchAll(/<w:r\b[^>]*>([\s\S]*?)<\/w:r>/g)) {
+            const run = match[1];
+            const text = [...run.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:(br|cr|tab)\b[^>]*\/>/g)]
+                .map(part => part[1] !== undefined ? escape(decodeXml(part[1])) : part[2] === "tab" ? " " : "\n").join("");
+            const style = /<w:rPr\b[^>]*>([\s\S]*?)<\/w:rPr>/.exec(run)?.[1] ?? "";
+            const enabled = (tag: string) => new RegExp("<w:" + tag + "\\b(?![^>]*w:val=\"(?:0|false|off)\")[^>]*\\/?>").test(style);
+            const marker = (enabled("b") ? "**" : "") + (enabled("i") ? "*" : "");
+            const previous = groups.at(-1);
+            if (previous?.marker === marker) previous.text += text;
+            else groups.push({ text, marker });
+        }
+        return groups.map(({ text, marker }) => marker
+            ? text.replace(/^(\s*)([\s\S]*?)(\s*)$/, (_, before, body, after) => body ? before + marker + body + marker + after : text)
+            : text).join("");
+    };
+    const listCounts = new Map<string, number>();
+    const paragraph = (fragment: string): string => {
+        const chunks = fragment.split(/(<w:hyperlink\b[^>]*>[\s\S]*?<\/w:hyperlink>)/g);
+        let text = chunks.map(chunk => {
+            const id = /\br:id="([^"]+)"/.exec(chunk)?.[1];
+            const target = id && links.get(id);
+            const label = runs(chunk);
+            return target ? "[" + label + "](" + target.replace(/\)/g, "%29") + ")" : label;
+        }).join("").trim();
+        if (!text) return "";
+        const props = /<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/.exec(fragment)?.[1] ?? "";
+        const heading = /<w:pStyle\b[^>]*w:val="Heading([1-6])"/i.exec(props)?.[1];
+        const outline = /<w:outlineLvl\b[^>]*w:val="([0-5])"/.exec(props)?.[1];
+        if (heading || outline !== undefined) return "#".repeat(heading ? Number(heading) : Number(outline) + 1) + " " + text;
+        const numId = /<w:numId\b[^>]*w:val="(\d+)"/.exec(props)?.[1];
+        if (numId && numId !== "0") {
+            const depth = Math.min(8, Number(/<w:ilvl\b[^>]*w:val="(\d+)"/.exec(props)?.[1] ?? 0));
+            const num = new RegExp('<w:num\\b[^>]*w:numId="' + numId + '"[^>]*>([\\s\\S]*?)<\\/w:num>').exec(numbering)?.[1] ?? "";
+            const abstract = /w:abstractNumId\b[^>]*w:val="(\d+)"/.exec(num)?.[1];
+            const definition = abstract && new RegExp('<w:abstractNum\\b[^>]*w:abstractNumId="' + abstract + '"[^>]*>([\\s\\S]*?)<\\/w:abstractNum>').exec(numbering)?.[1];
+            const level = definition && new RegExp('<w:lvl\\b[^>]*w:ilvl="' + depth + '"[^>]*>([\\s\\S]*?)<\\/w:lvl>').exec(definition)?.[1];
+            const bullet = level && /w:numFmt\b[^>]*w:val="bullet"/.test(level);
+            const key = numId + ":" + depth;
+            const start = Number((level && /w:start\b[^>]*w:val="(\d+)"/.exec(level)?.[1]) || 1);
+            const ordinal = listCounts.has(key) ? listCounts.get(key)! + 1 : start;
+            listCounts.set(key, ordinal);
+            for (let lower = depth + 1; lower <= 8; lower++) listCounts.delete(numId + ":" + lower);
+            text = "   ".repeat(depth) + (bullet ? "- " : ordinal + ". ") + text;
+        }
+        return text;
+    };
+    const blocks: string[] = [];
+    for (const match of xml.matchAll(/<w:tbl\b[^>]*>[\s\S]*?<\/w:tbl>|<w:p\b[^>]*>[\s\S]*?<\/w:p>/g)) {
+        if (match[0].startsWith("<w:tbl")) {
+            const rows = [...match[0].matchAll(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/g)].map(row =>
+                [...row[1].matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g)].map(cell =>
+                    [...cell[1].matchAll(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g)].map(p => paragraph(p[0])).join("<br>")));
+            const width = Math.max(0, ...rows.map(row => row.length));
+            if (width) {
+                const table = rows.map(row => "| " + Array.from({ length: width }, (_, i) => row[i] ?? "").join(" | ") + " |");
+                table.splice(1, 0, "| " + Array(width).fill("---").join(" | ") + " |");
+                blocks.push(table.join("\n"));
+            }
+        } else {
+            const text = paragraph(match[0]);
+            if (text) blocks.push(text);
+        }
+    }
+    return blocks.join("\n\n").trim() || null;
 }
 
 export type XlsxSheet = { name: string; rows: string[][] };

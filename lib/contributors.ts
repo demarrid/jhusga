@@ -715,9 +715,10 @@ function harvestLabeledText(
             // "and" joins two people *and* two titles of one person
             // ("VPOTS and Chair of IA Shreemann Patel"). A fragment that is
             // only an office is held and stuck on the next name.
-            const token = bylineToken(carried ? `${carried} and ${candidate}` : candidate, segment.role);
+            const token = bylineToken(carried ? `${carried} and ${candidate}` : candidate.replace(/[!?]+$/, ""), segment.role);
             if (parsePersonToken(token)) {
-                if (recordPerson(found, token, segment.role, evidence)) recorded += 1;
+                if (recordPerson(found, token.replace(/[!?]+$/, ""), segment.role, evidence, undefined,
+                    segment.firstNames)) recorded += 1;
                 carried = "";
                 continue;
             }
@@ -994,6 +995,8 @@ const SPEAKER_NOISE = new Set([
     "someone",
     "person",
     "information",
+    "step",
+    "next",
 ]);
 
 /**
@@ -1069,7 +1072,10 @@ function recordSpeaker(
     // Hurried minutes name people in one or two words. Three is a heading:
     // "Last Meeting Follow-up", "Academic Affairs Chair".
     if (name.split(/\s+/).length > 2) return;
-    recordPerson(found, name, "interlocutor", evidence, undefined, true);
+    const introduced = keyParts.length === 2 &&
+        nameKey(evidence).startsWith(nameKey(name) + " ") &&
+        /^(?:i\b|i['’]m\b|we\b)/i.test(remark.trim());
+    recordPerson(found, name, "interlocutor", evidence, undefined, !introduced);
 }
 
 /** `<rises>`, `\<the script\>` — the minute-taker describing the room, not quoting it. */

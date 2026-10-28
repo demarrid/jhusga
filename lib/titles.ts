@@ -203,6 +203,7 @@ const ROLE_SUFFIX: Record<MeetingRole, string> = {
 };
 
 export type TitleInput = {
+    datedAt?: Date | null;
     driveFileId?: string;
     id: string;
     title: string;
@@ -296,7 +297,7 @@ function meetingTitle(input: TitleInput, dates?: Map<string, Date>): string | nu
 
     const number = parts.number ? ` #${parts.number}` : "";
     const date =
-        parts.date ??
+        formatDateNumeric(input.datedAt) ?? parts.date ??
         formatDateNumeric(dates?.get(meeting.key) ?? input.driveCreatedTime);
 
     return formatMeetingTitle(

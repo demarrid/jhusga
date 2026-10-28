@@ -11,7 +11,7 @@
  * bill is. The sharing URL stays in the document; the reader still has it.
  */
 
-import { docxToText, xlsxToText } from "@/lib/office";
+import { docxToMarkdown, xlsxToText } from "@/lib/office";
 
 const WORD_MIME =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -299,7 +299,7 @@ export async function exportSharePointAsText(
         return xlsxToText(buffer);
     }
     if (file.mimeType === WORD_MIME || file.kind === "word") {
-        return docxToText(buffer);
+        return docxToMarkdown(buffer);
     }
 
     return null;

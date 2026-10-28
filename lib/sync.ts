@@ -1,3 +1,4 @@
+import { reconcileMeetingDates } from "@/lib/meeting-dates";
 import { createHash } from "node:crypto";
 
 import { MASTER_FOLDER_ID, MAX_LINK_ROUNDS, SESSION_NUMBER } from "@/config/sga";
@@ -286,6 +287,7 @@ export async function recordTitles(): Promise<number> {
             folderPath: true,
             sessionNumber: true,
             driveCreatedTime: true,
+            datedAt: true,
             // A committee that types every meeting of the year into one file
             // can only be recognised from the text; see lib/titles.ts.
             content: true,
@@ -337,14 +339,18 @@ export async function recordDates(): Promise<number> {
             driveCreatedTime: true,
             datedAt: true,
             driveFileId: true,
+            kind: true,
+            folderPath: true,
+            sessionNumber: true,
         },
     });
 
+    const reconciled = reconcileMeetingDates(documents);
     let dated = 0;
 
     for (const document of documents) {
         const final = LEGISLATION_EDITIONS.find(edition => edition.finalFileId === document.driveFileId && findQuote(document.content, edition.passageQuote));
-        const datedAt = final ? new Date(`${final.passedOn}T12:00:00Z`) : documentDate(document);
+        const datedAt = final ? new Date(`${final.passedOn}T12:00:00Z`) : reconciled.get(document.id)?.date ?? documentDate(document) ?? (document.kind.startsWith("minutes.") ? document.datedAt : null);
         if (datedAt !== null) dated += 1;
 
         if (datedAt?.getTime() === document.datedAt?.getTime()) continue;
@@ -353,6 +359,10 @@ export async function recordDates(): Promise<number> {
             where: { id: document.id },
             data: { datedAt },
         });
+        if (reconciled.has(document.id)) {
+            console.log(`Reconciled ${document.title}: ${reconciled.get(document.id)!.statedDate.toISOString().slice(0, 10)} → ${datedAt!.toISOString().slice(0, 10)} (earlier record ${reconciled.get(document.id)!.evidenceId})`);
+            await prisma.documentSummary.updateMany({ where: { documentId: document.id, status: { in: ["fresh", "empty"] } }, data: { status: "stale" } });
+        }
     }
 
     return dated;
@@ -1331,6 +1341,7 @@ export async function syncMasterFolder(
         summary.meetingsPaired = (
             await timed(summary, "meetings", () => recordMeetings())
         ).paired;
+        summary.documentsDated = await timed(summary, "dates", () => recordDates());
         // Titles depend on the meeting keys the pass above just wrote.
         await timed(summary, "titles", () => recordTitles());
         await timed(summary, "kinds", () => recordKinds());
@@ -1340,7 +1351,6 @@ export async function syncMasterFolder(
         summary.revisionAuthors = await timed(summary, "revisionAuthors", () =>
             refreshRevisionAuthors(summary.revisionAuthorFileIds),
         );
-        summary.documentsDated = await timed(summary, "dates", () => recordDates());
         summary.referencesLinked = await timed(summary, "references", () =>
             rebuildReferences(),
         );

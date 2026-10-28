@@ -25,13 +25,32 @@ export function meetingOutline(sections: DocumentSection[], matches: AgendaMatch
         rows.sort((a, b) => offset(a) - offset(b));
         return added;
     };
+    // Authored link positions are stronger evidence than title similarity or AI mapping.
+    const attachAt = (offset: number | undefined, link: { title: string; href: string }): boolean => {
+        if (offset === undefined) return false;
+        const descend = (rows: DocumentSection[]): DocumentSection | undefined => {
+            const preceding = rows.filter(row => position(row) <= offset).sort((a, b) => position(b) - position(a));
+            const parent = preceding[0];
+            return parent ? descend(parent.children) ?? parent : undefined;
+        };
+        const section = descend(result);
+        if (!section) return false;
+        section.documentLinks = [...new Map([...(section.documentLinks ?? []), link].map(item => [item.href, item])).values()];
+        return true;
+    };
+    for (const document of documents) {
+        if (attachAt(document.sourceOffset, { title: document.anchorText || document.title, href: `/documents/${document.id}` })) used.add(document.id);
+    }
+    for (const link of unresolved) {
+        if (attachAt(link.sourceOffset, { title: link.text || "Document", href: link.url })) usedUrls.add(link.url);
+    }
     const branches = new Map<string, DocumentSection>();
     for (const match of [...matches].sort((a, b) => a.startOffset - b.startOffset)) {
-        const links = documents.filter(document => match.linkedDocumentIds?.includes(document.id)).map(document => {
+        const links = documents.filter(document => !used.has(document.id) && match.linkedDocumentIds?.includes(document.id)).map(document => {
             used.add(document.id);
             return { title: document.anchorText || document.title, href: `/documents/${document.id}` };
         });
-        links.push(...unresolved.filter(link => match.linkedUrls?.includes(link.url)).map(link => {
+        links.push(...unresolved.filter(link => !usedUrls.has(link.url) && match.linkedUrls?.includes(link.url)).map(link => {
             usedUrls.add(link.url);
             return { title: link.text || "Document", href: link.url };
         }));

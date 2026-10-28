@@ -937,7 +937,21 @@ export async function resolveAffiliates(
             ? sessionStartDate(context.sessionNumber)
             : undefined);
     const datedContext = { ...context, asOf };
-    const regulars = await loadRegulars(context.isCurrentSession ? undefined : asOf);
+    const regulars = [...await loadRegulars(context.isCurrentSession ? undefined : asOf)];
+    // Establish explicit full names before resolving any shorthand in this document.
+    // Otherwise an earlier "Jessica" can attach to the only Jessica in the archive.
+    for (const mention of mentions) {
+        if (isShortForm(mention.name) || mention.onlyIfKnown) continue;
+        const name = canonicalPersonName(mention.name);
+        if (regulars.some(person => person.nameKey === nameKey(name))) continue;
+        const person = await prisma.hopkinsAffiliate.upsert({
+            where: { nameKey: nameKey(name) }, create: { name, nameKey: nameKey(name) },
+            update: {}, select: { id: true, name: true, nameKey: true },
+        });
+        if (!regulars.some(row => row.id === person.id)) {
+            regulars.push({ ...person, documentCount: 1, positions: [], bodies: [] });
+        }
+    }
     const ids: (string | null)[] = mentions.map(() => null);
     const pending: Pending[] = [];
 
@@ -950,7 +964,7 @@ export async function resolveAffiliates(
             where: { aliasKey: writtenKey },
             select: { hopkinsAffiliateId: true },
         });
-        if (aliased) {
+        if (aliased && !isShortForm(mention.name)) {
             ids[index] = aliased.hopkinsAffiliateId;
             continue;
         }
@@ -969,19 +983,31 @@ export async function resolveAffiliates(
         }
 
         if (isShortForm(mention.name)) {
-            const given = givenNameCandidates(mention.name, regulars);
-            const surname = surnameCandidates(mention.name, regulars);
+            const local = tokenCandidates(mention.name, regulars).filter(person =>
+                context.text && namedInFull(context.text, person));
+            if (local.length === 1) {
+                ids[index] = local[0].id;
+                continue;
+            }
+            // Loose speaker/space-separated attendance tokens need corroboration.
+            // An archive-wide near-match is not evidence that this person attended.
+            const eligible = mention.onlyIfKnown ? regulars.filter(person =>
+                (context.text && namedInFull(context.text, person)) ||
+                ((context.isCurrentSession || asOf) && context.body && person.bodies.includes(context.body))
+            ) : regulars;
+            const given = givenNameCandidates(mention.name, eligible);
+            const surname = surnameCandidates(mention.name, eligible);
             // Shape is the last resort, so it is only consulted once nobody
             // has turned out to actually be named this.
             const clipped =
                 given.length + surname.length === 0
-                    ? diminutiveCandidates(mention.name, regulars)
+                    ? diminutiveCandidates(mention.name, eligible)
                     : [];
             // Later still than shape: a name is only a misspelling once
             // nobody is named it and nothing clips to it.
             const misspelled =
                 given.length + surname.length + clipped.length === 0
-                    ? misspellingCandidates(mention.name, regulars)
+                    ? misspellingCandidates(mention.name, eligible)
                     : [];
 
             let resolved: { id: string; source: string } | null = null;
@@ -1007,10 +1033,6 @@ export async function resolveAffiliates(
             }
 
             if (resolved) {
-                await rememberAlias(mention.name, resolved.id, resolved.source);
-                if (exact && exact.id !== resolved.id) {
-                    await mergeAffiliate(exact.id, resolved.id);
-                }
                 ids[index] = resolved.id;
                 continue;
             }
@@ -1081,21 +1103,7 @@ export async function resolveAffiliates(
 
         for (const item of pending) {
             const id = picked.get(nameKey(item.name));
-            if (id) {
-                // "Jazz" has no token overlap with anyone else, so the mapping
-                // is safe to reuse. "Amy" matches two full names; remembering
-                // it would pin every later minutes roll to the wrong Amy, and
-                // so would a fragment two given names both clip to.
-                const globallyUnique =
-                    tokenCandidates(item.name, regulars).length === 0 &&
-                    diminutiveCandidates(item.name, regulars).length <= 1 &&
-                    misspellingCandidates(item.name, regulars).length <= 1;
-                if (globallyUnique) {
-                    await rememberAlias(item.name, id, "model");
-                    if (item.exactId && item.exactId !== id) {
-                        await mergeAffiliate(item.exactId, id);
-                    }
-                }
+            if (id && item.pool.some(person => person.id === id)) {
                 ids[item.index] = id;
                 continue;
             }

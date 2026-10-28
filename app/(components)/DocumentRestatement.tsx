@@ -26,7 +26,7 @@ export default function DocumentRestatement({
         return (
             <p className={styles.muted}>
                 {restatement?.status !== "empty"
-                    ? "No plain-language summary yet. The nightly sync writes one."
+                    ? "A plain-language summary has not been generated yet."
                     : restatement.readByModel
                         ? "This document was read, and it states nothing a restatement would add."
                         : "There is too little text here to restate — a stub, or a template nobody has filled in."}
