@@ -25,6 +25,20 @@ async function main() {
     const args = process.argv.slice(2);
     const { prisma } = await import("../lib/prisma");
 
+    if (args.includes("--auto")) {
+        const { reviewGoverningChanges } = await import("../lib/governing-review");
+        const results = await reviewGoverningChanges({
+            apply: !args.includes("--dry"),
+            documentId: argumentAfter(args, "--document"),
+            deadline: Date.now() + 120_000,
+            limit: 10,
+        });
+        for (const result of results) console.log(JSON.stringify(result));
+        if (!results.length) console.log("No held Constitution or Bylaws revisions to review.");
+        if (results.some(result => result.status === "error")) process.exitCode = 1;
+        return;
+    }
+
     const showId = argumentAfter(args, "--show");
     const approveId = argumentAfter(args, "--approve");
     const rejectId = argumentAfter(args, "--reject");
@@ -106,6 +120,11 @@ async function show(documentId: string) {
         const marker = op.type === "added" ? "+" : op.type === "removed" ? "-" : " ";
         for (const line of op.lines) console.log(`${marker} ${line}`);
     }
+
+    const audit = await prisma.amendmentClearance.findMany({
+        where: { documentId }, orderBy: { checkedAt: "desc" }, take: 1,
+    }).catch(() => []);
+    if (audit[0]) console.log("\nLatest automatic review:", JSON.stringify(audit[0], null, 2));
 
     console.log("\nPublish it:  npm run review -- --approve " + documentId + " --by 'your name'");
 }

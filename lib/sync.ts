@@ -1,3 +1,4 @@
+import { beginAdministratorLookupRun, type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
 import { createHash } from "node:crypto";
 
@@ -581,18 +582,19 @@ export async function recordContributors(
 
     const parsed = extractContributors(content, document?.title, document?.kind);
 
-    await prisma.documentContributor.deleteMany({
-        where: { documentId, source: "parsed" },
-    });
-
+    const administratorResolutions = new Map<number, AdministratorResult>();
     const affiliateIds = await resolveAffiliates(
         parsed.map((person) => ({
             name: person.name,
+            role: person.role,
             evidence: person.evidence,
             onlyIfKnown: person.onlyIfKnown,
             office: person.office,
         })),
         {
+            documentId,
+            administratorText: content,
+            administratorResolutions,
             text: [
                 document?.title,
                 document?.driveOwnerName,
@@ -608,14 +610,25 @@ export async function recordContributors(
         },
     );
 
+    // Resolve network-backed identities before replacing existing rows.
+    // An interrupted lookup must not erase the document's current people.
+    await prisma.documentContributor.deleteMany({
+        where: { documentId, source: "parsed" },
+    });
+
     let linked = 0;
+    const manualContributions = await prisma.documentContributor.findMany({
+        where: { documentId, source: "manual" },
+        select: { hopkinsAffiliateId: true, role: true },
+    });
+    const manual = new Set(manualContributions.map(row => row.hopkinsAffiliateId + ":" + row.role));
 
     for (const [index, person] of parsed.entries()) {
         const hopkinsAffiliateId = affiliateIds[index];
 
         // A name read off a remark that turned out to be nobody the archive
         // knows was a heading, not a person. See harvestSpeaker.
-        if (!hopkinsAffiliateId) continue;
+        if (!hopkinsAffiliateId || manual.has(hopkinsAffiliateId + ":" + person.role)) continue;
 
         await prisma.documentContributor.upsert({
             where: {
@@ -631,12 +644,18 @@ export async function recordContributors(
                 role: person.role,
                 source: "parsed",
                 evidence: person.evidence,
-                note: person.note,
+                note: administratorResolutions.has(index)
+                    ? [person.note, person.office, (administratorResolutions.get(index)!.sources.some(source => source.verification === "provider-cited")
+                        ? "Identity supported by provider-cited official sources: " : "Identity verified: ") + administratorResolutions.get(index)!.sources.map(source => source.url).join(" · ")].filter(Boolean).join(" · ")
+                    : person.note,
             },
             update: {
                 source: "parsed",
                 evidence: person.evidence,
-                note: person.note,
+                note: administratorResolutions.has(index)
+                    ? [person.note, person.office, (administratorResolutions.get(index)!.sources.some(source => source.verification === "provider-cited")
+                        ? "Identity supported by provider-cited official sources: " : "Identity verified: ") + administratorResolutions.get(index)!.sources.map(source => source.url).join(" · ")].filter(Boolean).join(" · ")
+                    : person.note,
             },
         });
         linked += 1;
@@ -644,7 +663,8 @@ export async function recordContributors(
         // An office named next to someone ("Jackson Morris (CE Chair)") is a
         // standing role, not a fact about this document, so it lands on the
         // person rather than on the contribution.
-        if (person.office) {
+        if (person.office && person.role !== "mentioned" && !administratorResolutions.has(index) &&
+            !/\b(?:dean|provost|professor|chancellor)\b/i.test(person.office)) {
             const category = await prisma.hopkinsCategory.upsert({
                 where: {
                     type_name: { type: "committee_role", name: person.office },
@@ -1286,6 +1306,7 @@ export async function syncMasterFolder(
         timings: {},
     };
 
+    beginAdministratorLookupRun(Date.now() + 150_000);
     try {
         const files = await timed(summary, "walk", () => walkFolder(MASTER_FOLDER_ID));
 
@@ -1345,6 +1366,25 @@ export async function syncMasterFolder(
         // Titles depend on the meeting keys the pass above just wrote.
         await timed(summary, "titles", () => recordTitles());
         await timed(summary, "kinds", () => recordKinds());
+        // Revisit held governing edits after the full evidence corpus is present.
+        // Missing optional tables/provider failures leave the edit held.
+        await timed(summary, "amendmentReview", async () => {
+            try {
+                const { reviewGoverningChanges } = await import("@/lib/governing-review");
+                const results = await reviewGoverningChanges();
+                for (const result of results) console.log(`amendment: ${result.status} ${result.title} — ${result.reason}`);
+            } catch (error) {
+                console.warn("Amendment review unavailable:", error instanceof Error ? error.message : String(error));
+            }
+        });
+        await timed(summary, "administratorReview", async () => {
+            try {
+                const { revisitAdministratorMentions } = await import("@/lib/administrator-backfill");
+                await revisitAdministratorMentions();
+            } catch (error) {
+                console.warn("Administrator review unavailable:", error instanceof Error ? error.message : String(error));
+            }
+        });
         // Classification must finish first: a new file does not have its
         // minutes role until recordMeetings runs. Never fetch history for an
         // agenda, bill, resolution, or an edit awaiting publication review.

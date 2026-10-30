@@ -65,21 +65,15 @@ export function assessChange(input: {
         ? "This file is shared so that anyone with the link can edit it, and "
         : "";
 
-    // Guiding documents are amended in a Senate meeting, not by a quiet edit
-    // to the Drive file. Nothing in the file itself can prove that a meeting
-    // adopted the change, so any change -- addition, removal, or reword, at
-    // any size -- is held until somebody with a copy of the minutes clears
-    // it. The site keeps serving the last ratified text. See the "ratified"
-    // marker below: the review script checks for it and treats a hold in
-    // this mode as "confirm this was adopted" rather than "confirm this is
-    // not vandalism".
+    // A file edit is not itself evidence of passage. Store it for the
+    // post-sync amendment review, which checks archived passage evidence and
+    // replays authorized changes against the published text.
     if (isGoverning(input.kind)) {
         return {
             ...verdict,
             publish: false,
             reason:
-                `${preamble}${openDoor ? "the" : "The"} Constitution and Bylaws are amended only by a bill passed in a Senate meeting, ` +
-                `and this edit to the source file has not been ratified in one yet ` +
+                `${preamble}${openDoor ? "the" : "The"} source edit is awaiting verification against an amendment adopted in a Senate meeting ` +
                 `(${diff.added} line${diff.added === 1 ? "" : "s"} added, ` +
                 `${diff.removed} removed) — ratified.`,
         };
@@ -138,21 +132,15 @@ export const RATIFICATION_MARKER = " — ratified.";
 /**
  * How to describe a held document to a reader, as opposed to a reviewer.
  *
- * Two shapes. A governing document is held because the edit to the Drive file
- * has no meeting behind it yet, and the notice says so: the reader is looking
- * at the last ratified text on purpose, not because the archive suspects
- * vandalism. Everything else is held because the change was large enough for
- * someone to look, and the notice keeps the older phrasing — deliberately not
- * saying "vandalism", since the overwhelmingly likely explanation is that
- * somebody rewrote the document and nobody has confirmed it yet.
+ * Governing changes await source-backed amendment verification. Other
+ * changes retain the ordinary size-screening notice.
  */
 export function heldNotice(reason: string): string {
     if (reason.endsWith(RATIFICATION_MARKER)) {
-        // Stored reasons may predate the sentence-case fix above.
-        const trimmed = reason.slice(0, -RATIFICATION_MARKER.length).trim();
-        const sentence = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-        const punctuation = /[.!?]$/.test(sentence) ? "" : ".";
-        return `${sentence}${punctuation} You are reading the text last adopted by the Senate; the edit is stored and will appear here once a meeting record confirms it.`;
+        // Do not repeat legacy stored claims that an edit was not ratified or
+        // that the baseline was verified adopted. Only the diff count is known.
+        const counts = /\(\d+ lines? added, \d+ removed\)/.exec(reason)?.[0];
+        return `The source file changed${counts ? ` ${counts}` : ""}. This revision is awaiting verification against an adopted amendment. You are reading the previously published version.`;
     }
     return `The source file has changed substantially since this text was last checked — ${reason} You are reading the last checked version. The change is stored and awaiting review.`;
 }

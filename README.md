@@ -293,3 +293,94 @@ thanks to archives for existing
 
 nothing is binding, since the official website is still [https://jhu.campusgroups.com/sga/home](https://jhu.campusgroups.com/sga/home)
 
+
+### Evidence-based archive automation
+
+Scheduled and manual syncs now run two bounded verification passes. Install the
+additive evidence tables with `npx prisma migrate deploy` before deploying the
+code; missing tables disable automatic decisions rather than publishing without
+an audit.
+
+**University administrators.** Titled mentions such as “Dean Martin” are kept
+separate from SGA surname matches. A narrative mention is labeled “Mentioned”,
+not “Present.” For ambiguous university names, the configured AI provider
+performs a web search; only the public name/title, document date and fixed topic
+keywords leave the archive. The surrounding minutes and document ID are not sent.
+Directly checked identities require exact quotations independently fetched from
+official JHU domains and compatible name/title/context. When every cited page is
+unavailable, recent mentions may instead use the provider's answer-level web
+citations corroborating the same identity on two distinct official university
+hosts. This fallback is explicitly recorded as `provider-cited`, not directly
+verified; model-written URLs or a list of consulted search results are insufficient.
+Older/undated mentions still require directly fetched period evidence. A current
+directory never creates a standing university-office relationship in the archive.
+
+Every result, including an inconclusive search, is cached against the document,
+mention, context and date in `AdministratorLookup`. No global surname alias is
+created. Each sync permits four new lookups within a shared 90-second search
+budget, with an additional process hourly cap. A persisted scan cursor revisits
+unchanged minutes throughout the archive. Positive results expire after 30 days,
+negative results after seven days, and provider failures after 15 minutes.
+Manual contribution corrections are preserved.
+
+```sh
+# Read-only search links and source lines:
+node --env-file=.env --import tsx scripts/lookup-people.ts DOCUMENT_ID
+# Run the bounded lookup and update verified contributor identities:
+node --env-file=.env --import tsx scripts/lookup-people.ts --resolve DOCUMENT_ID
+# Advance the bounded backlog scan:
+node --env-file=.env --import tsx scripts/lookup-people.ts --resolve
+```
+
+`ADMINISTRATOR_LOOKUP_ENABLED=false` disables network searches.
+`ADMINISTRATOR_LOOKUP_MODEL` optionally selects a search-capable model within
+the configured provider. OpenAI uses the
+[Responses web-search tool](https://developers.openai.com/api/docs/guides/tools-web-search);
+Anthropic uses its native search tool, and Gemini uses grounded search. A
+provider response without direct institutional source URLs and adequate evidence
+remains unresolved. OpenAI and Anthropic answer citations support the fallback;
+Gemini responses without mapped answer-level citations use direct verification only. No bill/resolution credit label uses these lookups.
+
+**Governing amendments.** Any changed Constitution or Bylaws text starts held.
+After ingestion, the review searches the complete archived evidence set for
+same-session amendment bills, including combined amendments. Explicit final
+Senate status in Bill Voting Records is preferred; Senate minutes supply missing
+evidence. Committee recommendations, referral votes, first-reading “Passed”,
+future/undated results, ambiguous title matches and contradictory outcomes cannot
+clear a revision.
+
+Passage must also be tied to an archived bill version. Date-only votes cannot
+order edits made on the same day. A usable snapshot has a modification timestamp
+before the passage day and was observed after that day; an old draft seen only
+before the vote does not qualify. No Drive revision history is fetched.
+
+The matcher replays explicit quoted replacements, insertions and deletions, or
+labeled Current/Proposed table rows, including balanced redlines and separated
+provision blocks. The entire resulting text must equal the held revision after
+limited Markdown/whitespace normalization. Unexplained changes, overlapping
+instructions, unsupported layouts, ambiguous anchors, conditional effective
+provisions and conflicting replacements stay held for review. This is a
+conservative automatic-clearance path, not a general semantic rewrite engine.
+
+Decisions retain source IDs, hashes, dates, exact vote quotations, bill version
+and amendment instructions in `AmendmentClearance`. Before publication, a
+serializable transaction rechecks the baseline, held revision and full evidence
+set. Publication marks summaries stale and refreshes contributors, passages and
+citations. Interrupted derived-data updates resume on a later run. Changed
+evidence invalidates the cached decision even if the governing source itself did
+not change.
+
+```sh
+# Preview decisions without writes or publication:
+npm run review -- --auto --dry
+# Run automatic review (only fully verified revisions are published):
+npm run review -- --auto
+# Restrict either command to one held document:
+npm run review -- --auto --dry --document DOCUMENT_ID
+# Inspect its diff and latest evidence audit:
+npm run review -- --show DOCUMENT_ID
+```
+
+The reader notice describes the previously published text and the latest check;
+it does not claim the edit was never ratified or the baseline was verified
+adopted. Existing unsupported office relationships are not deleted automatically.

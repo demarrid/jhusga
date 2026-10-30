@@ -725,6 +725,7 @@ export async function loadDocument(
             driveLastEditorName: true,
             reviewState: true,
             heldReason: true,
+            heldRevisionId: true,
             anyoneCanEdit: true,
             documentAnnotations: {
                 where: { orphanedAt: null },
@@ -862,6 +863,12 @@ export async function loadDocument(
         if (target && target.id !== document.id && !directReferences.has(target.id)) directReferences.set(target.id, { ...toRelated(target, link.text), sourceOffset: link.offset });
     }
     const unresolvedLinks = outgoing.filter((link) => !heldTargets.has(link.fileId));
+    const amendmentReview = document.reviewState === "held" && document.heldRevisionId
+        ? await prisma.amendmentClearance.findFirst({
+            where: { documentId: document.id, revisionId: document.heldRevisionId },
+            orderBy: { checkedAt: "desc" }, select: { reason: true },
+        }).catch(() => null)
+        : null;
 
     return {
         meetingRole,
@@ -930,7 +937,9 @@ export async function loadDocument(
         driveOwnerName: document.driveOwnerName,
         driveLastEditorName: document.driveLastEditorName,
         heldNotice:
-            document.reviewState === "held" ? heldNotice(document.heldReason) : null,
+            document.reviewState === "held"
+                ? heldNotice(document.heldReason) + (amendmentReview ? " Latest check: " + amendmentReview.reason : "")
+                : null,
         anyoneCanEdit: document.anyoneCanEdit,
     };
 }

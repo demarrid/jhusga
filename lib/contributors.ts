@@ -21,6 +21,7 @@ export const CONTRIBUTOR_ROLES = [
     "nominee",
     "reporting",
     "interlocutor",
+    "mentioned",
     "author",
     "present",
     "staff",
@@ -68,6 +69,8 @@ export function contributorRoleLabel(role: string): string {
         // weaker fact and leaves the stronger one unsaid.
         case "interlocutor":
             return "Interlocutor";
+        case "mentioned":
+            return "Mentioned";
         case "author":
             return "Author";
         case "confirmed":
@@ -119,7 +122,7 @@ const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolea
  * "(CE Chair)" is a role; "(leaving early)" is not.
  */
 const OFFICE_WORDS =
-    /\b(chairs?|president|vice|secretary|treasurer|senators?|director|specialist|coordinator|advisor|adviser|dean|officer|representative|liaison|justices?|parliamentarian)\b/i;
+    /\b(chairs?|president|vice|secretary|treasurer|senators?|director|specialist|coordinator|advisor|adviser|dean|provost|professor|chancellor|officer|representative|liaison|justices?|parliamentarian)\b/i;
 
 /**
  * Template placeholders. Bill templates are stored alongside real bills, and
@@ -277,6 +280,10 @@ function peelLeadingOffice(working: string): {
     const honorific = HONORIFIC.exec(working);
     if (honorific) working = working.replace(HONORIFIC, "").trim();
 
+    const university = /^((?:(?:senior|associate|assistant|vice|executive)\s+)*(?:dean|provost|professor|chancellor))\s+(.+)$/i.exec(working);
+    if (university && isPlausibleName(university[2]!)) {
+        return { name: university[2]!, office: tidyOffice(university[1]!) };
+    }
     const parts = working.split(/\s+/).filter(Boolean);
 
     // An office and a surname, which is how the minutes name everyone who is
@@ -762,6 +769,7 @@ function firstNameRoll(
     const tokens = candidates[0]!.split(/\s+/).filter(Boolean);
     if (
         tokens.length >= 3 &&
+        !looksLikeOffice(candidates[0]!) &&
         tokens.every((token) => /^[A-Za-z][a-z'’.-]{2,}$/.test(token))
     ) {
         return tokens;
@@ -1422,6 +1430,20 @@ export function extractContributors(
         harvestSpeaker(found, rawLine, line, next, minutes);
     }
 
+    if (minutes) {
+        // A planned meeting with Dean Martin is a mention, never attendance,
+        // authorship, or proof that the dean holds an SGA office.
+        const titled = /\b((?:(?:Associate|Assistant|Senior|Vice|Executive)\s+)*(?:Dean|Provost|Professor|Chancellor))\s+([A-Z][A-Za-z’'-]+(?:[ \t]+[A-Z][A-Za-z’'-]+){0,2})\b/g;
+        for (const line of lines) {
+            for (const match of line.matchAll(titled)) {
+                const name = match[2]!;
+                if (/\b(?:of|for|the|and|students|affairs|office|school|university)\b/i.test(name)) continue;
+                if ([...found.values()].some(person => nameKey(person.name) === nameKey(name))) continue;
+                const evidence = line.slice(Math.max(0,match.index!-100),match.index!+match[0].length+100);
+                recordPerson(found,name,"mentioned",evidence,match[1]);
+            }
+        }
+    }
     if (title) harvestTitleAuthor(found, title);
 
     return [...found.values()];

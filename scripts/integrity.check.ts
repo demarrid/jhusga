@@ -151,14 +151,14 @@ check(
 console.log("\nheldNotice");
 
 const ratificationNotice = heldNotice(tinyEdit.reason);
-check("standalone ratification reasons start with a capital", tinyEdit.reason.startsWith("The Constitution"));
-check("an introductory phrase keeps the following article lowercase", openDoor.reason.includes(", and the Constitution"));
+check("standalone ratification reasons start with a capital", tinyEdit.reason.startsWith("The source edit"));
+check("an introductory phrase keeps the following article lowercase", openDoor.reason.includes(", and the source edit"));
 check("stored lowercase notices gain sentence case and terminal punctuation",
     heldNotice(`the Constitution (5 lines added, 5 removed)${RATIFICATION_MARKER}`)
-        .startsWith("The Constitution (5 lines added, 5 removed). You"));
+        .startsWith("The source file changed (5 lines added, 5 removed)."));
 check(
-    "a ratification hold tells the reader they are seeing the last adopted text",
-    /last adopted/.test(ratificationNotice) && !/awaiting review/.test(ratificationNotice),
+    "a hold describes the published baseline without claiming adoption",
+    /previously published/.test(ratificationNotice) && !/last adopted|not been ratified/.test(ratificationNotice),
     ratificationNotice,
 );
 check(

@@ -1,4 +1,5 @@
 import { generateJson } from "@/lib/ai";
+import { lookupAdministrator, type AdministratorResult } from "@/lib/administrator-lookup";
 import { bodyForOffice, type SgaBody } from "@/lib/bodies";
 import { nameKey } from "@/lib/contributors";
 import { sessionStartDate } from "@/config/session";
@@ -60,6 +61,11 @@ export type RegularPerson = {
 
 /** What is known about the document a set of names was read from. */
 export type NameContext = {
+    /** Required for automatic university lookup; scopes its persisted evidence. */
+    documentId?: string;
+    administratorText?: string;
+    /** Optional ingestion sink; lets callers retain provenance without inferring a current office. */
+    administratorResolutions?: Map<number, AdministratorResult>;
     /** The document text, for finding a candidate's full name in it. */
     text?: string;
     /** The body whose meeting it records, when it records one. */
@@ -907,6 +913,7 @@ type Pending = {
 
 /** A name as some document wrote it, and the line it was written on. */
 export type NameMention = {
+    role?: string;
     name: string;
     evidence: string;
     /**
@@ -921,11 +928,60 @@ export type NameMention = {
     office?: string | null;
 };
 
+/** University titles must never be inferred from an SGA surname collision. */
+export function hasUniversityTitle(mention: NameMention): boolean {
+    // Only inspect the title, or the prefix attached to this name. A remark by
+    // Senator Martin *about* the dean is not a dean speaking.
+    const prefix = mention.evidence.split(new RegExp(
+        "\\b" + nameKey(mention.name) + "\\b", "i",
+    ))[0] ?? "";
+    return /\b(?:dean|provost|professor|chancellor)\b/i.test(mention.office ?? prefix);
+}
+
+/** A review query, never evidence of identity or an automatic alias. */
+export function universityNameLookup(
+    mention: NameMention,
+    regulars: RegularPerson[],
+): string | null {
+    if (!isShortForm(mention.name) || /^(?:author|introducer|sponsor)$/.test(mention.role ?? "")) return null;
+    const universityTitle = hasUniversityTitle(mention);
+    if (!universityTitle && mention.office &&
+        /\b(?:senators?|student body|sga|caucus|justice|parliamentarian|treasurer|secretary|committee|programming council|vpots|president of the senate)\b/i.test(mention.office)) return null;
+    if (!universityTitle && givenNameCandidates(mention.name, regulars).length) return null;
+    if (!universityTitle && diminutiveCandidates(mention.name, regulars).length) return null;
+    return ["jhu", mention.office, mention.name, "site:jhu.edu"].filter(Boolean).join(" ");
+}
+
+/** Keep a nearby passage, not unrelated subjects elsewhere in the document. */
+export function administratorMentionContext(mention: NameMention, context: NameContext): string {
+    const text = context.administratorText ?? context.text ?? mention.evidence;
+    const at = text.indexOf(mention.evidence);
+    return at >= 0 ? text.slice(Math.max(0,at-400),at+mention.evidence.length+900) : mention.evidence;
+}
+
+async function resolveAdministratorMention(
+    mention: NameMention, context: NameContext, index: number,
+): Promise<string | null> {
+    if (!context.documentId || /^(?:author|introducer|sponsor)$/.test(mention.role ?? "")) return null;
+    const result = await lookupAdministrator({
+        documentId: context.documentId, name:mention.name, office:mention.office,
+        evidence:mention.evidence, context:administratorMentionContext(mention,context), asOf:context.asOf,
+    });
+    if (result?.status !== "resolved" || !result.fullName) return null;
+    const person = await prisma.hopkinsAffiliate.upsert({
+        where:{nameKey:nameKey(result.fullName)},
+        create:{name:result.fullName,nameKey:nameKey(result.fullName)},
+        update:{},select:{id:true},
+    });
+    context.administratorResolutions?.set(index,result);
+    return person.id;
+}
+
 /**
  * Resolve many written names at once so a minutes roll costs at most one
  * model call, not one per nickname.
  *
- * Null only ever comes back for a mention that asked for it.
+ * Uncorroborated university titles and bare surnames also return null.
  */
 export async function resolveAffiliates(
     mentions: NameMention[],
@@ -954,6 +1010,7 @@ export async function resolveAffiliates(
     }
     const ids: (string | null)[] = mentions.map(() => null);
     const pending: Pending[] = [];
+    const unresolved = new Set<number>();
 
     for (const [index, mention] of mentions.entries()) {
         const writtenKey = nameKey(mention.name);
@@ -983,10 +1040,33 @@ export async function resolveAffiliates(
         }
 
         if (isShortForm(mention.name)) {
+            // Do this before local names, aliases, current offices, or AI:
+            // Kai can be present in the same meeting as Associate Dean Martin,
+            // and an earlier bad match may already have polluted his offices.
+            if (hasUniversityTitle(mention)) {
+                const explicit = tokenCandidates(mention.name, regulars).filter(person =>
+                    mentions.some(full => nameKey(full.name) === person.nameKey &&
+                        !isShortForm(full.name) && hasUniversityTitle(full)));
+                if (explicit.length === 1) ids[index] = explicit[0].id;
+                else {
+                    ids[index] = await resolveAdministratorMention(mention,datedContext,index);
+                    if (!ids[index]) unresolved.add(index);
+                }
+                continue;
+            }
             const local = tokenCandidates(mention.name, regulars).filter(person =>
                 context.text && namedInFull(context.text, person));
             if (local.length === 1) {
                 ids[index] = local[0].id;
+                continue;
+            }
+            // A bare surname is not an archive-wide identity. Keep it for
+            // source-backed review unless this document names them in full.
+            if (universityNameLookup(mention, regulars)) {
+                ids[index] = await resolveAdministratorMention(mention,datedContext,index);
+                // This branch must never fall through to a speculative student
+                // nickname match, even when the search API is unavailable.
+                if (!ids[index]) unresolved.add(index);
                 continue;
             }
             // Loose speaker/space-separated attendance tokens need corroboration.
@@ -1127,7 +1207,7 @@ export async function resolveAffiliates(
     }
 
     return ids.map((id, index) => {
-        if (id || mentions[index]?.onlyIfKnown) return id;
+        if (id || mentions[index]?.onlyIfKnown || unresolved.has(index)) return id;
         throw new Error(`Failed to resolve "${mentions[index]?.name}"`);
     });
 }
@@ -1137,7 +1217,6 @@ export async function resolveAffiliate(
     evidence = "",
 ): Promise<string> {
     const [id] = await resolveAffiliates([{ name, evidence }]);
-    // Never null: resolveAffiliates only declines for a mention that asked it
-    // to, and this one does not.
-    return id!;
+    if (!id) throw new Error(`Name needs source-backed review: "${name}"`);
+    return id;
 }

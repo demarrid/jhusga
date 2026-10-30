@@ -884,3 +884,38 @@ model RateBucket {
 
     @@index([expiresAt])
 }
+
+// Search results are scoped to the archived mention and context, never a global surname alias.
+model AdministratorLookup {
+    key        String   @id
+    documentId String?
+    mention    String
+    office     String?
+    status     String
+    fullName   String?
+    evidence   Json
+    model      String
+    checkedAt  DateTime @default(now())
+    expiresAt  DateTime
+
+    @@index([documentId])
+    @@index([expiresAt])
+}
+
+// Every clearance retains the exact input fingerprint and source evidence.
+// No foreign keys: deleting a source must not erase the audit explaining a publication.
+model AmendmentClearance {
+    key              String   @id
+    documentId       String
+    revisionId       String
+    inputHash        String
+    status           String
+    reason           String
+    evidence         Json
+    checkedAt        DateTime @default(now())
+    publishedAt      DateTime?
+    derivedUpdatedAt DateTime?
+
+    @@index([documentId, checkedAt])
+    @@index([revisionId])
+}
