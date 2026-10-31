@@ -272,7 +272,7 @@ export default async function DocumentPage({
                                 <ul>
                                     {byPerson(document.contributors).map((person) => (
                                         <li key={person.id}>
-                                            <Link href={`/documents?mode=find&person=${person.id}`}>
+                                            <Link href={`/documents?mode=find&person=${person.id}`} title={person.tooltip}>
                                                 {person.name}
                                             </Link>
                                             <span className={styles.asideMeta}>
@@ -314,7 +314,7 @@ export default async function DocumentPage({
  */
 function byPerson(
     contributors: { id: string; name: string; role: string; note: string | null }[],
-): { id: string; name: string; roles: string }[] {
+): { id: string; name: string; roles: string; tooltip?: string }[] {
     const people = new Map<
         string,
         { id: string; name: string; held: { role: string; note: string | null }[] }
@@ -333,15 +333,31 @@ function byPerson(
         .map((person) => ({
             id: person.id,
             name: person.name,
+            tooltip: [...new Set(person.held
+                .map((entry) => entry.note)
+                .filter((note): note is string => Boolean(note && /Identity (?:reviewed|verified|supported)/.test(note))))]
+                .join("\n") || undefined,
             roles: person.held
                 .sort((a, b) => contributorRoleOrder(a.role) - contributorRoleOrder(b.role))
                 .map(
                     (entry) =>
                         contributorRoleLabel(entry.role) +
-                        (entry.note ? ` (${entry.note})` : ""),
+                        (contributorNoteLabel(entry.note, person.name)
+                            ? ` (${contributorNoteLabel(entry.note, person.name)})` : ""),
                 )
                 .join(", "),
         }));
+}
+
+/** Keep identity provenance on the name's native HTML tooltip. */
+function contributorNoteLabel(note: string | null, name: string): string | null {
+    if (!note || !/Identity (?:reviewed|verified|supported)/.test(note)) return note;
+    // Reviewed corrections include the directory's full name and title.
+    const reviewedTitle = note.split(`${name}, `)[1];
+    if (reviewedTitle) return reviewedTitle.split(/\.\s+https?:\/\//)[0].trim();
+    // Ingestion stores the office before its verification details.
+    return note.split(/Identity (?:reviewed|verified|supported)/)[0]
+        .replace(/[\s·]+$/, "").trim() || null;
 }
 
 function originalLabel(source: string): string {
