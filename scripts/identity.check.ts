@@ -337,6 +337,41 @@ check(
         }),
     ),
 );
+check(
+    "a byline whose room is wordy is still a byline",
+    isoDay(documentDate({
+        title: "Senate Meeting #1 - Completed Minutes.pdf",
+        content: "112th Johns Hopkins Student Government Association\nSenate Meeting #1\nApril 16, 2024 / 07:00 PM / Scott-Bates Commons Salon B\nAGENDA",
+    })) === "2024-04-16" &&
+        isoDay(documentDate({
+            title: "DC Meeting Minutes #1",
+            content: "JHU Student Government\n# Caucus on Disability MEETING \\#1\n---\n**30 SEPTEMBER 2023 (4:00PM) / Minutes By: Raven McCoy / Location: [Zoom](https://example.zoom.us/j/1)**\nATTENDANCE",
+        })) === "2023-09-30",
+);
+check(
+    "a sentence that happens to contain a slash is not a byline",
+    documentDate({
+        title: "Notes",
+        content: "Background\nThe committee met on 3 February 2026 to discuss it / and more",
+    }) === null,
+);
+const yearless = (content: string) => isoDay(documentDate({
+    title: "Academic Affairs Committee Meeting Minute.docx",
+    content,
+    driveCreatedTime: new Date("2026-10-31T16:00:00Z"),
+    sessionNumber: 114,
+}));
+check(
+    "a yearless meeting heading is dated within its session",
+    yearless("# Academic Affairs Committee 9/5 Meeting Minutes\nBrief Introductions") === "2026-09-05" &&
+        yearless("# Academic Affairs Committee 2/3 Meeting Minutes\nAttendance") === "2027-02-03",
+    [yearless("# Academic Affairs Committee 9/5 Meeting Minutes"), yearless("# Academic Affairs Committee 2/3 Meeting Minutes")],
+);
+check(
+    "a yearless date that is not a meeting heading dates nothing",
+    yearless("Brief Introductions\nWe will meet again on 9/12 Meeting Minutes") === null,
+    yearless("Brief Introductions\nWe will meet again on 9/12 Meeting Minutes"),
+);
 
 console.log("\nclassifyDocument");
 check("voting records are a tracker", classifyDocument({ name: "114th SGA: Bill Voting Records", folderPath: "" }) === "tracker");

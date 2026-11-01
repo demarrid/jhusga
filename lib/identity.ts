@@ -28,7 +28,7 @@ import {
     sessionFromAcademicYearStart,
 } from "@/config/session";
 import { toPlainText } from "@/lib/markdown";
-import { meetingDate } from "@/lib/meetings";
+import { meetingDate, yearlessDate } from "@/lib/meetings";
 import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 
 /**
@@ -424,10 +424,14 @@ function bylineDate(content: string): Date | null {
         .slice(0, BYLINE_LINES);
 
     for (const line of lines) {
-        if (line.length > BYLINE_CHARS || !readsAsByline(line)) continue;
+        // "April 16, 2024 / 07:00 PM / Scott-Bates Commons Salon B": the date
+        // leads a run of separated furniture, and only the room is wordy.
+        const lead = line.split(/\s+[|/]\s+/)[0]!;
+        const byline = [line, lead].find((text) => text.length <= BYLINE_CHARS && readsAsByline(text));
+        if (!byline) continue;
         // `search` ignores the global flag's lastIndex, which `test` would not.
         if (line.search(BILL_NUMBER) !== -1 || line.search(BILL_NUMBER_DATED) !== -1) continue;
-        const iso = meetingDate(line);
+        const iso = meetingDate(byline);
         if (iso) dates.add(iso);
     }
 
@@ -461,6 +465,7 @@ export function documentDate(input: {
     title: string;
     content?: string;
     driveCreatedTime?: Date | null;
+    sessionNumber?: number | null;
 }): Date | null {
     const corrected = input.driveFileId ? DOCUMENT_CORRECTIONS[input.driveFileId]?.datedOn : undefined;
     if (corrected) return new Date(`${corrected}T12:00:00Z`);
@@ -478,9 +483,63 @@ export function documentDate(input: {
     }
 
     const byline = input.content ? bylineDate(input.content) : null;
-    if (byline) return byline;
+    if (byline) return templateYearCorrected(byline, input.sessionNumber, input.driveCreatedTime);
+
+    const sessional = input.sessionNumber ? sessionYearDate(input.title, input.content, input.sessionNumber) : null;
+    if (sessional) return sessional;
 
     return dateFromBillNumbers(header(input.title, input.content));
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * A byline whose year was left over from the header it was copied from.
+ *
+ * The 112th's "Senate Meeting #25" is headed "April 8, 2024 / 07:00 PM /
+ * Scott-Bates Commons Salon B" -- Senate Meeting #1's year and room -- and was
+ * made on 8 April 2025. A date outside the document's session moves one year
+ * into it when Drive's createdTime agrees with the moved date, or when the
+ * month is far enough from the spring turnover that no session can claim it
+ * otherwise. April to June is left alone unless Drive agrees: the 112th's
+ * first meetings really were held in April 2024, before its June start.
+ */
+function templateYearCorrected(date: Date, session: number | null | undefined, created: Date | null | undefined): Date {
+    if (!session || sessionForDate(date) === session) return date;
+    const shifted = [1, -1]
+        .map((years) => new Date(Date.UTC(date.getUTCFullYear() + years, date.getUTCMonth(), date.getUTCDate(), 12)))
+        .find((candidate) => sessionForDate(candidate) === session);
+    if (!shifted) return date;
+    const near = (candidate: Date) => !!created && Math.abs(candidate.getTime() - created.getTime()) <= WEEK_MS;
+    if (near(date)) return date;
+    if (near(shifted)) return shifted;
+    const month = date.getUTCMonth() + 1;
+    return month >= 4 && month <= 6 ? date : shifted;
+}
+
+/** A meeting document's name: its filename, or the heading it opens with. */
+const NAMES_A_MEETING = /\b(?:meeting|minutes|mins|agenda)\b/i;
+
+/**
+ * A meeting's month and day with no year, placed in its session.
+ *
+ * "Academic Affairs Committee 9/5 Meeting Minutes", filed in the 114th's
+ * folder, met on 5 September 2026: a session runs June to May, so a month
+ * from June on falls in the academic year's first calendar year and the rest
+ * in its second. Only the filename and the opening line are read, and only
+ * when they name a meeting -- a date further down is something the minutes
+ * are talking about.
+ */
+function sessionYearDate(title: string, content: string | undefined, session: number): Date | null {
+    const opening = toPlainText((content ?? "").slice(0, HEADER_CHARS).split(/\r?\n/).find((line) => line.trim()) ?? "");
+    for (const line of [toPlainText(title), opening]) {
+        if (!NAMES_A_MEETING.test(line)) continue;
+        const date = yearlessDate(line);
+        if (!date) continue;
+        const start = academicYearStart(session);
+        return calendarDate(date.month >= 6 ? start : start + 1, date.month, date.day);
+    }
+    return null;
 }
 
 /**

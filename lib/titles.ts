@@ -33,7 +33,7 @@ import { formatDateNumeric } from "@/lib/dates";
 import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 import { meetingHeaderDate } from "@/lib/identity";
 import { isCommitteeRecordsFolder, isSecondaryKind } from "@/lib/kinds";
-import { committeeFrom, meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
+import { committeeAcronym, committeeFrom, meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
 import { sessionOrdinal } from "@/config/session";
 
 /**
@@ -149,6 +149,10 @@ function bodyLabel(body: string): string | null {
         const name = body.slice("committee:".length);
         return `${COMMITTEE_NAMES[name] ?? titleCase(name)} Committee Meeting`;
     }
+    if (body.startsWith("caucus:")) {
+        const name = titleCase(body.slice("caucus:".length));
+        return `${/\bcaucus$/i.test(name) ? name : `${name} Caucus`} Meeting`;
+    }
 
     switch (body) {
         case "senate":
@@ -244,18 +248,34 @@ export type TitleInput = {
  * among Drive dates alike, the minutes win, being the half written while the
  * meeting was happening.
  */
-function meetingDates(documents: TitleInput[]): Map<string, Date> {
+function meetingDates(documents: TitleInput[]): Map<string, Date | null> {
     const seen = new Map<
         string,
         { minutes: Date | null; agenda: Date | null; minutesDrive: Date | null; earliest: Date | null }
     >();
+
+    // A day Drive says several different meetings of one body were made on is
+    // the day somebody uploaded the semester, not any one meeting's date: "AA
+    // sp26 minutes 1" through "4" were all created on 25 February 2026.
+    const madeOn = new Map<string, Set<string>>();
+    const uploadDay = (key: string, created: Date) =>
+        `${key.slice(0, key.lastIndexOf(":"))}|${created.toISOString().slice(0, 10)}`;
+    for (const document of documents) {
+        const key = meetingFor(document).key;
+        if (!key || !document.driveCreatedTime) continue;
+        const day = uploadDay(key, document.driveCreatedTime);
+        madeOn.set(day, (madeOn.get(day) ?? new Set()).add(key));
+    }
 
     for (const document of documents) {
         const meeting = meetingFor(document);
         if (!meeting.key) continue;
 
         const stated = meetingHeaderDate(document.content);
-        const created = document.driveCreatedTime ?? null;
+        const created = document.driveCreatedTime &&
+            madeOn.get(uploadDay(meeting.key, document.driveCreatedTime))!.size === 1
+            ? document.driveCreatedTime
+            : null;
 
         const entry = seen.get(meeting.key) ?? {
             minutes: null,
@@ -277,18 +297,16 @@ function meetingDates(documents: TitleInput[]): Map<string, Date> {
         seen.set(meeting.key, entry);
     }
 
-    const dates = new Map<string, Date>();
+    const dates = new Map<string, Date | null>();
     for (const [key, entry] of seen) {
-        const date =
-            entry.minutes ?? entry.agenda ?? entry.minutesDrive ?? entry.earliest;
-        if (date) dates.set(key, date);
+        dates.set(key, entry.minutes ?? entry.agenda ?? entry.minutesDrive ?? entry.earliest);
     }
 
     return dates;
 }
 
 /** The canonical name for a meeting document, or null if it is not one. */
-function meetingTitle(input: TitleInput, dates?: Map<string, Date>): string | null {
+function meetingTitle(input: TitleInput, dates?: Map<string, Date | null>): string | null {
     const meeting = meetingFor(input);
     if (!meeting.key || !meeting.role) return null;
 
@@ -298,7 +316,7 @@ function meetingTitle(input: TitleInput, dates?: Map<string, Date>): string | nu
     const number = parts.number ? ` #${parts.number}` : "";
     const date =
         formatDateNumeric(input.datedAt) ?? parts.date ??
-        formatDateNumeric(dates?.get(meeting.key) ?? input.driveCreatedTime);
+        formatDateNumeric(dates?.has(meeting.key) ? dates.get(meeting.key) : input.driveCreatedTime);
 
     return formatMeetingTitle(
         parts.label,
@@ -358,8 +376,8 @@ function committeeMinutesTitle(input: TitleInput): string | null {
     const committee = committeeFrom(input.folderPath);
     if (!committee) return null;
     const name = cleanTitle(input.title).toLowerCase();
-    const acronym = committee.split(" ").filter((word) => !MINOR_WORDS.has(word)).map((word) => word[0]).join("");
-    const prefix = [committee, acronym, `committee on ${committee}`]
+    const acronym = committeeAcronym(committee);
+    const prefix = [committee, acronym, `c${acronym}`, `committee on ${committee}`]
         .find((value) => name.startsWith(`${value} `));
     if (!prefix) return null;
     const remainder = name.slice(prefix.length).trim();
@@ -377,7 +395,7 @@ function committeeMinutesTitle(input: TitleInput): string | null {
             ? documentEdition(input.title) : `${sessionOrdinal(input.sessionNumber)} Session`);
     }
     // Preserve descriptive titles, copies, templates, and outside meetings.
-    if (!/^(?:committee\s+)?(?:meeting\s+)?(?:minutes?|mins)(?:\s*\(all\))?$/.test(remainder)) return null;
+    if (!/^(?:committee\s+)?(?:meeting\s+|gbm\s+)?(?:minutes?|mins)(?:\s*\(all\))?$/.test(remainder)) return null;
     if (/\(all\)$/.test(remainder)) {
         return formatMeetingTitle(label, "minutes", "", input.sessionNumber === null
             ? "All Meetings" : `${sessionOrdinal(input.sessionNumber)} Session`);
@@ -535,7 +553,7 @@ function standingTitle(input: TitleInput): string | null {
  */
 export function canonicalTitle(
     input: TitleInput,
-    dates?: Map<string, Date>,
+    dates?: Map<string, Date | null>,
 ): string | null {
     const corrected = input.driveFileId ? DOCUMENT_CORRECTIONS[input.driveFileId] : undefined;
     if (corrected) return corrected.displayTitle;

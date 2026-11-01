@@ -76,9 +76,13 @@ const SESSION_ORDINAL = /\b\d{1,3}(?:st|nd|rd|th)\b/gi;
 /** "2025-2026", "2025-26". */
 const ACADEMIC_YEAR = /\b(?:19|20)\d{2}\s*(?:[-–—]|to)\s*(?:(?:19|20)?\d{2})\b/g;
 
-/** A full date in any of the shapes the SGA writes them. */
+/**
+ * A full date in any of the shapes the SGA writes them, including the
+ * underscores of "AA fa25 minutes 10_28_25". An underscore is a word
+ * character, so it has to be allowed where \b would otherwise stand.
+ */
 const NUMERIC_DATE =
-    /\b(\d{1,2})[./-](\d{1,2})[./-]((?:19|20)?\d{2})\b|\b((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})\b/;
+    /(?:\b|(?<=_))(\d{1,2})[./_-](\d{1,2})[./_-]((?:19|20)?\d{2})(?:\b|(?=_))|\b((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})\b/;
 
 const MONTHS = [
     "january", "february", "march", "april", "may", "june",
@@ -168,6 +172,28 @@ const NAMES_A_MEETING = /\bmeetings?\b|\bminutes\b|\bmins\b|\bagenda\b|\bgbm\b|g
 /** "Internal Affairs Committee Meeting Minutes" -- the folder says which. */
 const NAMES_A_COMMITTEE = /\bcommi?t+ee\b/i;
 
+/** "AA" for Academic Affairs, "HSS" for Health, Safety and Sustainability. */
+export function committeeAcronym(committee: string): string {
+    return committee
+        .split(" ")
+        .filter((word) => !["and", "of", "on", "the"].includes(word))
+        .map((word) => word[0])
+        .join("");
+}
+
+/**
+ * Whether the title calls the folder's committee by its acronym, with or
+ * without the "C" for "Committee on": "CSO GBM #7 Minutes" in the Student
+ * Organizations folder is that committee's general body meeting, not the
+ * Senate's, whatever "GBM" says on its own.
+ */
+function namesFolderCommittee(title: string, folderPath: string): boolean {
+    const committee = committeeFrom(folderPath);
+    if (!committee) return false;
+    const acronym = committeeAcronym(committee);
+    return acronym.length >= 2 && new RegExp(`\\bc?${acronym}\\b`, "i").test(title);
+}
+
 /**
  * The body a filename names a meeting of, or null when it names none.
  *
@@ -180,6 +206,7 @@ const NAMES_A_COMMITTEE = /\bcommi?t+ee\b/i;
  */
 function bodyFromTitle(title: string, folderPath: string): string | null {
     if (!NAMES_A_MEETING.test(title) || NAMES_A_COMMITTEE.test(title)) return null;
+    if (namesFolderCommittee(title, folderPath)) return null;
 
     const name = title.toLowerCase();
 
@@ -203,6 +230,12 @@ function bodyFor(title: string, folderPath: string): string | null {
 
     const committee = committeeFrom(folderPath);
     if (committee) return `committee:${committee}`;
+
+    // Caucuses sit under the Senate's folder, but "DC Meeting Minutes #3" is
+    // the Disability Caucus's third meeting, not the Senate's third GBM.
+    const caucus = /(?:^|\/)caucuses\/([^/]+)/i.exec(folderPath)?.[1]
+        ?.toLowerCase().replace(/[^a-z0-9&]+/g, " ").trim();
+    if (caucus) return `caucus:${caucus}`;
 
     const haystack = `${folderPath}/${title}`.toLowerCase();
 
@@ -348,6 +381,28 @@ export function meetingDate(title: string, createdTime?: Date | null): string | 
     }
 
     return null;
+}
+
+/**
+ * The month and day of a date written without its year ("9/5", "14
+ * September"), or null when the text has no date or states the year.
+ */
+export function yearlessDate(text: string): { month: number; day: number } | null {
+    if (NUMERIC_DATE.test(text)) return null;
+
+    const textual = TEXTUAL_DATE.exec(text);
+    if (textual) {
+        if (textual[5]) return null;
+        const month = monthNumber(textual[2] ?? textual[3]);
+        const day = Number(textual[1] ?? textual[4]);
+        return month && day >= 1 && day <= 31 ? { month, day } : null;
+    }
+
+    const partial = PARTIAL_DATE.exec(text);
+    if (!partial) return null;
+    const month = Number(partial[1]);
+    const day = Number(partial[2]);
+    return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? { month, day } : null;
 }
 
 /**

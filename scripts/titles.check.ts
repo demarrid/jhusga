@@ -455,5 +455,47 @@ check("HSS project notes keep their descriptive title",
 check("HSS notes in personal folders are not committee collections",
     canon("HSS Meeting Notes 2026-2027", "05_Committees/Health, Safety, and Sustainability/Alex", 114) === null);
 
+console.log("\ncommittee filenames the archive actually uses");
+const AA_113 = "10_Transitions & Archives/113th SGA Master Folder 2025-2026/Senate/Committees/Academic Affairs";
+check("an underscored date names the meeting",
+    canon("AA fa25 minutes 10_28_25.docx", AA_113, 113, on("2026-02-25")) ===
+        "Academic Affairs Committee Meeting — Minutes (10/28/25)",
+    canon("AA fa25 minutes 10_28_25.docx", AA_113, 113, on("2026-02-25")));
+const CSO_111 = "SGA Senate/Committees/Student Organizations";
+check("a committee's own GBM is the committee's meeting, not the Senate's",
+    canon("CSO GBM #1 Minutes", CSO_111, 111, on("2023-09-10")) ===
+        "Student Organizations Committee Meeting #1 — Minutes (09/10/23)",
+    canon("CSO GBM #1 Minutes", CSO_111, 111, on("2023-09-10")));
+check("a Senate GBM filed in a committee folder is still the Senate's",
+    canon("Demarri's Senate GBM Minutes - 9/8", "Senate/Committees/Internal Affairs/Senate Minutes", 114, on("2026-09-08")) ===
+        "Senate General Body Meeting — Minutes (09/08/26)");
+check("an unnumbered CSO GBM file still gets the committee's name",
+    canonicalTitle({ id: "cso", title: "CSO GBM Minutes", folderPath: CSO_111, sessionNumber: 111, datedAt: on("2023-11-12") }) ===
+        "Student Organizations Committee Meeting — Minutes (11/12/23)");
+
+check("a caucus's numbered meeting is the caucus's, not the Senate's",
+    canon("DC Meeting Minutes #3", "111th SGA Master Folder (2023-24)/SGA Senate/Caucuses/Disability Caucus", 111, on("2023-12-09")) ===
+        "Disability Caucus Meeting #3 — Minutes (12/09/23)",
+    canon("DC Meeting Minutes #3", "111th SGA Master Folder (2023-24)/SGA Senate/Caucuses/Disability Caucus", 111, on("2023-12-09")));
+check("a caucus keeps the ampersand in its name",
+    canon("10/26 Meeting #1", "SGA Senate/Caucuses/Women & Gender Minority Caucus/Minutes", 111, on("2023-10-27")) ===
+        "Women & Gender Minority Caucus Meeting — Minutes (10/26/23)",
+    canon("10/26 Meeting #1", "SGA Senate/Caucuses/Women & Gender Minority Caucus/Minutes", 111, on("2023-10-27")));
+
+const uploaded = standardTitles([1, 2, 3, 5].map((number) => ({
+    id: `sp26-${number}`,
+    title: `AA sp26 minutes ${number}.pdf`,
+    folderPath: AA_113,
+    sessionNumber: 113,
+    driveCreatedTime: number === 5 ? on("2026-03-11") : on("2026-02-25"),
+})));
+check("a day several meetings were uploaded on dates none of them",
+    uploaded.get("sp26-1") === "Academic Affairs Committee Meeting #1 — Minutes" &&
+        uploaded.get("sp26-3") === "Academic Affairs Committee Meeting #3 — Minutes",
+    [uploaded.get("sp26-1"), uploaded.get("sp26-3")]);
+check("a file made alone still borrows Drive's date",
+    uploaded.get("sp26-5") === "Academic Affairs Committee Meeting #5 — Minutes (03/11/26)",
+    uploaded.get("sp26-5"));
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
