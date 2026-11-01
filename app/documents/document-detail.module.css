@@ -964,10 +964,3 @@
 .versionSentence[aria-busy="true"] {
   opacity: 0.55;
 }
-
-.versionNote {
-  margin: 0 0 1rem;
-  color: #6a7c8f;
-  font-size: 0.75rem;
-  line-height: 1.6;
-}

@@ -247,12 +247,6 @@ export default async function DocumentPage({
             <div className={styles.readerLayout}>
                 <article className={styles.documentPane}>
                     <DocumentVersionSelector options={view.options} selectedId={view.selected.id} />
-                    {view.missingDatedVersion && document.datedAt && (
-                        <p className={styles.versionNote}>
-                            No saved version is available on or before {formatDate(document.datedAt)}.
-                            {" "}Available history begins {formatDate(new Date(view.options[0].modifiedAt ?? view.options[0].observedAt))}.
-                        </p>
-                    )}
                     <DocumentViewer key={view.selected.id} blocks={document.blocks} />
                 </article>
 
