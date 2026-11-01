@@ -26,6 +26,7 @@ export default function Select({
     id,
     ariaLabel,
     size = "default",
+    variant = "field",
 }: {
     name?: string;
     value: string;
@@ -34,6 +35,8 @@ export default function Select({
     id?: string;
     ariaLabel?: string;
     size?: "default" | "small";
+    /** "inline" sits inside a sentence and reads as part of it. */
+    variant?: "field" | "inline";
 }) {
     const generatedId = useId();
     const listId = `${generatedId}-list`;
@@ -126,7 +129,7 @@ export default function Select({
     }
 
     return (
-        <div ref={rootRef} className={`${styles.root} ${size === "small" ? styles.small : ""}`}>
+        <div ref={rootRef} className={`${styles.root} ${size === "small" ? styles.small : ""} ${variant === "inline" ? styles.inline : ""}`}>
             <button
                 ref={triggerRef}
                 type="button"

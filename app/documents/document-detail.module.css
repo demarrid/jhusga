@@ -101,6 +101,7 @@
 }
 
 .documentPane {
+  position: relative;
   min-width: 0;
   max-width: 55rem;
 }
@@ -217,10 +218,20 @@
   margin: 0.7rem 0;
 }
 
+/* Each point's rule sits midway between it and the point above: equal
+   padding on both sides, and no grid gap to add space above the rule only. */
 .summary ul {
-  display: grid;
-  gap: 0.75rem;
+  margin: 0;
   padding-left: 0;
+}
+
+.sidebar .summary li {
+  padding: 0.65rem 0;
+}
+
+.sidebar .summary li:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .summary li::marker {
@@ -336,6 +347,9 @@
    the `#` banner above it or dwarfs the `**bold**` items beside it. */
 .viewer h2 { margin: 2.5rem 0 0.75rem; font-size: 1.4rem; }
 .viewer h2.viewerTopHeading { margin-top: 2.75rem; font-size: clamp(1.55rem, 2.4vw, 1.9rem); }
+/* The pane is a grid item, so a first block's margin can't collapse away; it
+   would only push the text below the top of the summary beside it. */
+.documentPane .viewer > :first-child { margin-top: 0; }
 .viewer h3 { margin: 2.1rem 0 0.6rem; font-size: 1.2rem; }
 .viewer h4 { margin: 1.85rem 0 0.5rem; font-size: 1.08rem; font-weight: 600; }
 .viewer h5 { margin: 1.6rem 0 0.45rem; font-size: 1rem; font-weight: 600; }
@@ -931,4 +945,29 @@
     padding-top: 0;
     text-align: left;
   }
+}
+
+/* A quiet inline date picker between the masthead and the document text. It
+   sits in the layout's top padding (or, stacked, the gap under the sidebar),
+   so the document still starts level with the summary beside it. */
+.versionSentence {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin: 0 0 1.25rem;
+  color: #6a7c8f;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  transition: opacity 0.15s ease;
+}
+
+.versionSentence[aria-busy="true"] {
+  opacity: 0.55;
+}
+
+.versionNote {
+  margin: 0 0 1rem;
+  color: #6a7c8f;
+  font-size: 0.75rem;
+  line-height: 1.6;
 }

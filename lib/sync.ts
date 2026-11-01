@@ -1,3 +1,4 @@
+import { recordDocumentVersion } from "@/lib/document-version-history";
 import { beginAdministratorLookupRun, type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
 import { createHash } from "node:crypto";
@@ -887,21 +888,30 @@ export async function ingestFile(
     // Drive bumps modifiedTime for changes that do not alter text, such as a
     // comment or a formatting tweak.
     if (existing && existing.contentHash === contentHash) {
-        await prisma.document.update({
-            where: { id: existing.id },
-            data: {
-                ...metadata,
-                // The published text is what Drive is serving again, so
-                // whatever was held has been reverted at the source.
-                ...(existing.reviewState === "held"
-                    ? {
-                        reviewState: "published",
-                        heldRevisionId: null,
-                        heldReason: "",
-                        heldAt: null,
-                    }
-                    : {}),
-            },
+        await prisma.$transaction(async tx => {
+            await tx.document.update({
+                where: { id: existing.id },
+                data: {
+                    ...metadata,
+                    // The published text is what Drive is serving again, so
+                    // whatever was held has been reverted at the source.
+                    ...(existing.reviewState === "held"
+                        ? {
+                            reviewState: "published",
+                            heldRevisionId: null,
+                            heldReason: "",
+                            heldAt: null,
+                        }
+                        : {}),
+                },
+            });
+            if (existing.reviewState === "held") {
+                const revision = await tx.documentRevision.findUnique({
+                    where: { documentId_contentHash: { documentId: existing.id, contentHash } },
+                    select: { id: true },
+                });
+                if (revision) await recordDocumentVersion(tx, revision.id, driveModifiedTime, "published");
+            }
         });
         summary.documentsUnchanged += 1;
         return true;
@@ -955,41 +965,49 @@ export async function ingestFile(
         after: content,
     });
 
-    const document = await prisma.document.upsert({
-        where: { driveFileId: file.id },
-        // A document being created has nothing to protect, so its first text
-        // is published whatever the verdict says.
-        create: { driveFileId: file.id, ...stored, ...published },
-        update: verdict.publish ? { ...stored, ...published } : stored,
-    });
-
-    // Stored either way. The revision history is append-only precisely so that
-    // a change nobody has accepted is still recoverable and still diffable.
-    const revision = await prisma.documentRevision.upsert({
-        where: { documentId_contentHash: { documentId: document.id, contentHash } },
-        create: {
-            documentId: document.id,
-            title: file.name,
-            content,
-            contentHash,
-            driveModifiedTime,
-            editorName: file.lastModifyingUser?.displayName?.trim() ?? "",
-            editorEmail: file.lastModifyingUser?.emailAddress?.trim().toLowerCase() ?? "",
-        },
-        update: {},
-    });
-
-    if (!verdict.publish) {
-        await prisma.document.update({
-            where: { id: document.id },
-            data: {
-                reviewState: "held",
-                heldRevisionId: revision.id,
-                heldReason: verdict.reason,
-                heldAt: new Date(),
-            },
+    const document = await prisma.$transaction(async tx => {
+        const document = await tx.document.upsert({
+            where: { driveFileId: file.id },
+            // A document being created has nothing to protect, so its first text
+            // is published whatever the verdict says.
+            create: { driveFileId: file.id, ...stored, ...published },
+            update: verdict.publish ? { ...stored, ...published } : stored,
         });
 
+        // Stored either way. The revision history is append-only precisely so that
+        // a change nobody has accepted is still recoverable and still diffable.
+        const revision = await tx.documentRevision.upsert({
+            where: { documentId_contentHash: { documentId: document.id, contentHash } },
+            create: {
+                documentId: document.id,
+                title: file.name,
+                content,
+                contentHash,
+                driveModifiedTime,
+                editorName: file.lastModifyingUser?.displayName?.trim() ?? "",
+                editorEmail: file.lastModifyingUser?.emailAddress?.trim().toLowerCase() ?? "",
+            },
+            update: {},
+        });
+
+        await recordDocumentVersion(tx, revision.id, driveModifiedTime,
+            !existing || verdict.publish ? "published" : "held");
+        if (existing && !verdict.publish) {
+            await tx.document.update({
+                where: { id: document.id },
+                data: {
+                    reviewState: "held",
+                    heldRevisionId: revision.id,
+                    heldReason: verdict.reason,
+                    heldAt: new Date(),
+                },
+            });
+
+        }
+        return document;
+    });
+
+    if (existing && !verdict.publish) {
         // Everything downstream -- citations, passages, summaries, contributor
         // rows -- describes the published text, and the published text has not
         // changed. Touching any of it here is what would let a held revision

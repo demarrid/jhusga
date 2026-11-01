@@ -149,7 +149,7 @@ function RelatedList({
                 ))}
                 {standaloneMatches.map(match => (
                     <li key={`${match.agendaId}:${match.sectionId}:${match.startOffset}`}>
-                        <Link href={`/documents/${match.agendaId}#${match.sectionId}`}>{match.title}</Link>
+                        <Link href={`/documents/${match.agendaId}?version=latest#${match.sectionId}`}>{match.title}</Link>
                         <MinutesMatch match={match} />
                     </li>
                 ))}

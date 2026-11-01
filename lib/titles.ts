@@ -32,8 +32,8 @@
 import { formatDateNumeric } from "@/lib/dates";
 import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 import { meetingHeaderDate } from "@/lib/identity";
-import { isSecondaryKind } from "@/lib/kinds";
-import { meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
+import { isCommitteeRecordsFolder, isSecondaryKind } from "@/lib/kinds";
+import { committeeFrom, meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
 import { sessionOrdinal } from "@/config/session";
 
 /**
@@ -352,6 +352,40 @@ function logTitle(input: TitleInput): string | null {
     );
 }
 
+/** Plain committee minutes can have a house title even without a meeting date. */
+function committeeMinutesTitle(input: TitleInput): string | null {
+    if (!isCommitteeRecordsFolder(input.folderPath)) return null;
+    const committee = committeeFrom(input.folderPath);
+    if (!committee) return null;
+    const name = cleanTitle(input.title).toLowerCase();
+    const acronym = committee.split(" ").filter((word) => !MINOR_WORDS.has(word)).map((word) => word[0]).join("");
+    const prefix = [committee, acronym, `committee on ${committee}`]
+        .find((value) => name.startsWith(`${value} `));
+    if (!prefix) return null;
+    const remainder = name.slice(prefix.length).trim();
+    const label = bodyLabel(`committee:${committee}`)!;
+    // An academic-year meeting-notes file is a collection, not a single meeting.
+    const annual = /^(?:committee\s+)?meeting\s+(?:notes|minutes|mins)\s+((?:19|20)\d{2})[-–—]((?:19|20)\d{2})$/.exec(remainder);
+    if (annual && Number(annual[2]) === Number(annual[1]) + 1) {
+        return formatMeetingTitle(label, "minutes", "", input.sessionNumber === null
+            ? `${annual[1]}–${annual[2]}` : `${sessionOrdinal(input.sessionNumber)} Session`);
+    }
+    // A weekly-minutes title explicitly identifies a running collection even
+    // when its exported text does not contain recognizable meeting headings.
+    if (/^(?:fall|spring|summer|winter)\s+(?:19|20)\d{2}\s+weekly\s+minutes$/.test(remainder)) {
+        return formatMeetingTitle(label, "minutes", "", input.sessionNumber === null
+            ? documentEdition(input.title) : `${sessionOrdinal(input.sessionNumber)} Session`);
+    }
+    // Preserve descriptive titles, copies, templates, and outside meetings.
+    if (!/^(?:committee\s+)?(?:meeting\s+)?(?:minutes?|mins)(?:\s*\(all\))?$/.test(remainder)) return null;
+    if (/\(all\)$/.test(remainder)) {
+        return formatMeetingTitle(label, "minutes", "", input.sessionNumber === null
+            ? "All Meetings" : `${sessionOrdinal(input.sessionNumber)} Session`);
+    }
+    return formatMeetingTitle(label, "minutes", "",
+        formatDateNumeric(input.datedAt ?? meetingHeaderDate(input.content)));
+}
+
 /**
  * Documents the SGA keeps exactly one of per session, by the name the site
  * gives them. Keyed on the filename with every year and session marker taken
@@ -513,7 +547,7 @@ export function canonicalTitle(
     // arguing about. A headline is shown exactly as printed.
     if (isSecondaryKind(input.kind)) return null;
 
-    return meetingTitle(input, dates) ?? logTitle(input) ?? standingTitle(input);
+    return meetingTitle(input, dates) ?? logTitle(input) ?? committeeMinutesTitle(input) ?? standingTitle(input);
 }
 
 /**

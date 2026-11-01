@@ -1323,8 +1323,30 @@ export function extractContributors(
     kind?: string,
 ): ExtractedContributor[] {
     const found = new Map<string, ExtractedContributor>();
-    const minutes = !!kind && kind.startsWith("minutes.");
+    const minutes = (!!kind && kind.startsWith("minutes.")) ||
+        (kind === "unknown" && /\btown\s+hall\b/i.test(title ?? ""));
     const lines = markdown.split(/\r?\n/);
+
+    // Meeting partners can appear only in the filename. Keep them as people
+    // mentioned, not authors or proof of attendance.
+    const meetingPartner = minutes && title?.match(/\bmeeting\s+(?:with|witih)\s+(.+?)\s*$/i);
+    if (meetingPartner) {
+        const partner = parsePersonToken(meetingPartner[1]!);
+        if (partner && looksLikePersonName(partner.name)) {
+            recordPerson(found, meetingPartner[1]!, "mentioned", title!);
+        }
+    }
+    // Introductions such as "marrow: associate director of advising" supply
+    // an office even when subsequent speaker turns use only the surname.
+    if (minutes) {
+        for (const raw of lines) {
+            const line = toPlainText(raw).replace(ENUMERATOR, "").trim();
+            const introduction = line.match(/^([A-Za-z’'-]+(?:\s+[A-Za-z’'-]+)?):\s*((?:(?:associate|assistant|senior|vice|executive)\s+)*(?:dean|provost|professor|chancellor|director)\b[^.;!?]{0,100})\s*$/i);
+            if (introduction && /\b(?:dean|provost|professor|chancellor|advising|academic|university|krieger|whiting)\b/i.test(introduction[2]!)) {
+                recordPerson(found, introduction[1]!, "interlocutor", line, introduction[2], true);
+            }
+        }
+    }
 
     // The report section being read, if any. Under one of these a bare name is
     // a person rather than a phrase that looks like one.
@@ -1359,6 +1381,12 @@ export function extractContributors(
         }
         if (line.length > 500) {
             harvestLabeledText(found, line, line);
+            // Long town-hall answers still have an attributed speaker. Limit
+            // this to the opening attribution, not colons buried in prose.
+            if (minutes) {
+                const turn = line.replace(ENUMERATOR, "").trim().match(/^([^:]{3,60}):\s*(.+)$/);
+                if (turn) recordSpeaker(found, turn[1]!, turn[2]!, line.slice(0,300));
+            }
             carryingList = null;
             continue;
         }
@@ -1444,7 +1472,7 @@ export function extractContributors(
             }
         }
     }
-    if (title) harvestTitleAuthor(found, title);
+    if (title && !meetingPartner) harvestTitleAuthor(found, title);
 
     return [...found.values()];
 }

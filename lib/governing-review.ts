@@ -184,6 +184,7 @@ async function publish(document: Held, sources: Source[], inputHash: string, key
         await tx.documentRevision.update({
             where: { id: held.id }, data: { reviewedAt: new Date(), reviewedBy: `automated amendment verification: ${key}` },
         });
+        await tx.documentVersion.updateMany({ where: { revisionId: held.id, status: "held" }, data: { status: "published" } });
         await tx.documentSummary.updateMany({ where: { documentId: document.id, status: "fresh" }, data: { status: "stale" } });
         await tx.amendmentClearance.update({ where: { key }, data: { status: "published", publishedAt: new Date() } });
         return true;

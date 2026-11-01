@@ -20,10 +20,10 @@ async function main() {
             return;
         }
         const document = await prisma.document.findUnique({
-            where: { id }, select: { content: true, kind: true, reviewState: true },
+            where: { id }, select: { content: true, kind: true, title: true, reviewState: true },
         });
-        if (!document || !document.kind.startsWith("minutes.") || document.reviewState !== "published") {
-            throw new Error("Choose a published minutes document for administrator lookup.");
+        if (!document || !(document.kind.startsWith("minutes.") || (document.kind === "unknown" && /\btown\s+hall\b/i.test(document.title))) || document.reviewState !== "published") {
+            throw new Error("Choose published minutes or town-hall notes for administrator lookup.");
         }
         const { recordContributors } = await import("../lib/sync");
         await recordContributors(id, document.content);

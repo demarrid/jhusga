@@ -154,22 +154,28 @@ async function approve(documentId: string, by: string) {
 
     const { content, contentHash } = document.heldRevision;
 
-    await prisma.document.update({
-        where: { id: documentId },
-        data: {
-            content,
-            contentHash,
-            description: deriveDescription(content),
-            reviewState: "published",
-            heldRevisionId: null,
-            heldReason: "",
-            heldAt: null,
-        },
-    });
+    await prisma.$transaction(async tx => {
+        await tx.document.update({
+            where: { id: documentId },
+            data: {
+                content,
+                contentHash,
+                description: deriveDescription(content),
+                reviewState: "published",
+                heldRevisionId: null,
+                heldReason: "",
+                heldAt: null,
+            },
+        });
 
-    await prisma.documentRevision.update({
-        where: { id: document.heldRevision.id },
-        data: { reviewedAt: new Date(), reviewedBy: by },
+        await tx.documentRevision.update({
+            where: { id: document.heldRevision!.id },
+            data: { reviewedAt: new Date(), reviewedBy: by },
+        });
+        await tx.documentVersion.updateMany({
+            where: { revisionId: document.heldRevision!.id, status: "held" },
+            data: { status: "published" },
+        });
     });
 
     const contributors = await recordContributors(documentId, content);
@@ -198,21 +204,27 @@ async function reject(documentId: string) {
         select: {
             title: true,
             source: true,
-            heldRevision: { select: { contentHash: true } },
+            heldRevision: { select: { id: true, contentHash: true } },
         },
     });
 
     if (!document?.heldRevision) throw new Error(`Nothing held for document ${documentId}`);
 
-    await prisma.document.update({
-        where: { id: documentId },
-        data: {
-            reviewState: "published",
-            heldRevisionId: null,
-            heldReason: "",
-            heldAt: null,
-            rejectedContentHash: document.heldRevision.contentHash,
-        },
+    await prisma.$transaction(async tx => {
+        await tx.document.update({
+            where: { id: documentId },
+            data: {
+                reviewState: "published",
+                heldRevisionId: null,
+                heldReason: "",
+                heldAt: null,
+                rejectedContentHash: document.heldRevision!.contentHash,
+            },
+        });
+        await tx.documentVersion.updateMany({
+            where: { revisionId: document.heldRevision!.id, status: "held" },
+            data: { status: "rejected" },
+        });
     });
 
     console.log(`Rejected the change to: ${document.title}`);

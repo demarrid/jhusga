@@ -225,7 +225,7 @@ async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; s
         card: {
             ...toCard(document, new Date(document.when), "Minutes"),
             ...(document.entry ? {
-                href: `/documents/${document.id}#${document.entry.sectionId}`,
+                href: `/documents/${document.id}?version=latest#${document.entry.sectionId}`,
                 summary: latestMinutesSummary(document.summary),
             } : {}),
         },

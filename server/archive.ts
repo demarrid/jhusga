@@ -193,6 +193,7 @@ export async function getComparisonOptions(
             driveCreatedTime: true,
             driveModifiedTime: true,
             revisions: {
+                where: { versions: { some: { status: "published" } } },
                 select: {
                     id: true,
                     contentHash: true,
@@ -400,17 +401,17 @@ export async function compareRevisions(
     ops: Comparison["ops"];
 } | null> {
     const [before, after] = await Promise.all([
-        prisma.documentRevision.findUnique({
-            where: { id: beforeRevisionId },
-            select: { content: true },
+        prisma.documentRevision.findFirst({
+            where: { id: beforeRevisionId, versions: { some: { status: "published" } } },
+            select: { content: true, documentId: true },
         }),
-        prisma.documentRevision.findUnique({
-            where: { id: afterRevisionId },
-            select: { content: true },
+        prisma.documentRevision.findFirst({
+            where: { id: afterRevisionId, versions: { some: { status: "published" } } },
+            select: { content: true, documentId: true },
         }),
     ]);
 
-    if (!before || !after) return null;
+    if (!before || !after || before.documentId !== after.documentId) return null;
 
     const diff = diffLines(before.content, after.content);
     return {

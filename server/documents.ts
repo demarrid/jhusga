@@ -696,6 +696,7 @@ export async function getDocument(documentId: string): Promise<DocumentDetail | 
 /** Uncached entry point for CLI jobs and checks outside a Next request. */
 export async function loadDocument(
     documentId: string,
+    versionId?: string,
 ): Promise<DocumentDetail | null> {
     if (demoModeEnabled()) return demoDocument(documentId);
     const document = await prisma.document.findUnique({
@@ -770,8 +771,27 @@ export async function loadDocument(
     });
 
     if (!document) return null;
+    let historical = false;
+    if (versionId) {
+        const version = await prisma.documentVersion.findFirst({
+            where: { id: versionId, status: "published", revision: { documentId } },
+            include: { revision: true },
+        });
+        if (!version) return null;
+        if (version.revision.content !== document.content) {
+            historical = true;
+            document.content = version.revision.content;
+            document.title = version.revision.title;
+            document.displayTitle = "";
+            document.description = "";
+            document.documentAnnotations = [];
+            document.summary = null;
+            document.contributors = [];
+            document.driveLastEditorName = version.revision.editorName || null;
+        }
+    }
 
-    const edition = LEGISLATION_EDITIONS.find(item => item.draftFileId === document.driveFileId || item.finalFileId === document.driveFileId);
+    const edition = historical ? undefined : LEGISLATION_EDITIONS.find(item => item.draftFileId === document.driveFileId || item.finalFileId === document.driveFileId);
     const copies = edition ? await prisma.document.findMany({
         where: { driveFileId: { in: [edition.draftFileId, edition.finalFileId] }, reviewState: "published" },
         select: { id: true, driveFileId: true, content: true },

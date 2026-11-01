@@ -43,6 +43,7 @@ const mock = {
   upsert:async ({where,create,update}:Query)=>{const key=String(where?.key);audits.set(key,{...(audits.get(key)??create),...update});return audits.get(key);},
   update:async ({where,data}:Query)=>{const row=audits.get(String(where?.key))!;Object.assign(row,data);return row;},
  },
+ documentVersion:{updateMany:async ()=>({count:1})},
  documentRevision:{update:async ()=>({}),findUnique:async ()=>({contentHash:"new"})},
  documentSummary:{updateMany:async ()=>{summaryStale=true;return {count:1};}},
  documentContributor:{deleteMany:async()=>({count:0}),findMany:async()=>[]},

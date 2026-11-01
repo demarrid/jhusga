@@ -78,7 +78,7 @@ export async function getSection(key: string): Promise<Section | null> {
             documentId: citation.annotation.document.id,
             documentTitle: citation.annotation.document.title,
             quote: citation.annotation.content,
-            href: `/documents/${citation.annotation.document.id}#annotation-${citation.annotationId}`,
+            href: `/documents/${citation.annotation.document.id}?version=latest#annotation-${citation.annotationId}`,
             orphaned: citation.annotation.orphanedAt !== null,
         })),
     };

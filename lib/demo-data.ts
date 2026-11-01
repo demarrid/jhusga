@@ -271,7 +271,7 @@ export function demoSections(keys: string[]) {
         documentId: "demo-constitution",
         documentTitle: "SGA Constitution (114th Session)",
         quote: "The Association consists of an Executive Branch, a Legislative Branch, and a Judicial Branch.",
-        href: "/documents/demo-constitution#annotation-demo-constitution-citation-1",
+        href: "/documents/demo-constitution?version=latest#annotation-demo-constitution-citation-1",
         orphaned: false,
     };
     return Object.fromEntries(keys.map((key) => [key, {

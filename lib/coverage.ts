@@ -1,3 +1,4 @@
+import { recordDocumentVersion } from "@/lib/document-version-history";
 /**
  * Storing The Johns Hopkins News-Letter's coverage of the SGA.
  *
@@ -296,24 +297,28 @@ async function storeArticle(
         return { ...base, status: "unchanged", sessionNumber };
     }
 
-    const document = await prisma.document.upsert({
-        where: { driveFileId: article.fileId },
-        create: { driveFileId: article.fileId, ...stored },
-        update: stored,
-    });
+    const document = await prisma.$transaction(async tx => {
+        const document = await tx.document.upsert({
+            where: { driveFileId: article.fileId },
+            create: { driveFileId: article.fileId, ...stored },
+            update: stored,
+        });
 
-    // The same append-only history as everything else. For an article it is
-    // near-always one row, and the exception is the interesting one: a second
-    // row means the paper changed a piece after publishing it.
-    await prisma.documentRevision.upsert({
-        where: { documentId_contentHash: { documentId: document.id, contentHash } },
-        create: {
-            documentId: document.id,
-            title: article.headline,
-            content,
-            contentHash,
-        },
-        update: { fetchedAt: new Date() },
+        // The same append-only history as everything else. For an article it is
+        // near-always one row, and the exception is the interesting one: a second
+        // row means the paper changed a piece after publishing it.
+        const revision = await tx.documentRevision.upsert({
+            where: { documentId_contentHash: { documentId: document.id, contentHash } },
+            create: {
+                documentId: document.id,
+                title: article.headline,
+                content,
+                contentHash,
+            },
+            update: {},
+        });
+        await recordDocumentVersion(tx, revision.id, null, "published");
+        return document;
     });
 
     await indexDocumentPassages(document.id, content);

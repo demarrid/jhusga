@@ -935,7 +935,8 @@ export function hasUniversityTitle(mention: NameMention): boolean {
     const prefix = mention.evidence.split(new RegExp(
         "\\b" + nameKey(mention.name) + "\\b", "i",
     ))[0] ?? "";
-    return /\b(?:dean|provost|professor|chancellor)\b/i.test(mention.office ?? prefix);
+    return /\b(?:dean|provost|professor|chancellor)\b/i.test(mention.office ?? prefix) ||
+        /\bdirector\b.*\b(?:advising|academic|krieger|whiting|university)\b/i.test(mention.office ?? "");
 }
 
 /** A review query, never evidence of identity or an automatic alias. */

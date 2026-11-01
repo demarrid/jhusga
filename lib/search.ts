@@ -1439,7 +1439,7 @@ async function citationsFor(answerId: string): Promise<AnswerCitation[]> {
         documentTitle:
             row.annotation.document.displayTitle || row.annotation.document.title,
         quote: row.annotation.content,
-        href: `/documents/${row.annotation.document.id}#annotation-${row.annotationId}`,
+        href: `/documents/${row.annotation.document.id}?version=latest#annotation-${row.annotationId}`,
         orphaned: row.annotation.orphanedAt !== null,
     }));
 }

@@ -1,3 +1,4 @@
+import { recordDocumentVersion } from "../lib/document-version-history";
 /**
  * Refresh formatting of all published Drive DOCX imports.
  * npm exec tsx scripts/refresh-docx.ts [--apply]
@@ -33,12 +34,13 @@ async function main() {
             const contentHash = createHash("sha256").update(content).digest("hex");
             await prisma.$transaction(async tx => {
                 for (const version of [{content:document.content,contentHash:document.contentHash},{content,contentHash}]) {
-                    await tx.documentRevision.upsert({
+                    const revision = await tx.documentRevision.upsert({
                         where:{documentId_contentHash:{documentId:document.id,contentHash:version.contentHash}},
                         create:{documentId:document.id,title:document.title,...version,driveModifiedTime:document.driveModifiedTime,
                             editorName:document.driveLastEditorName ?? "",editorEmail:document.driveLastEditorEmail ?? ""},
                         update:{},
                     });
+                    await recordDocumentVersion(tx, revision.id, version.contentHash === document.contentHash ? document.driveModifiedTime : null, "published");
                 }
                 const updated = await tx.document.updateMany({
                     where:{id:document.id,contentHash:document.contentHash,reviewState:"published"},

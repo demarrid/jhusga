@@ -1181,3 +1181,12 @@ check(
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
+
+
+const titlePartner = extractContributors("Transfer orientation discussion.", "10/23 - Meeting witih Shula Cooper", "minutes.committee");
+if (!titlePartner.some(p=>p.name==="Shula Cooper" && p.role==="mentioned") || titlePartner.some(p=>p.role==="author")) throw new Error("Meeting title partner missing or credited as author");
+const advisingIntroduction = extractContributors("marrow: associate director of advising for krieger school\nmarrow: discussed transfer evaluation", "Meeting with Associate Dean Martin", "minutes.committee");
+if (!advisingIntroduction.some(p=>p.name==="Marrow" && p.role==="interlocutor" && p.office?.includes("advising"))) throw new Error("Lowercase administrator introduction lost");
+const townHall = extractContributors("falk: " + "We discussed engineering facilities. ".repeat(30), "10/28 - WSE Town Hall", "unknown");
+if (!townHall.some(p=>p.name==="Falk" && p.role==="interlocutor")) throw new Error("Long town hall attribution lost");
+if (extractContributors("falk: discussed facilities", "Town Hall funding bill", "bill.funding").some(p=>p.role==="interlocutor")) throw new Error("Bill misread as town hall transcript");

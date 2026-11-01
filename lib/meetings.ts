@@ -126,8 +126,8 @@ const TEXTUAL_DATE = new RegExp(
  * own a folder, which is far more reliable than trying to read the committee
  * out of an abbreviated title like "IA.114.02".
  */
-function committeeFrom(folderPath: string): string | null {
-    const match = /(?:^|\/)committees\/([^/]+)/i.exec(folderPath);
+export function committeeFrom(folderPath: string): string | null {
+    const match = /(?:^|\/)(?:\d+_)?committees\/([^/]+)/i.exec(folderPath);
     if (!match) return null;
 
     const name = match[1]

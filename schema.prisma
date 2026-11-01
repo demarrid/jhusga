@@ -260,10 +260,26 @@ model DocumentRevision {
 
     // The document currently holding this revision back, if any.
     heldBy Document[] @relation("HeldRevision")
+    versions DocumentVersion[]
 
     // One row per distinct content hash per document.
     @@unique([documentId, contentHash])
     @@index([documentId, fetchedAt])
+}
+
+// A source occurrence, separate from deduplicated text: A -> B -> A has three
+// versions but only two snapshots. Only published occurrences are public.
+model DocumentVersion {
+    id         String           @id @default(uuid())
+    revisionId String
+    revision   DocumentRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+    sourceModifiedTime DateTime?
+    observedAt         DateTime @default(now())
+    // published | held | rejected | unknown (legacy publication not provable)
+    status String @default("held")
+
+    @@index([revisionId, status])
+    @@index([status, observedAt])
 }
 
 // OAuth history is separate from published/held archive versions. Null content

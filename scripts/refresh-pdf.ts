@@ -1,3 +1,4 @@
+import { recordDocumentVersion } from "../lib/document-version-history";
 /**
  * Re-extract one already-published PDF after a parser improvement.
  *
@@ -63,7 +64,7 @@ async function main() {
             { content: document.content, contentHash: document.contentHash },
             { content, contentHash },
         ]) {
-            await tx.documentRevision.upsert({
+            const revision = await tx.documentRevision.upsert({
                 where: { documentId_contentHash: { documentId, contentHash: version.contentHash } },
                 create: {
                     documentId, title: document.title, ...version,
@@ -73,6 +74,7 @@ async function main() {
                 },
                 update: {},
             });
+            await recordDocumentVersion(tx, revision.id, version.contentHash === document.contentHash ? document.driveModifiedTime : null, "published");
         }
         const updated = await tx.document.updateMany({
             where: { id: documentId, contentHash: document.contentHash, reviewState: "published" },

@@ -295,7 +295,7 @@ const COMMITTEE_RECORD_FOLDER =
  */
 export function isCommitteeRecordsFolder(folderPath: string): boolean {
     const segments = folderPath.split("/");
-    const at = segments.findIndex((segment) => /^committees$/i.test(segment.trim()));
+    const at = segments.findIndex((segment) => /^(?:\d+_)?committees$/i.test(segment.trim()));
     if (at === -1 || at + 1 >= segments.length) return false;
 
     return segments
@@ -314,7 +314,7 @@ function looksLikeMinutes(titled: string, path: string, haystack: string): boole
     if (minutesKind(titled) !== null) return true;
     // Under a committee, the folder says "committee" whatever the file is,
     // so only the committee's own record folders count as evidence.
-    if (/(?:^|\/)committees\//i.test(path)) return isCommitteeRecordsFolder(path);
+    if (/(?:^|\/)(?:\d+_)?committees\//i.test(path)) return isCommitteeRecordsFolder(path);
     return minutesKind(haystack) !== null;
 }
 

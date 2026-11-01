@@ -18,7 +18,7 @@ export async function revisitAdministratorMentions(): Promise<{documentsRevisite
     let inspected = 0;
     while (inspected < 100 && administratorLookupBudgetRemaining() > 0) {
         const documents = await prisma.document.findMany({
-            where:{kind:{startsWith:"minutes."},reviewState:"published",datedAt:{not:null},content:{not:""},
+            where:{OR:[{kind:{startsWith:"minutes."}},{kind:"unknown",title:{contains:"town hall",mode:"insensitive"}}],reviewState:"published",datedAt:{not:null},content:{not:""},
                 ...(cursor ? {id:{gt:cursor}} : {})},
             select:{id:true,title:true,kind:true,content:true,datedAt:true},
             orderBy:{id:"asc"},take:20,
@@ -36,7 +36,12 @@ export async function revisitAdministratorMentions(): Promise<{documentsRevisite
                     documentId:doc.id,name:mention.name,office:mention.office,evidence:mention.evidence,
                     context:administratorMentionContext(mention,context),asOf:context.asOf,
                 })));
-            if (pending.length) {
+            const titlePartners = extractContributors(doc.content,doc.title,doc.kind).filter(mention =>
+                mention.role === "mentioned" && mention.evidence === doc.title);
+            const titleLinked = titlePartners.length ? await prisma.documentContributor.findFirst({
+                where:{documentId:doc.id,role:"mentioned",evidence:doc.title},select:{id:true},
+            }) : null;
+            if (pending.length || (titlePartners.length && !titleLinked)) {
                 const {recordContributors} = await import("@/lib/sync");
                 await recordContributors(doc.id,doc.content);
                 documentsRevisited++;

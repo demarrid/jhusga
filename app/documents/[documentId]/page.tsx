@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
-import { getDocument, type DocumentDetail } from "@/server/documents";
+import type { DocumentDetail } from "@/server/documents";
 import DocumentOutline from "@/app/(components)/DocumentOutline";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
+import DocumentVersionSelector from "@/app/(components)/DocumentVersionSelector";
+import { getVersionedDocument } from "@/server/document-versions";
 import DocumentViewer from "@/app/(components)/DocumentViewer";
 import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
@@ -26,7 +28,7 @@ import styles from "../document-detail.module.css";
 export const dynamic = "force-dynamic";
 
 // One read per request, shared between the metadata and the page.
-const loadDocument = cache(getDocument);
+const loadVersionedDocument = cache(getVersionedDocument);
 
 /**
  * A shared link to a document shows the document's name and its summary.
@@ -37,13 +39,16 @@ const loadDocument = cache(getDocument);
  * failing that a sentence saying what kind of record this is and when.
  */
 export async function generateMetadata({
-    params,
+    params, searchParams,
 }: {
     params: Promise<{ documentId: string }>;
+    searchParams: Promise<{ version?: string | string[] }>;
 }): Promise<Metadata> {
     const { documentId } = await params;
-    const document = await loadDocument(documentId);
-    if (!document) notFound();
+    const query = await searchParams;
+    const view = await loadVersionedDocument(documentId, typeof query.version === "string" ? query.version : undefined);
+    if (!view) notFound();
+    const { document } = view;
 
     return pageMetadata({
         title: document.title,
@@ -80,13 +85,16 @@ export default async function DocumentPage({
 }: {
     // Next 16 passes route params as a promise.
     params: Promise<{ documentId: string }>;
-    searchParams: Promise<{ returnTo?: string | string[] }>;
+    searchParams: Promise<{ returnTo?: string | string[]; version?: string | string[] }>;
 }) {
     const { documentId } = await params;
-    const returnTo = documentReturnPath((await searchParams).returnTo);
-    const document = await loadDocument(documentId);
-
-    if (!document) notFound();
+    const query = await searchParams;
+    const returnTo = documentReturnPath(query.returnTo);
+    const requested = typeof query.version === "string" ? query.version : undefined;
+    const view = await loadVersionedDocument(documentId, requested);
+    if (!view) notFound();
+    const { document } = view;
+    const latestHref = `/documents/${documentId}?${new URLSearchParams({ version: view.latest.id, ...(returnTo ? { returnTo } : {}) })}`;
 
     const authoredSections = documentSections(document.content, {
         titles: [document.title, document.driveTitle],
@@ -181,7 +189,7 @@ export default async function DocumentPage({
 
             <div className={styles.actions}>
                 <a href={document.source} target="_blank" rel="noreferrer">
-                    {originalLabel(document.source)} ↗
+                    {originalLabel(document.source)} (latest source) ↗
                 </a>
                 {document.lineageKey && isComparableKind(document.kind) && (
                     <Link href={`/documents/${document.id}/compare`}>
@@ -238,14 +246,24 @@ export default async function DocumentPage({
               */}
             <div className={styles.readerLayout}>
                 <article className={styles.documentPane}>
-                    <DocumentViewer blocks={document.blocks} />
+                    <DocumentVersionSelector options={view.options} selectedId={view.selected.id} />
+                    {view.missingDatedVersion && document.datedAt && (
+                        <p className={styles.versionNote}>
+                            No saved version is available on or before {formatDate(document.datedAt)}.
+                            {" "}Available history begins {formatDate(new Date(view.options[0].modifiedAt ?? view.options[0].observedAt))}.
+                        </p>
+                    )}
+                    <DocumentViewer key={view.selected.id} blocks={document.blocks} />
                 </article>
 
                 <aside className={styles.sidebar}>
                     <DoubleStickyHolder>
                         <section className={styles.sidebarSection}>
                             <h2>{document.legislationEdition?.role === "draft" ? "Draft summary" : "Summary"}</h2>
-                            <DocumentRestatement restatement={document.restatement} />
+                            {view.historical ? <p className={styles.asideMeta}>
+                                This version has no saved summary.{" "}
+                                <Link href={latestHref} scroll={false}>View the latest version</Link>.
+                            </p> : <DocumentRestatement restatement={document.restatement} />}
                         </section>
 
                         {(sections.length > 0 || agendas.length > 0) && (
@@ -255,7 +273,7 @@ export default async function DocumentPage({
                                         {` (Agenda${agendas.length > 1 ? ` ${index + 1}` : ""} ↗)`}
                                     </Link>
                                 ))}</h2>
-                                <DocumentOutline sections={sections} />
+                                <DocumentOutline key={view.selected.id} sections={sections} />
                             </nav>
                         )}
 

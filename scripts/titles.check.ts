@@ -422,5 +422,38 @@ check(
     documents.every((document) => (titles.get(document.id) ?? "").length > 0),
 );
 
+
+console.log("\nnumbered committee archive folders");
+for (const [title, folderPath, expected] of [
+    ["Civic Engagement Fall 2026 Weekly Minutes", "05_Committees/Civic Engagement", "Civic Engagement Committee Meeting — Minutes (114th Session)"],
+    ["AA Meeting 10-31-26", "05_Committees/Academic Affairs/Minutes", "Academic Affairs Committee Meeting — Minutes (10/31/26)"],
+    ["Academic Affairs Committee Meeting Minute", "05_Committees/Academic Affairs/Minutes", "Academic Affairs Committee Meeting — Minutes"],
+    ["CSO minutes 10-7-26", "05_Committees/Student Organizations", "Student Organizations Committee Meeting — Minutes (10/07/26)"],
+    ["Student Services Meeting Mins (ALL)", "05_Committees/Student Services/Meeting Minutes", "Student Services Committee Meeting — Minutes (114th Session)"],
+] as const) {
+    check(title, canon(title, folderPath, 114) === expected, canon(title, folderPath, 114));
+}
+check("numbered committee folders support content-proven logs",
+    logged("Weekly Minutes", "05_Committees/Academic Affairs/Minutes",
+        "Date: 9/1/2026\nPresent: Chair\nDate: 9/8/2026\nPresent: Chair", 114) ===
+        "Academic Affairs Committee Meeting — Minutes (114th Session)");
+check("personal folders do not become committee records",
+    canon("AA Meeting 10-31-26", "05_Committees/Academic Affairs/Alex", 114) === null);
+check("outside meetings retain their descriptive names",
+    canon("Academic Affairs Meeting with Dean Minutes", "05_Committees/Academic Affairs/Minutes", 114) === null);
+
+
+check("HSS academic-year notes in the numbered archive get a session title",
+    canon("HSS Meeting Notes 2026-2027", "05_Committees/Health, Safety, and Sustainability/Minutes", 114) ===
+        "Health, Safety and Sustainability Committee Meeting — Minutes (114th Session)");
+check("HSS annual notes preserve the year range when the session is unknown",
+    canonicalTitle({id: "hss-unknown", title: "HSS Meeting Notes 2026-2027",
+        folderPath: "05_Committees/Health, Safety, and Sustainability/Minutes", sessionNumber: null}) ===
+        "Health, Safety and Sustainability Committee Meeting — Minutes (2026–2027)");
+check("HSS project notes keep their descriptive title",
+    canon("HSS Project Notes 2026-2027", "05_Committees/Health, Safety, and Sustainability/Minutes", 114) === null);
+check("HSS notes in personal folders are not committee collections",
+    canon("HSS Meeting Notes 2026-2027", "05_Committees/Health, Safety, and Sustainability/Alex", 114) === null);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
