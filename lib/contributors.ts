@@ -1490,6 +1490,8 @@ function harvestTitleAuthor(
     found: Map<string, ExtractedContributor>,
     title: string,
 ): void {
+    // A meeting subject is not the person who wrote its notes.
+    if (/\bmeeting\s+with\b/i.test(title)) return;
     const cleaned = title.replace(TITLE_NOISE, " ").replace(/\s+/g, " ").trim();
     if (!cleaned) return;
 

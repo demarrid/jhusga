@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { extractContributors, nameKey } from "../lib/contributors";
-import { resolveAffiliates, resetNameResolverCache, universityNameLookup, hasUniversityTitle, type RegularPerson } from "../lib/names";
+import { resolveAffiliates, resetNameResolverCache, universityNameLookup, hasUniversityTitle, administratorMentionContext, type RegularPerson } from "../lib/names";
 
 const kai = { id: "kai", name: "Kai Martin", nameKey: "kai martin", documentCount: 5,
     positions: ["Senator", "Associate Dean"], bodies: ["senate"] } satisfies RegularPerson;
@@ -42,6 +42,12 @@ async function main() {
     const mentioned = extractContributors("Arranging a meeting with Dean Martin about academic advising.", "Minutes", "minutes.senate");
     assert.ok(mentioned.some(p => p.name === "Martin" && p.role === "mentioned"));
     assert.ok(!mentioned.some(p => p.role === "present" || p.role === "guest"));
+    const meeting = extractContributors("martin: discussing academic advising", "10/29 - Meeting with Associate Dean Martin", "minutes.committee");
+    assert.ok(!meeting.some(p => p.role === "author"), "meeting subjects are not authors");
+    assert.ok(meeting.some(p => p.name === "Martin" && p.role === "interlocutor"));
+    assert.ok(administratorMentionContext({name:"Martin",evidence:"martin: can give you information"}, {
+        administratorText:"academic advising\n\nmartin:  can give you information",
+    }).includes("academic advising"), "export whitespace must not discard lookup context");
     console.log("University name safeguards passed");
 }
 main().catch(error => {console.error(error);process.exitCode=1;});

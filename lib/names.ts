@@ -955,9 +955,12 @@ export function universityNameLookup(
 
 /** Keep a nearby passage, not unrelated subjects elsewhere in the document. */
 export function administratorMentionContext(mention: NameMention, context: NameContext): string {
-    const text = context.administratorText ?? context.text ?? mention.evidence;
-    const at = text.indexOf(mention.evidence);
-    return at >= 0 ? text.slice(Math.max(0,at-400),at+mention.evidence.length+900) : mention.evidence;
+    // Contributor evidence collapses export whitespace, so raw minutes may
+    // contain a double space or line break where the evidence has one space.
+    const text = (context.administratorText ?? context.text ?? mention.evidence).replace(/\s+/g, " ");
+    const evidence = mention.evidence.replace(/\s+/g, " ");
+    const at = text.indexOf(evidence);
+    return at >= 0 ? text.slice(Math.max(0,at-400),at+evidence.length+900) : mention.evidence;
 }
 
 async function resolveAdministratorMention(
