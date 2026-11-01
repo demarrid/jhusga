@@ -4,7 +4,13 @@ import { resolveAffiliates, resetNameResolverCache, universityNameLookup, hasUni
 
 const kai = { id: "kai", name: "Kai Martin", nameKey: "kai martin", documentCount: 5,
     positions: ["Senator", "Associate Dean"], bodies: ["senate"] } satisfies RegularPerson;
-const people = new Map<string, {id:string;name:string;nameKey:string}>([["kai martin", kai]]);
+const julia = { id: "julia", name: "Julia Lee", nameKey: "julia lee", documentCount: 5,
+    positions: ["Senator"], bodies: ["senate"] } satisfies RegularPerson;
+const jackson = { id: "jackson", name: "Jackson Morris", nameKey: "jackson morris", documentCount: 5,
+    positions: ["Senator"], bodies: ["senate"] } satisfies RegularPerson;
+const people = new Map<string, {id:string;name:string;nameKey:string}>([
+    ["kai martin", kai], ["julia lee", julia], ["jackson morris", jackson],
+]);
 (globalThis as unknown as {prisma:unknown}).prisma = {
     hopkinsAffiliate: {
         findMany: async () => [...people.values()].map(p => ({...p, contributions: [],
@@ -48,6 +54,42 @@ async function main() {
     assert.ok(administratorMentionContext({name:"Martin",evidence:"martin: can give you information"}, {
         administratorText:"academic advising\n\nmartin:  can give you information",
     }).includes("academic advising"), "export whitespace must not discard lookup context");
+
+    const transcript = [
+        "Hernandez: Good evening, everyone. I am Rachel Hernandez, Vice Provost for Student Affairs. Thank you.",
+        "julia: i am the interim assistant vice provosta nd title ix operator",
+        "Boyd: I am Linda Boyd, interim Vice Provost for Institutional Equity.",
+        "jim braylor: i'm associate vice provost for international student scholar services at",
+        "Calvin Smith: Good evening, everyone. I am here from Public Safety on behalf of Bard.",
+        "   1. Jarron Jackson (Assistant Vice President for Public Safety)",
+        "   2. Sienna Kim (Director of Communications)",
+        "julia: i feel very aligned with students",
+    ].join("\n");
+    const spoken = extractContributors(transcript, "Senate Minutes", "minutes.senate");
+    const said = (name: string) => spoken.find(p => p.name === name);
+    for (const name of ["Hernandez", "Julia", "Boyd"]) {
+        assert.ok(said(name) && hasUniversityTitle(said(name)!), `${name} keeps the office they introduced: ${JSON.stringify(said(name))}`);
+    }
+    assert.match(said("Boyd")!.office ?? "", /Vice Provost for Institutional Equity/i);
+    assert.equal(spoken.filter(p => p.name === "Julia").length, 1, "one first name is one mention per document");
+    assert.deepEqual(await resolveAffiliates([said("Julia")!], {text:"Present: Julia Lee", isCurrentSession:true, body:"senate"}), [null],
+        "an introduced administrator's first name never falls through to a senator");
+    assert.deepEqual(await resolveAffiliates([{name:"Julia",evidence:"julia: i feel very aligned with students",onlyIfKnown:true}],
+        {text:"Present: Julia Lee", isCurrentSession:true, body:"senate"}), ["julia"], "a senator's own turn still resolves");
+    assert.equal(said("Jim Braylor")?.onlyIfKnown, false, "a full name with a title is believed");
+    assert.equal(said("Calvin Smith")?.onlyIfKnown, false, "a greeting before the introduction still introduces");
+    assert.equal(spoken.find(p => p.name === "Jarron Jackson")?.role, "guest");
+    resetNameResolverCache();
+    assert.deepEqual(await resolveAffiliates([
+        {name:"Jarron Jackson",role:"guest",office:"Assistant Vice President for Public Safety",
+            evidence:"Jarron Jackson (Assistant Vice President for Public Safety)"},
+        {name:"Jackson",evidence:"Jackson : What can we do as SGA",onlyIfKnown:true},
+    ], {text:"Jarron Jackson (Assistant Vice President for Public Safety)\nJackson : What can we do as SGA",
+        isCurrentSession:true, body:"senate"}), ["jarron jackson","jackson"],
+        "a speaker's first name is the senator, not a visitor's surname");
+    assert.ok(!spoken.some(p => p.name === "Sienna Kim" && p.role === "guest"), "SGA offices are not visiting administrators");
+    assert.ok(!extractContributors("martin: I am glad the dean said yes", "Senate Minutes", "minutes.senate")
+        .some(p => p.office), "a remark about a dean is not an introduction");
     console.log("University name safeguards passed");
 }
 main().catch(error => {console.error(error);process.exitCode=1;});

@@ -7,7 +7,7 @@ import { MASTER_FOLDER_ID, MAX_LINK_ROUNDS, SESSION_NUMBER } from "@/config/sga"
 import { matchAccount } from "@/lib/accounts";
 import { findQuote } from "@/lib/anchor";
 import { bodyForDocument } from "@/lib/bodies";
-import { extractContributors } from "@/lib/contributors";
+import { extractContributors, UNIVERSITY_OFFICE } from "@/lib/contributors";
 import { refreshRevisionAuthors } from "@/lib/drive-revisions";
 import { assessChange } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
@@ -665,7 +665,7 @@ export async function recordContributors(
         // standing role, not a fact about this document, so it lands on the
         // person rather than on the contribution.
         if (person.office && person.role !== "mentioned" && !administratorResolutions.has(index) &&
-            !/\b(?:dean|provost|professor|chancellor)\b/i.test(person.office)) {
+            !UNIVERSITY_OFFICE.test(person.office) && !/\bdirector\b.*\b(?:advising|academic|krieger|whiting|university)\b/i.test(person.office)) {
             const category = await prisma.hopkinsCategory.upsert({
                 where: {
                     type_name: { type: "committee_role", name: person.office },

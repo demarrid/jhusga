@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "prisma migrate deploy && npm run build",
     "start": "next start",
     "lint": "eslint",
     "generate:theme": "tsx scripts/generate-theme-css.ts",

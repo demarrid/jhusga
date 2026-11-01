@@ -189,7 +189,7 @@ async function main() {
     check(
         "citation href deep links to the annotation",
         read?.citations[0]?.href ===
-        `/documents/${document.id}#annotation-${surviving.id}`,
+        `/documents/${document.id}?version=latest#annotation-${surviving.id}`,
         read?.citations[0]?.href,
     );
 

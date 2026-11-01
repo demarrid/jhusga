@@ -1060,6 +1060,17 @@ export async function resolveAffiliates(
             }
             const local = tokenCandidates(mention.name, regulars).filter(person =>
                 context.text && namedInFull(context.text, person));
+            // A speaker label is a first name far more often than a surname:
+            // "Jackson:" in the debate is the senator Jackson, not Jarron
+            // Jackson, whose full name the notes give when he presented.
+            const member = mention.onlyIfKnown && context.body &&
+                local.length === 1 && givenNameCandidates(mention.name, local).length === 0
+                ? givenNameCandidates(mention.name, regulars.filter(person => person.bodies.includes(context.body!)))
+                : [];
+            if (member.length === 1) {
+                ids[index] = member[0].id;
+                continue;
+            }
             if (local.length === 1) {
                 ids[index] = local[0].id;
                 continue;

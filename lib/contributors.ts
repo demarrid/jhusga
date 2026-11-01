@@ -1082,8 +1082,47 @@ function recordSpeaker(
     if (name.split(/\s+/).length > 2) return;
     const introduced = keyParts.length === 2 &&
         nameKey(evidence).startsWith(nameKey(name) + " ") &&
-        /^(?:i\b|i['’]m\b|we\b)/i.test(remark.trim());
+        new RegExp(`^${GREETING}(?:i\\b|i['’]m\\b|we\\b|my\\s+name\\b)`, "i").test(remark.trim());
     recordPerson(found, name, "interlocutor", evidence, undefined, !introduced);
+}
+
+/** "Good evening, everyone." ahead of the sentence a speaker introduces themselves in. */
+const GREETING = String.raw`(?:(?:hi|hello|hey|good\s+(?:morning|afternoon|evening))\b[^.!?]{0,60}[.!?,]\s*)?`;
+
+/** Typed in a hurry, "provosta" is still a provost. */
+const UNIVERSITY_TITLE = String.raw`(?:(?:interim|acting|associate|assistant|senior|vice|executive|deputy)\s+)*(?:dean|provost|professor|chancellor|director)[a-z]{0,2}\b[^.;!?]{0,100}`;
+const UNIVERSITY_TITLE_CONTEXT = /\b(?:dean|provost|professor|chancellor|advising|academic|university|krieger|whiting)/i;
+const SPEAKER_LABEL = String.raw`([A-Za-z’'-]+(?:\s+[A-Za-z’'-]+)?):\s*`;
+
+/**
+ * A speaker giving their university office: the remark is the office itself
+ * ("marrow: associate director of advising"), or a first sentence that says
+ * it ("Boyd: I am Linda Boyd, interim Vice Provost for Institutional Equity").
+ */
+function universityIntroduction(line: string): { speaker: string; office: string } | null {
+    const match = line.match(new RegExp(`^${SPEAKER_LABEL}(${UNIVERSITY_TITLE})\\s*$`, "i")) ??
+        line.match(new RegExp(
+            `^${SPEAKER_LABEL}${GREETING}(?:i\\s+am|i['’]m|my\\s+name\\s+is)\\s+` +
+            String.raw`(?:[A-Za-z’'-]+(?:\s+[A-Za-z’'-]+){0,2}\s*,\s*)?(?:the\s+)?(${UNIVERSITY_TITLE})`,
+            "i",
+        ));
+    if (!match || !UNIVERSITY_TITLE_CONTEXT.test(match[2]!)) return null;
+    const office = match[2]!.trim().replace(/\b(dean|provost|professor|chancellor|director)[a-z]{1,2}\b/gi, "$1");
+    return { speaker: match[1]!, office };
+}
+
+/** University offices, as opposed to SGA ones like "Student Body Vice President". */
+export const UNIVERSITY_OFFICE =
+    /\b(?:(?:assistant|associate|senior|executive)\s+vice\s+president|vice\s+president\s+for|vice\s+provost|provost|dean|professor|chancellor)\b/i;
+
+/**
+ * "Jarron Jackson (Assistant Vice President for Public Safety)" -- notes list
+ * the administrators who came to present by their name and office.
+ */
+function harvestTitledGuest(found: Map<string, ExtractedContributor>, line: string): boolean {
+    const match = line.replace(ENUMERATOR, "").trim().match(/^([^()]{3,60}?)\s*\(([^()]{3,100})\)\s*$/);
+    if (!match || !UNIVERSITY_OFFICE.test(match[2]!) || !isStandalonePersonName(match[1]!)) return false;
+    return recordPerson(found, match[1]!, "guest", line, match[2]);
 }
 
 /** `<rises>`, `\<the script\>` — the minute-taker describing the room, not quoting it. */
@@ -1336,14 +1375,17 @@ export function extractContributors(
             recordPerson(found, meetingPartner[1]!, "mentioned", title!);
         }
     }
-    // Introductions such as "marrow: associate director of advising" supply
-    // an office even when subsequent speaker turns use only the surname.
+    // Introductions such as "marrow: associate director of advising" or
+    // "Boyd: I am Linda Boyd, interim Vice Provost…" supply an office even
+    // when later speaker turns use only the surname. Read before any turn, so
+    // an administrator's "julia:" is never first matched to a senator Julia.
     if (minutes) {
         for (const raw of lines) {
             const line = toPlainText(raw).replace(ENUMERATOR, "").trim();
-            const introduction = line.match(/^([A-Za-z’'-]+(?:\s+[A-Za-z’'-]+)?):\s*((?:(?:associate|assistant|senior|vice|executive)\s+)*(?:dean|provost|professor|chancellor|director)\b[^.;!?]{0,100})\s*$/i);
-            if (introduction && /\b(?:dean|provost|professor|chancellor|advising|academic|university|krieger|whiting)\b/i.test(introduction[2]!)) {
-                recordPerson(found, introduction[1]!, "interlocutor", line, introduction[2], true);
+            const introduction = universityIntroduction(line);
+            if (introduction) {
+                recordPerson(found, introduction.speaker, "interlocutor", line, introduction.office,
+                    introduction.speaker.split(/\s+/).length < 2);
             }
         }
     }
@@ -1452,6 +1494,8 @@ export function extractContributors(
                 continue;
             }
         }
+
+        if (minutes && harvestTitledGuest(found, line)) continue;
 
         const next = peekNonEmpty(lines, i);
         harvestNamedOffice(found, line, next, kind);
