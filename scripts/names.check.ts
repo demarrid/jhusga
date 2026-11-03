@@ -422,3 +422,6 @@ check(
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
+
+if (bodyForDocument({ kind: "unknown", folderPath: "05_Committees/Academic Affairs/Demarri's Folder", title: "9/2 - Milestones and Assignments" }) !== "senate") throw new Error("Committee working document lost its Senate name context");
+if (bodyForDocument({ kind: "unknown", folderPath: "General", title: "Committee ideas" }) !== null) throw new Error("A title mentioning a committee must not establish Senate context");

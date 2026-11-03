@@ -1179,6 +1179,21 @@ check(
         .some(person => person.name === "Cole Liazos-Coffey" && person.role === "present" && person.office === "Vice Chair"),
 );
 
+const financeRoll = extractContributors("| Present | Absent |\n| --- | --- |\n| Amy Xu<br>Kai Martin | Excused<br>Srika Popuri<br>Omotola Alaofin<br> |", undefined, "minutes.committee");
+check("column attendance preserves full names and nested excused status", financeRoll.length === 4 &&
+    financeRoll.some(p => p.name === "Amy Xu" && p.role === "present") &&
+    financeRoll.some(p => p.name === "Srika Popuri" && p.role === "excused") &&
+    financeRoll.some(p => p.name === "Omotola Alaofin" && p.role === "excused"));
+const numberedRoll = extractContributors("1. Attendance\n   1. Absent\n   2. Excused\n   3. Present\n      1. Shreemann Patel, Jazzlyn Fernandez, Honora Muratori (½)\n   4. Faculty\n      1. Tekeya Peterson\n2. Agenda Items\n   1. Grace Guan", undefined, "minutes.executive");
+check("numbered rolls switch roles and stop at the next agenda item", numberedRoll.length === 4 &&
+    numberedRoll.some(p => p.name === "Honora Muratori" && p.role === "present" && p.note === "½") &&
+    numberedRoll.some(p => p.name === "Tekeya Peterson" && p.role === "staff"));
+const spacedRoll = extractContributors("Attendance\n\nPresent:\n\nIsaac\n\nTola\n\nDemarri\n\nInitiative Updates\n\nAdulting 101 -Ella", undefined, "minutes.committee");
+check("paragraph spacing does not end a stacked attendance roll", spacedRoll.length === 3 && spacedRoll.every(p => p.role === "present" && p.onlyIfKnown));
+const assignments = extractContributors("| Initiative | Team |\n| --- | --- |\n| Manuals | Lead: Rocio<br>Assist: Grace |\n| Grading | Lead: Appointed in Dec<br>Assist: Ella |", undefined, "unknown");
+check("initiative team labels extract known-person mentions", ["Rocio", "Grace", "Ella"].every(name => assignments.some(p => p.name === name && p.role === "mentioned" && p.onlyIfKnown)) && !assignments.some(p => /Appointed|Dec/.test(p.name)));
+check("empty attendance column does not shift the next column", extractContributors("| Present | Excused |\n| --- | --- |\n| | Srika Popuri |", undefined, "minutes.committee").every(p => p.role === "excused"));
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
 

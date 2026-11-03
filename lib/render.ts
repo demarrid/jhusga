@@ -631,7 +631,7 @@ function parseTable(rows: Line[], inline: Inline): Block {
         // Docs marks the first row of every table as a header, including a
         // roll whose first row is just the chair and their status. A real
         // header names the columns; it does not mark anyone present.
-        if (header && (body.length === 0 || header.cells.some((cell) => ATTENDANCE_STATUS.test(runsText(cell).trim())))) {
+        if (header && (body.length === 0 || (!isAttendanceHeader(header) && header.cells.some((cell) => ATTENDANCE_STATUS.test(runsText(cell).trim()))))) {
             return { kind: "table", header: null, rows: [header, ...body] };
         }
         return { kind: "table", header, rows: body };
@@ -693,9 +693,19 @@ function hasTwoLongColumns(rows: TableRow[]): boolean {
     return longest.filter((length) => length >= 80).length >= 2;
 }
 
-const ATTENDANCE_STATUS = /^(present|absent|excused|late|here)\b/i;
+const ATTENDANCE_STATUS = /^(present|absent|excused|unexcused|late|here)\b/i;
+
+/** Column labels, unlike a cell containing both a label and a roster. */
+function isAttendanceHeader(row: TableRow): boolean {
+    return row.cells.length >= 2 && row.cells.every(cell =>
+        /^(?:present|absent|excused|unexcused|late|here)\s*:?$/i.test(runsText(cell).trim()),
+    );
+}
 
 function looksLikeAttendance(rows: TableRow[]): boolean {
+    // A column can hold an entire roster. Its total length does not make
+    // the opposite column an agenda aside; keep the authored grid intact.
+    if (rows[0] && isAttendanceHeader(rows[0])) return true;
     const cells = rows
         .flatMap((row) => row.cells.map((cell) => runsText(cell).trim()))
         .filter(Boolean);

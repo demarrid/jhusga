@@ -218,6 +218,16 @@
   transition: border-color 180ms ease, background 180ms ease;
 }
 
+/* Flush to the card's top edge, independent of its content padding. */
+.documentKindStrip {
+  position: absolute;
+  top: 0;
+  right: 30px;
+  width: 100px;
+  height: 3px;
+  pointer-events: none;
+}
+
 .documentCard:hover {
   border-color: #377ebc;
   background: rgba(234, 243, 251, 0.55);

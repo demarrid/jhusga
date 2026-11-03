@@ -24,6 +24,7 @@
  * file"), never as authorship -- see the schema comment on Document.
  */
 
+import { CONFIRMED_DRIVE_ACCOUNTS } from "@/config/drive-accounts";
 import { nameKey } from "@/lib/contributors";
 
 /** Name suffixes, which are not surnames. */
@@ -159,6 +160,13 @@ export function matchAccount<T extends AccountCandidate>(
     const displayName = account.displayName?.trim() ?? "";
 
     if (email && isRoleAccount(email)) return null;
+
+    const confirmed = CONFIRMED_DRIVE_ACCOUNTS[email];
+    if (confirmed) {
+        const matches = people.filter(person => nameKey(person.name) === nameKey(confirmed));
+        if (matches.length !== 1) return null;
+        return { person: matches[0]!, score: 6, evidence: `Drive account ${email} (confirmed as ${confirmed})` };
+    }
 
     if (displayName) {
         const key = nameKey(displayName);

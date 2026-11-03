@@ -485,14 +485,17 @@ export async function rebuildReferences(): Promise<number> {
  * Rows are written with source "drive". Parser-authored rows are a different
  * source, so a later re-parse of the text does not drop a Drive match.
  */
-export async function recordDriveAccounts(): Promise<number> {
+export async function recordDriveAccounts(documentIds?: string[]): Promise<number> {
     const people = await prisma.hopkinsAffiliate.findMany({
         select: { id: true, name: true },
     });
 
     const documents = await prisma.document.findMany({
         where: {
+            ...(documentIds ? { id: { in: documentIds } } : {}),
             OR: [
+                { NOT: { driveOwnerName: null } },
+                { NOT: { driveLastEditorName: null } },
                 { NOT: { driveOwnerEmail: null } },
                 { NOT: { driveLastEditorEmail: null } },
             ],
@@ -529,7 +532,7 @@ export async function recordDriveAccounts(): Promise<number> {
         ];
 
         for (const account of accounts) {
-            if (!account.email) continue;
+            if (!account.email && !account.displayName) continue;
 
             const match = matchAccount(account, people);
             if (!match) continue;
@@ -548,7 +551,7 @@ export async function recordDriveAccounts(): Promise<number> {
     // made this one of the slowest phases of the sync. The roles here are
     // Drive's own, so no parser row can already hold the same key.
     await prisma.$transaction([
-        prisma.documentContributor.deleteMany({ where: { source: "drive" } }),
+        prisma.documentContributor.deleteMany({ where: { source: "drive", ...(documentIds ? { documentId: { in: documentIds } } : {}) } }),
         prisma.documentContributor.createMany({ data: rows, skipDuplicates: true }),
     ]);
 

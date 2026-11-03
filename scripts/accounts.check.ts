@@ -125,5 +125,10 @@ check(
     matchAccount({ email: "jhusga1718@gmail.com" }, people) === null,
 );
 
+check("confirmed opaque accounts resolve without weakening handle scoring", matchAccount({ email: "s.109su3ire@gmail.com" }, [{ id: "sumi", name: "Sumire Sumi" }])?.person.id === "sumi");
+check("confirmed accounts do not invent a missing person", matchAccount({ email: "s.109su3ire@gmail.com" }, people) === null);
+check("display names can identify accounts without emails", matchAccount({ displayName: "Tyler Turner" }, people)?.person.id === "tyler");
+check("duplicate display names remain unresolved", matchAccount({ displayName: "Tyler Turner" }, [{ id: "a", name: "Tyler Turner" }, { id: "b", name: "Tyler Turner" }]) === null);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

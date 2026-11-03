@@ -21,6 +21,7 @@ import {
     type DocumentSort,
 } from "@/lib/document-sort";
 import { documentKindLabel } from "@/lib/kinds";
+import { documentKindColor } from "@/lib/document-kind-colors";
 
 import styles from "./documents.module.css";
 
@@ -247,6 +248,11 @@ function DocumentCard({
 
     return (
         <li className={styles.documentCard}>
+            <span
+                className={styles.documentKindStrip}
+                style={{ backgroundColor: documentKindColor(document.kind) }}
+                aria-hidden="true"
+            />
             <div className={styles.documentIndex}>{String(index).padStart(2, "0")}</div>
             <article>
                 <p className={styles.documentMetadata}>{metadata}</p>

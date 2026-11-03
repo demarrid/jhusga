@@ -25,3 +25,13 @@ The reprocess command retains its existing model-assisted nickname resolution be
 Sixteen targeted suites passed, including new regression cases for explicit local names versus old aliases, prose in attendance rolls, nested elections roles, link offsets, weekly date collisions, and contradictory passage chronology. TypeScript, lint on changed code, and a production Next.js build also passed.
 
 The database available in this workspace predates four of the reported live documents. Published pages and current source exports were inspected separately. Production data was not changed by these checks.
+
+## Attendance and Drive-owner follow-up (2026-11-03)
+
+- Attendance column headings now carry into table rows; nested Excused labels override Absent without splitting full names. Empty cells retain their column position.
+- Numbered and paragraph-separated attendance rolls are read in minutes, stopping at the next section. Single names still require the existing identity resolver.
+- Lead/Assist entries in initiative tables become known-person mentions.
+- Confirmed opaque Drive handles are configured in `config/drive-accounts.ts`; account matching also accepts exact display names when no email is supplied.
+- `npx tsx scripts/refresh-contributors.ts <document-id> ...` previews a scoped repair; add `--apply` to replace derived contributors and Drive links only for those documents. Existing manual contributor rows are preserved by the normal contributor writer. The command uses the configured database and existing name-resolution behavior; it does not retrieve Drive revisions.
+
+Regression coverage includes the reported finance table, executive numbered roll, AA paragraph roll, initiative assignments, empty attendance cells, and confirmed/missing/ambiguous Drive accounts.

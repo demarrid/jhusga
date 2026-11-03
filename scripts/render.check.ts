@@ -33,6 +33,19 @@ check("restoring provision breaks preserves citation text",
 const attendanceColumns = renderDocument("| Here:<br>Veda<br>Cole | Absent:<br>Excused:<br>Kai |\n| :---- | :---- |", []);
 check("single-row attendance keeps equal table columns without a false header",
     attendanceColumns[0]?.kind === "table" && attendanceColumns[0].header === null && attendanceColumns[0].rows.length === 1);
+const financeAttendanceSource = "| Present | Absent |\n| --- | --- |\n| Amy Xu<br>Kai Martin<br>Peter Tarpley<br>Luke Holmes<br>Oluwanifemi Ajayi<br>Mamadou Thiam<br>Yash Gupta<br>Aarshi Lamichhane | Excused<br>Srika Popuri<br>Omotola Alaofin<br> |";
+const excusedQuote = findQuote(financeAttendanceSource, "Srika Popuri")!;
+const financeAttendance = renderDocument(financeAttendanceSource, [{ id: "excused-person", ...excusedQuote }]);
+check("long attendance columns stay a table with real Present/Absent headers",
+    financeAttendance[0]?.kind === "table" && financeAttendance[0].header !== null &&
+    financeAttendance[0].header.cells.map(runsText).join("|") === "Present|Absent" && financeAttendance[0].rows.length === 1);
+check("Excused and its names retain their authored line breaks in the second column",
+    financeAttendance[0]?.kind === "table" &&
+    runsText(financeAttendance[0].rows[0].cells[1]).trim() === "Excused\nSrika Popuri\nOmotola Alaofin");
+check("attendance layout repair preserves citation anchors", highlighted(financeAttendance, "excused-person") === "Srika Popuri");
+const emptyAttendance = renderDocument("| Present | Excused |\n| --- | --- |\n| | Srika Popuri |", []);
+check("empty attendance columns retain their position", emptyAttendance[0]?.kind === "table" &&
+    emptyAttendance[0].rows[0].cells.length === 2 && runsText(emptyAttendance[0].rows[0].cells[0]) === "");
 const updateColumns = renderDocument(`| ${"Updates from the committee. ".repeat(6)} | ${"Responses and next steps. ".repeat(6)} |\n| :---- | :---- |`, []);
 check("single-row minutes updates preserve both prose columns",
     updateColumns[0]?.kind === "table" && updateColumns[0].header === null);

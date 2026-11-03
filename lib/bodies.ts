@@ -81,6 +81,9 @@ export function bodyForDocument(input: {
     if (/judicial|judiciary/.test(haystack)) return "judiciary";
     if (/programming/.test(haystack)) return "programming";
     if (/senate|general body|\bgbm\b/.test(haystack)) return "senate";
+    // Committee working documents have the same Senate context as their
+    // minutes, even when their title gives no meeting/document kind.
+    if (/(?:^|\/)(?:\d+[_ -])?committees?(?:\/|$)/i.test(input.folderPath)) return "senate";
 
     return null;
 }

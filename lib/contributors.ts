@@ -1302,16 +1302,39 @@ function peelTrailingOffice(line: string): { name: string; office: string } | nu
     return null;
 }
 
+/** Bare attendance headings, including numbered list items. */
+function attendanceLabel(text: string): ContributorRole | null {
+    const label = toPlainText(text).replace(ENUMERATOR, "").replace(/:\s*$/, "").trim();
+    return ROLE_LABELS.find(entry => ATTENDANCE_ROLES.has(entry.role) && entry.pattern.test(label))?.role ?? null;
+}
+
+function harvestAttendanceNames(found: Map<string, ExtractedContributor>, text: string, role: ContributorRole, evidence: string): boolean {
+    const names = splitPeople(text.replace(ENUMERATOR, "").trim());
+    if (!names.length || !names.every(name => {
+        const parsed = parsePersonToken(name);
+        return parsed && looksLikePersonName(parsed.name) &&
+            !nameKey(parsed.name).split(" ").some(word => SPEAKER_HEADING_WORDS.has(word) || SPEAKER_NOISE.has(word));
+    })) return false;
+    for (const name of names) {
+        const parsed = parsePersonToken(name)!;
+        recordPerson(found, name, role, evidence, undefined, nameKey(parsed.name).split(" ").length === 1);
+    }
+    return true;
+}
+
 function harvestAttendanceTable(
     found: Map<string, ExtractedContributor>,
     line: string,
+    columns: (ContributorRole | null)[] = [],
 ): void {
     if (!line.includes("|")) return;
 
     const cells = line
         .split("|")
         .map((cell) => cell.trim())
-        .filter((cell) => cell && !/^:?-{3,}:?$/.test(cell));
+        .slice(line.trimStart().startsWith("|") ? 1 : 0);
+    if (line.trimEnd().endsWith("|")) cells.pop();
+    if (cells.every(cell => /^:?-{3,}:?$/.test(cell))) return;
 
     if (cells.length < 2) return;
 
@@ -1334,7 +1357,24 @@ function harvestAttendanceTable(
         }
     }
 
-    for (const cell of cells) {
+    for (const [index, cell] of cells.entries()) {
+        const parts = cell.split(/<br\s*\/?>/i).map(part => toPlainText(part)).filter(Boolean);
+        let role = columns[index] ?? null;
+        for (const part of parts) {
+            const heading = attendanceLabel(part);
+            if (heading) { role = heading; continue; }
+            if (labeledSegments(part).length) {
+                harvestLabeledText(found, part, part);
+                continue;
+            }
+            if (role) harvestAttendanceNames(found, part, role, `${role}: ${part}`);
+            // Initiative assignments are mentions, not proof of attendance.
+            const assignment = /^(?:Lead|Assist):\s*(.+)$/i.exec(part);
+            if (assignment) for (const name of splitPeople(assignment[1]!)) {
+                recordPerson(found, name, "mentioned", part, undefined, true);
+            }
+        }
+        if (role) continue;
         // Inner line breaks are how a Here: roll is typed in a table cell:
         // "Here:<br>Kai<br>Veda". Joining them with spaces is what lets the
         // first-name splitter see a roll rather than a heading and seven
@@ -1405,15 +1445,22 @@ export function extractContributors(
     // "and" and sometimes without; reading each line on its own drops every
     // name after the first.
     let carryingList: CarryingList | null = null;
+    let attendance: { role: ContributorRole; indent: number; numbered: boolean } | null = null;
+    let tableColumns: (ContributorRole | null)[] = [];
 
     for (let i = 0; i < lines.length; i += 1) {
         const rawLine = lines[i]!;
         if (rawLine.includes("|")) {
-            harvestAttendanceTable(found, rawLine);
+            const cells = rawLine.trim().replace(/^\||\|$/g, "").split("|");
+            const headings = cells.map(attendanceLabel);
+            if (headings.some(Boolean) && cells.every((cell, index) => !cell.trim() || headings[index])) tableColumns = headings;
+            harvestAttendanceTable(found, rawLine, tableColumns);
+            attendance = null;
             carryingList = null;
             continue;
         }
 
+        tableColumns = [];
         const line = toPlainText(rawLine);
         if (!line) {
             // A blank line ends the wrapped list; a run of them ends the
@@ -1422,6 +1469,7 @@ export function extractContributors(
             continue;
         }
         if (line.length > 500) {
+            attendance = null;
             harvestLabeledText(found, line, line);
             // Long town-hall answers still have an attributed speaker. Limit
             // this to the opening attribution, not colons buried in prose.
@@ -1434,6 +1482,17 @@ export function extractContributors(
         }
 
         const indent = indentOf(rawLine);
+        const attendanceHeading = minutes ? attendanceLabel(line) : null;
+        if (attendanceHeading) {
+            attendance = { role: attendanceHeading, indent, numbered: LIST_ITEM.test(rawLine) };
+            carryingList = null;
+            continue;
+        }
+        if (attendance) {
+            const inside = !attendance.numbered || indent > attendance.indent;
+            if (inside && harvestAttendanceNames(found, line, attendance.role, `${attendance.role}: ${line}`)) continue;
+            attendance = null;
+        }
         if (reports && (HEADING_LINE.test(rawLine) || indent <= reports.heading)) {
             reports = null;
         }
