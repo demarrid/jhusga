@@ -21,9 +21,9 @@
 
 .inner {
   min-height: 5.25rem;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 2rem;
   padding: 0.75rem max(3.5vw, 1.25rem);
 }
@@ -62,6 +62,7 @@
 }
 
 .navigation {
+  justify-self: end;
   display: flex;
   align-items: center;
   gap: clamp(1.25rem, 2.5vw, 2.75rem);
@@ -106,13 +107,69 @@
   background: currentColor;
 }
 
+.notice {
+  max-width: 20rem;
+  margin: 0;
+  color: #53657c;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  text-align: center;
+  animation: breathe 5s ease-in-out infinite;
+}
+
+.notice a {
+  color: color-mix(in srgb, var(--color-accent, #3685e2) 45%, #53657c);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  white-space: nowrap;
+}
+
+.notice a:hover,
+.notice a:focus-visible {
+  color: #002d72;
+}
+
+.notice:focus-within,
+.notice:hover {
+  animation-play-state: paused;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.78; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+  }
+}
+
+@media (min-width: 681px) and (max-width: 1200px) {
+  .inner {
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem 2rem;
+  }
+
+  .notice {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: none;
+  }
+}
+
 @media (max-width: 680px) {
   .inner {
     min-height: auto;
+    display: flex;
     align-items: stretch;
     flex-direction: column;
     gap: 0.75rem;
     padding-block: 0.7rem 0.8rem;
+  }
+
+  .notice {
+    max-width: none;
   }
 
   .logo {
