@@ -346,30 +346,14 @@ function byPerson(
             id: person.id,
             name: person.name,
             tooltip: [...new Set(person.held
-                .map((entry) => entry.note)
-                .filter((note): note is string => Boolean(note && /Identity (?:reviewed|verified|supported)/.test(note))))]
+                .map((entry) => entry.note?.trim())
+                .filter((note): note is string => Boolean(note)))]
                 .join("\n") || undefined,
             roles: person.held
                 .sort((a, b) => contributorRoleOrder(a.role) - contributorRoleOrder(b.role))
-                .map(
-                    (entry) =>
-                        contributorRoleLabel(entry.role) +
-                        (contributorNoteLabel(entry.note, person.name)
-                            ? ` (${contributorNoteLabel(entry.note, person.name)})` : ""),
-                )
+                .map((entry) => contributorRoleLabel(entry.role))
                 .join(", "),
         }));
-}
-
-/** Keep identity provenance on the name's native HTML tooltip. */
-function contributorNoteLabel(note: string | null, name: string): string | null {
-    if (!note || !/Identity (?:reviewed|verified|supported)/.test(note)) return note;
-    // Reviewed corrections include the directory's full name and title.
-    const reviewedTitle = note.split(`${name}, `)[1];
-    if (reviewedTitle) return reviewedTitle.split(/\.\s+https?:\/\//)[0].trim();
-    // Ingestion stores the office before its verification details.
-    return note.split(/Identity (?:reviewed|verified|supported)/)[0]
-        .replace(/[\s·]+$/, "").trim() || null;
 }
 
 function originalLabel(source: string): string {
