@@ -27,15 +27,7 @@ export default function Header() {
 
         <p className={styles.notice}>
           This website is not official. Visit the official site{" "}
-          <a
-            href="https://jhu.campusgroups.com/sga/home"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Official SGA site (opens in a new tab)"
-          >
-            here <span aria-hidden="true">&#8599;</span>
-          </a>
-          .
+          <a href="https://jhu.campusgroups.com/sga/home" target="_blank" rel="noopener noreferrer" aria-label="Official SGA site (opens in a new tab)">here <span aria-hidden="true">&#8599;</span></a>.
         </p>
 
         <MainNav />

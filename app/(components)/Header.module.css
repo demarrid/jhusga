@@ -108,17 +108,18 @@
 }
 
 .notice {
-  max-width: 20rem;
   margin: 0;
-  color: #53657c;
+  color: #627588;
   font-size: 0.75rem;
   line-height: 1.6;
   text-align: center;
-  animation: breathe 5s ease-in-out infinite;
+  white-space: nowrap;
+  animation: breathe 4.8s ease-in-out infinite;
 }
 
 .notice a {
-  color: color-mix(in srgb, var(--color-accent, #3685e2) 45%, #53657c);
+  display: inline;
+  color: inherit;
   text-decoration: underline;
   text-underline-offset: 0.2em;
   white-space: nowrap;
@@ -135,8 +136,8 @@
 }
 
 @keyframes breathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.78; }
+  0%, 100% { color: #627588; }
+  50% { color: #1c334c; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -154,7 +155,7 @@
   .notice {
     grid-column: 1 / -1;
     grid-row: 2;
-    max-width: none;
+    white-space: normal;
   }
 }
 
@@ -169,7 +170,7 @@
   }
 
   .notice {
-    max-width: none;
+    white-space: normal;
   }
 
   .logo {
