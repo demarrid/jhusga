@@ -964,3 +964,8 @@
 .versionSentence[aria-busy="true"] {
   opacity: 0.55;
 }
+
+.articleSummary {
+  max-width: 65rem;
+  padding: clamp(3rem, 6vw, 5rem) max(6vw, 1.5rem) clamp(6rem, 10vw, 9rem);
+}

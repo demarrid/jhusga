@@ -189,7 +189,7 @@ export default async function DocumentPage({
 
             <div className={styles.actions}>
                 <a href={document.source} target="_blank" rel="noreferrer">
-                    {originalLabel(document.source)} (latest source) ↗
+                    {originalLabel(document.source)}{isSecondaryKind(document.kind) ? "" : " (latest source)"} ↗
                 </a>
                 {document.lineageKey && isComparableKind(document.kind) && (
                     <Link href={`/documents/${document.id}/compare`}>
@@ -244,6 +244,14 @@ export default async function DocumentPage({
               * the summary comes first, because a reader who cannot see both
               * at once is better served by the short version.
               */}
+            {isSecondaryKind(document.kind) ? (
+                <section className={styles.articleSummary} aria-labelledby="article-summary">
+                    <h2 id="article-summary">Summary</h2>
+                    <DocumentRestatement restatement={document.restatement
+                        ? { ...document.restatement, citations: [] }
+                        : null} />
+                </section>
+            ) : (
             <div className={styles.readerLayout}>
                 <article className={styles.documentPane}>
                     <DocumentVersionSelector options={view.options} selectedId={view.selected.id} />
@@ -311,6 +319,7 @@ export default async function DocumentPage({
                     </DoubleStickyHolder>
                 </aside>
             </div>
+            )}
         </main>
     );
 }

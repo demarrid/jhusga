@@ -1,3 +1,4 @@
+import { isSecondaryKind } from "@/lib/kinds";
 import { prisma } from "@/lib/prisma";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { demoDocument } from "@/lib/demo-data";
@@ -9,6 +10,14 @@ import { loadDocument, type DocumentDetail } from "@/server/documents";
 export async function getVersionedDocument(documentId: string, requested?: string) {
     const current = await loadDocument(documentId);
     if (!current) return null;
+    // Newspaper snapshots are retained for internal comparisons, not public reading.
+    // Ignore historical URLs and keep the current summary available.
+    if (isSecondaryKind(current.kind)) {
+        const options = versionOptions([{ id: "latest", modifiedAt: null,
+            observedAt: (current.lastSyncedAt ?? current.driveCreatedTime ?? new Date()).toISOString() }]);
+        const selection = selectDocumentVersion(options, null, "latest")!;
+        return { document: current, options, ...selection, historical: false };
+    }
     const demo = demoModeEnabled();
     const rows = demo ? demoVersions(current) : await prisma.documentVersion.findMany({
         where: { status: "published", revision: { documentId } },
