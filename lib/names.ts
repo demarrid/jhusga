@@ -1086,9 +1086,13 @@ export async function resolveAffiliates(
             }
             // Loose speaker/space-separated attendance tokens need corroboration.
             // An archive-wide near-match is not evidence that this person attended.
+            // Speakers may address another branch (for example, executive
+            // reports to Senate). Attendance remains scoped to the meeting body.
             const eligible = mention.onlyIfKnown ? regulars.filter(person =>
                 (context.text && namedInFull(context.text, person)) ||
-                ((context.isCurrentSession || asOf) && context.body && person.bodies.includes(context.body))
+                ((context.isCurrentSession || asOf) && context.body &&
+                    (person.bodies.includes(context.body) ||
+                        (mention.role === "interlocutor" && person.bodies.length > 0)))
             ) : regulars;
             const given = givenNameCandidates(mention.name, eligible);
             const surname = surnameCandidates(mention.name, eligible);

@@ -1194,6 +1194,13 @@ const assignments = extractContributors("| Initiative | Team |\n| --- | --- |\n|
 check("initiative team labels extract known-person mentions", ["Rocio", "Grace", "Ella"].every(name => assignments.some(p => p.name === name && p.role === "mentioned" && p.onlyIfKnown)) && !assignments.some(p => /Appointed|Dec/.test(p.name)));
 check("empty attendance column does not shift the next column", extractContributors("| Present | Excused |\n| --- | --- |\n| | Srika Popuri |", undefined, "minutes.committee").every(p => p.role === "excused"));
 
+const informalTurns = "mahima; i think everyone has already talked about Peter\nroyce \\[video\\]: " + "Here are my announcements. ".repeat(30);
+const informalSpeakers = extractContributors(informalTurns, "Senate Minutes", "minutes.senate");
+check("semicolon and recorded-video speaker labels retain known-person safeguards",
+    ["Mahima", "Royce"].every(name => informalSpeakers.some(p => p.name === name && p.role === "interlocutor" && p.onlyIfKnown)));
+check("informal speaker labels are limited to minutes",
+    !extractContributors(informalTurns, "Funding bill", "bill.funding").some(p => p.role === "interlocutor"));
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
 

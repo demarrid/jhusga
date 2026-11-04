@@ -1461,7 +1461,13 @@ export function extractContributors(
         }
 
         tableColumns = [];
-        const line = toPlainText(rawLine);
+        // Hurried minutes may use a semicolon for a speaker label or mark
+        // a recorded report with [video]. Keep these as known-person matches.
+        const plainLine = toPlainText(rawLine);
+        const line = minutes ? plainLine.replace(
+            /^([A-Za-z][A-Za-z'’.-]{1,}(?:\s+[A-Za-z][A-Za-z'’.-]{1,}){0,2})\s*(?:;|\[video\]\s*:)(?=\s+\S)/i,
+            "$1:",
+        ) : plainLine;
         if (!line) {
             // A blank line ends the wrapped list; a run of them ends the
             // report section, but that is handled by indent below.

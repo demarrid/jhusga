@@ -8,13 +8,13 @@ const julia = { id: "julia", name: "Julia Lee", nameKey: "julia lee", documentCo
     positions: ["Senator"], bodies: ["senate"] } satisfies RegularPerson;
 const jackson = { id: "jackson", name: "Jackson Morris", nameKey: "jackson morris", documentCount: 5,
     positions: ["Senator"], bodies: ["senate"] } satisfies RegularPerson;
-const people = new Map<string, {id:string;name:string;nameKey:string}>([
+const people = new Map<string, {id:string;name:string;nameKey:string;positions?:string[]}>([
     ["kai martin", kai], ["julia lee", julia], ["jackson morris", jackson],
 ]);
 (globalThis as unknown as {prisma:unknown}).prisma = {
     hopkinsAffiliate: {
         findMany: async () => [...people.values()].map(p => ({...p, contributions: [],
-            hopkinsRelationships: [{hopkinsCategory:{name:"Senator"}}, {hopkinsCategory:{name:"Associate Dean"}}]})),
+            hopkinsRelationships: (p.positions ?? []).map(name => ({hopkinsCategory:{name}}))})),
         findUnique: async ({where}:{where:{nameKey:string}}) => people.get(where.nameKey) ?? null,
         upsert: async ({create}:{create:{name:string;nameKey:string}}) => {
             const p = people.get(create.nameKey) ?? {...create,id:create.nameKey};
@@ -90,6 +90,29 @@ async function main() {
     assert.ok(!spoken.some(p => p.name === "Sienna Kim" && p.role === "guest"), "SGA offices are not visiting administrators");
     assert.ok(!extractContributors("martin: I am glad the dean said yes", "Senate Minutes", "minutes.senate")
         .some(p => p.office), "a remark about a dean is not an introduction");
+    const officers = [
+        {name:"Honora Muratori", positions:["Secretary"]},
+        {name:"Amy Xu", positions:["Treasurer"]},
+        {name:"Sienna Kim", positions:["Director of Communications"]},
+        {name:"Felix Chen", positions:["Chief Justice"]},
+    ];
+    for (const officer of officers) {
+        people.set(nameKey(officer.name), {...officer, id:nameKey(officer.name), nameKey:nameKey(officer.name)});
+    }
+    resetNameResolverCache();
+    const crossBranch = extractContributors(
+        "nora: attendance policies\namy: fundraising updates\nsienna: three announcements\nfelix: swearing in the new officers",
+        "Senate General Body Meeting", "minutes.senate",
+    );
+    const context = {isCurrentSession:true, body:"senate" as const};
+    assert.deepEqual(await resolveAffiliates(crossBranch, context), officers.map(p => nameKey(p.name)),
+        "speakers from other SGA branches are retained");
+    assert.deepEqual(await resolveAffiliates(crossBranch.map(p => ({...p, role:"present"})), context),
+        [null,null,null,null], "loose attendance tokens retain the body restriction");
+    assert.deepEqual(await resolveAffiliates(crossBranch, {body:"senate"}), [null,null,null,null],
+        "undated historical minutes do not use current officers");
+    assert.deepEqual(await resolveAffiliates(crossBranch, {body:"senate", asOf:new Date("2026-11-03")}),
+        officers.map(p => nameKey(p.name)), "dated minutes use the dated office roster");
     console.log("University name safeguards passed");
 }
 main().catch(error => {console.error(error);process.exitCode=1;});

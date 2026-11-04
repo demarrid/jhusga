@@ -35,3 +35,11 @@ The database available in this workspace predates four of the reported live docu
 - `npx tsx scripts/refresh-contributors.ts <document-id> ...` previews a scoped repair; add `--apply` to replace derived contributors and Drive links only for those documents. Existing manual contributor rows are preserved by the normal contributor writer. The command uses the configured database and existing name-resolution behavior; it does not retrieve Drive revisions.
 
 Regression coverage includes the reported finance table, executive numbered roll, AA paragraph roll, initiative assignments, empty attendance cells, and confirmed/missing/ambiguous Drive accounts.
+
+## Cross-branch speakers and informal attributions (2026-11-03)
+
+- Short-name speaker matches may use officers from any SGA branch when the meeting has a dated or current-session context. Loose attendance tokens retain the meeting-body restriction, and undated historical minutes do not acquire current officers.
+- Minutes accept a semicolon in place of a speaker-label colon and a `[video]` marker before the colon, including long recorded reports. These forms still require a known-person match and do not apply to bills.
+- Regression checks cover executive and judicial speakers, Nora's nickname, attendance and historical safeguards, semicolon labels, and video reports.
+
+The scoped contributor refresh was run against the configured database for document `58442442-9ef8-486e-897b-4d0ca731310a`. Source text was not changed. The user subsequently confirmed Alex Weiss, Rain (Hayden) Cheng, and Tekeya Peterson. `scripts/correct-november-speakers.ts --apply` records these as document-specific manual speaker links, preserved by subsequent syncs, without global shorthand aliases.
