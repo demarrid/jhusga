@@ -382,7 +382,7 @@ export async function summarizeDocument(
                 data: { summaryId: summary.id, annotationId: annotation.id, ordinal },
             });
         }
-    });
+    }, { maxWait: 15_000, timeout: 30_000 });
 
     return {
         ...base,

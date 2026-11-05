@@ -1194,7 +1194,8 @@ function isOutlineName(text: string): boolean {
     text = outlinePersonName(text);
     if (isEmptySeat(text)) return true;
     if (OUTLINE_ROLE_WORD.test(text)) return false;
-    const tokens = text.split(/\s+/);
+    // A roster can put a preferred or alternate given name in parentheses.
+    const tokens = text.replace(/\((\p{Lu}[\p{L}\p{M}'’.-]*)\)/gu, "$1").split(/\s+/);
     if (tokens.length < 2 || tokens.length > 4) return false;
     return tokens.every((token) => /^\p{Lu}[\p{L}\p{M}'’.-]*$/u.test(token));
 }

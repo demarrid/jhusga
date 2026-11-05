@@ -374,6 +374,11 @@ check(
 );
 
 console.log("\nclassifyDocument");
+check("General Plan stays outside the governing documents in a bylaws folder", classifyDocument({
+    name: "General Plan",
+    folderPath: "Senate/Bylaws",
+    driveFileId: "1an78T3Wl0r6Yh1hTfbyKGdXTPtA9LScD7FaTbOo0ceI",
+}) === "unknown");
 check("voting records are a tracker", classifyDocument({ name: "114th SGA: Bill Voting Records", folderPath: "" }) === "tracker");
 check("a resolution-themed deck remains a presentation", classifyDocument({ name: "SGA Resolution", folderPath: "", mimeType: "application/vnd.google-apps.presentation" }) === "presentation");
 check("reviewed ICE document stays outside resolutions after a rename", classifyDocument({ name: "Renamed resolution", folderPath: "", driveFileId: "1LGp96ElM0w4a4qpAgnNiHWndpq6fd1hv14_mgWkXjWs" }) === "unknown");
