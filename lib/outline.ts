@@ -414,7 +414,7 @@ function countSections(sections: DocumentSection[]): number {
     return sections.reduce((total, section) => total + 1 + countSections(section.children), 0);
 }
 
-type Index = { sections: DocumentSection[]; anchors: Map<number, string> };
+type Index = { sections: DocumentSection[]; anchors: Map<number, string>; minutesEntries: Map<number, string> };
 
 /**
  * The line offset of every candidate section, and the id lib/render.ts stamps
@@ -582,7 +582,7 @@ function truncate(sections: DocumentSection[], depth: number): DocumentSection[]
     }));
 }
 
-function indexSections(content: string): Index {
+export function indexSections(content: string): Index {
     const anchors = new Map<number, string>();
     const sections: DocumentSection[] = [];
     const parents: DocumentSection[][] = [sections];
@@ -710,6 +710,17 @@ function indexSections(content: string): Index {
     }
 
     const lines = toLines(content);
+    // Student Services opens each entry with the same label, sometimes with
+    // a copied date and sometimes with no date. Keep every occurrence.
+    const minutesEntries = new Map<number, string>();
+    for (const line of lines) {
+        const match = /^meeting minutes:\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)?$/i.exec(line.text.trim());
+        if (match) {
+            const entry = `Entry ${minutesEntries.size + 1}`;
+            minutesEntries.set(line.start, match[1] ? `${entry} (${match[1]})` : entry);
+        }
+    }
+    if (minutesEntries.size < 2) minutesEntries.clear();
     const meetings = holdsSeveralMeetings(lines);
     const bulletIndent = Math.min(...lines.map(line => outlineMark(line.text))
         .filter(mark => mark?.kind === "bullet").map(mark => mark!.indent));
@@ -746,6 +757,12 @@ function indexSections(content: string): Index {
         if (text.trim().length === 0 || RULE.test(text) || /^\s*#{1,6}\s*$/.test(text)) continue;
         if (text.trimStart().startsWith("|")) {
             body();
+            continue;
+        }
+
+        const entry = minutesEntries.get(at);
+        if (entry) {
+            place(0, 0, false, true, "heading", entry, at);
             continue;
         }
 
@@ -1003,7 +1020,7 @@ function indexSections(content: string): Index {
 
     closeFront();
 
-    return { sections: dropPlaceholders(sections, bodied, styled), anchors };
+    return { sections: dropPlaceholders(sections, bodied, styled), anchors, minutesEntries };
 }
 
 /**

@@ -705,6 +705,19 @@ check("flattened table cells and wrapped prose do not become PDF sections",
 check("every PDF outline entry targets an actual rendered block",
     idsOf(fundingSections).every(id => blockSectionIds(fundingBlocks).has(id)));
 
+const dailyMinutes = [
+    "Date: Thursdays at 7 pm", "Meeting Minutes:", "Attendance:", "- Kai",
+    "Meeting Minutes:  10/1", "Updates:", "- Lunch options",
+    "Meeting Minutes:  10/1", "Action Items:", "- Email dining",
+].join("\n");
+const dailyBlocks = renderDocument(dailyMinutes, []);
+const dailySections = documentSections(dailyMinutes, { anchored: blockSectionIds(dailyBlocks), kind: "minutes.committee" });
+check("each minutes entry has its own outline branch, including repeated and missing dates",
+    dailySections.map(section => section.title).join("|") === "Entry 1|Entry 2 (10/1)|Entry 3 (10/1)", dailySections);
+check("each branch lands on the authored minutes heading",
+    dailySections.every(section => dailyBlocks.some(block => block.kind === "heading" &&
+        block.sectionId === section.id && runsText(block.runs).startsWith("Meeting Minutes:"))));
+
 if (failures > 0) {
     console.log(`\n${failures} failed`);
     process.exitCode = 1;

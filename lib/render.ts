@@ -1,7 +1,7 @@
 import type { AnnotationSpan } from "@/lib/anchor";
 import { csvCellRanges, SHEET_BREAK } from "@/lib/csv";
 import { cellBreakAt } from "@/lib/markdown";
-import { sectionAnchors } from "@/lib/outline";
+import { indexSections } from "@/lib/outline";
 
 /**
  * Rendering a document's markdown without breaking its citations.
@@ -178,11 +178,11 @@ export function renderDocument(
     const lines = toLines(content);
     // Same keys the outline links to. Stamping them here, rather than wrapping
     // the stored text, leaves citation offsets where they were.
-    const anchors = sectionAnchors(content);
+    const { anchors, minutesEntries } = indexSections(content);
 
     return options.sheetDelimiter
         ? parseSheet(lines, options.sheetDelimiter, inline, anchors)
-        : parseBlocks(lines, inline, anchors);
+        : parseBlocks(lines, inline, anchors, minutesEntries);
 }
 
 /** The section ids the blocks carry: every target an outline link can land on. */
@@ -477,7 +477,7 @@ function isAgendaItem(text: string): boolean {
     );
 }
 
-function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>): Block[] {
+function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>, minutesEntries?: ReadonlyMap<number, string>): Block[] {
     const blocks: Block[] = [];
     let index = 0;
 
@@ -584,6 +584,11 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
         ) {
             const next = lines[index]!;
             if (paragraph.length > 0 && anchors.has(next.start)) emitParagraph();
+            if (minutesEntries?.has(next.start)) {
+                blocks.push({ kind: "heading", level: 2, sectionId: anchors.get(next.start), runs: inline([lineRange(next)]) });
+                index += 1;
+                continue;
+            }
             paragraph.push(next);
             index += 1;
         }
