@@ -43,23 +43,8 @@ const GOVERNING: HoldThresholds = {
     minimumRemovedLines: 5,
 };
 
-/**
- * A file anyone with the link can edit gets the tightest treatment there is,
- * whatever it contains. The threat is not that the document is important; it
- * is that the door is open.
- */
-const WORLD_EDITABLE: HoldThresholds = {
-    removedLineFraction: 0.05,
-    minimumRemovedLines: 3,
-    remainingLengthFraction: 0.95,
-};
-
-export function thresholdsFor(input: {
-    kind: string;
-    anyoneCanEdit: boolean | null;
-}): HoldThresholds {
-    if (input.anyoneCanEdit === true) return WORLD_EDITABLE;
-    if (AUTHORITATIVE.test(input.kind)) return GOVERNING;
+export function thresholdsFor(kind: string): HoldThresholds {
+    if (AUTHORITATIVE.test(kind)) return GOVERNING;
     return ORDINARY;
 }
 

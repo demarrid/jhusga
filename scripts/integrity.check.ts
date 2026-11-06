@@ -43,7 +43,6 @@ console.log("\nassessChange on a guiding document");
 
 const firstVersion = assessChange({
     kind: "guiding.constitution",
-    anyoneCanEdit: false,
     before: "",
     after: constitutionBefore,
 });
@@ -55,7 +54,6 @@ check(
 
 const unchanged = assessChange({
     kind: "guiding.constitution",
-    anyoneCanEdit: false,
     before: constitutionBefore,
     after: constitutionBefore,
 });
@@ -63,7 +61,6 @@ check("no change is not a change", unchanged.publish, unchanged);
 
 const tinyEdit = assessChange({
     kind: "guiding.constitution",
-    anyoneCanEdit: false,
     before: constitutionBefore,
     after: constitutionBefore.replace("three branches", "three co-equal branches"),
 });
@@ -85,7 +82,6 @@ check(
 
 const pureAddition = assessChange({
     kind: "guiding.constitution",
-    anyoneCanEdit: false,
     before: constitutionBefore,
     after: `${constitutionBefore}\nARTICLE IV.\nAll officers shall be elected annually.`,
 });
@@ -97,23 +93,10 @@ check(
 
 const bylawsEdit = assessChange({
     kind: "guiding.bylaws",
-    anyoneCanEdit: false,
     before: constitutionBefore,
     after: constitutionBefore.replace("Membership", "Membership in the SGA"),
 });
 check("bylaws changes are ratification-held too", !bylawsEdit.publish, bylawsEdit);
-
-const openDoor = assessChange({
-    kind: "guiding.constitution",
-    anyoneCanEdit: true,
-    before: constitutionBefore,
-    after: constitutionBefore.replace("three branches", "three branches (with room for a fourth)"),
-});
-check(
-    "an open-door governing file names the open door in the reason",
-    /anyone with the link/.test(openDoor.reason),
-    openDoor.reason,
-);
 
 console.log("\nassessChange on ordinary documents");
 
@@ -121,7 +104,6 @@ const minutesBefore = Array.from({ length: 40 }, (_, i) => `Line ${i + 1}`).join
 const minutesAppended = `${minutesBefore}\n- New motion carried unanimously.`;
 const minutesGrew = assessChange({
     kind: "minutes.senate",
-    anyoneCanEdit: false,
     before: minutesBefore,
     after: minutesAppended,
 });
@@ -131,9 +113,17 @@ check(
     minutesGrew,
 );
 
+for (const [kind, total, removed] of [
+    ["minutes.executive", 20, 6],
+    ["minutes.committee", 246, 24],
+] as const) {
+    const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}`);
+    const edit = assessChange({ kind, before: lines.join("\n"), after: lines.slice(removed).join("\n") });
+    check(`${kind} publishes after ${removed} of ${total} lines are removed`, edit.publish, edit);
+}
+
 const minutesGutted = assessChange({
     kind: "minutes.senate",
-    anyoneCanEdit: false,
     before: minutesBefore,
     after: "Line 1\nLine 2",
 });
@@ -152,7 +142,6 @@ console.log("\nheldNotice");
 
 const ratificationNotice = heldNotice(tinyEdit.reason);
 check("standalone ratification reasons start with a capital", tinyEdit.reason.startsWith("The source edit"));
-check("an introductory phrase keeps the following article lowercase", openDoor.reason.includes(", and the source edit"));
 check("stored lowercase notices gain sentence case and terminal punctuation",
     heldNotice(`the Constitution (5 lines added, 5 removed)${RATIFICATION_MARKER}`)
         .startsWith("The source file changed (5 lines added, 5 removed)."));

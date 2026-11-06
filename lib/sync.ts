@@ -963,7 +963,6 @@ export async function ingestFile(
 
     const verdict = assessChange({
         kind: metadata.kind,
-        anyoneCanEdit: file.anyoneCanEdit,
         before,
         after: content,
     });

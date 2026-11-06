@@ -77,18 +77,11 @@ tightening a share to suggestions-only does not touch the file's modifiedTime,
 and the warning has to come down when the hole is closed or it stops meaning
 anything.
 
-Where a file is world-editable, `lib/integrity.ts` applies a much lower bar
-before it will publish a change: a revision that deletes most of a document, or
-leaves a fraction of it behind, is stored but **not** published. The site keeps
-serving the text it last checked, the document page says a change is waiting,
-and `npm run review` shows the diff to a person. Rejecting records the hash, so
-the next sync recognises the same change rather than queueing it again.
-
-The judgement being made is deliberately not "is this vandalism" -- nothing can
-decide that from the text. It is "is this large enough that somebody should
-look", which is answerable, and the thresholds in `config/integrity.ts` are set
-per document kind: strictest for the constitution and the bylaws, strictest of
-all for anything the world can edit.
+Sharing permissions inform the reader. The sync applies the same publication
+rules to every file of a given kind. It archives each text revision, screens
+large removals by document kind, and holds guiding-document edits for
+verification against an adopted amendment. Review held revisions with
+`npm run review`.
 
 ### The forum, and what it does not keep
 

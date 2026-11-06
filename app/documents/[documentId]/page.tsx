@@ -225,15 +225,9 @@ export default async function DocumentPage({
                 </p>
             )}
 
-            {/*
-              * Worth saying even when nothing has happened: it tells a reader
-              * how much weight the text below can carry, and it is the reason
-              * this document is watched more closely than the others.
-              */}
             {document.anyoneCanEdit && (
                 <p className={styles.notice}>
-                    The source file is shared so that anyone with the link can edit
-                    it, so any change to it is held for review before it appears here.
+                    Anyone with the link can edit the source file.
                 </p>
             )}
 

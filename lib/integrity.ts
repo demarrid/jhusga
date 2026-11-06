@@ -37,7 +37,6 @@ const PUBLISH: ChangeVerdict = {
 
 export function assessChange(input: {
     kind: string;
-    anyoneCanEdit: boolean | null;
     /** The text currently published. Empty for a document being ingested. */
     before: string;
     after: string;
@@ -56,15 +55,6 @@ export function assessChange(input: {
         addedLines: diff.added,
     };
 
-    const thresholds = thresholdsFor(input);
-
-    // An open door is worth saying out loud even when the change is innocuous,
-    // because it is the reason the thresholds are as tight as they are.
-    const openDoor = input.anyoneCanEdit === true;
-    const preamble = openDoor
-        ? "This file is shared so that anyone with the link can edit it, and "
-        : "";
-
     // A file edit is not itself evidence of passage. Store it for the
     // post-sync amendment review, which checks archived passage evidence and
     // replays authorized changes against the published text.
@@ -73,7 +63,7 @@ export function assessChange(input: {
             ...verdict,
             publish: false,
             reason:
-                `${preamble}${openDoor ? "the" : "The"} source edit is awaiting verification against an amendment adopted in a Senate meeting ` +
+                `The source edit is awaiting verification against an amendment adopted in a Senate meeting ` +
                 `(${diff.added} line${diff.added === 1 ? "" : "s"} added, ` +
                 `${diff.removed} removed) — ratified.`,
         };
@@ -83,6 +73,7 @@ export function assessChange(input: {
         return verdict;
     }
 
+    const thresholds = thresholdsFor(input.kind);
     if (diff.removed < thresholds.minimumRemovedLines) {
         return verdict;
     }
@@ -92,7 +83,7 @@ export function assessChange(input: {
         return {
             ...verdict,
             publish: false,
-            reason: `${preamble}${percent(removedFraction)} of its lines were removed (${diff.removed} of ${beforeLines}).`,
+            reason: `${percent(removedFraction)} of its lines were removed (${diff.removed} of ${beforeLines}).`,
         };
     }
 
@@ -101,7 +92,7 @@ export function assessChange(input: {
         return {
             ...verdict,
             publish: false,
-            reason: `${preamble}it shrank to ${percent(remainingFraction)} of its previous length.`,
+            reason: `It shrank to ${percent(remainingFraction)} of its previous length.`,
         };
     }
 
