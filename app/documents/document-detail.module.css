@@ -990,3 +990,38 @@
     height: auto;
     vertical-align: middle;
 }
+
+.historyButton {
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  vertical-align: -0.125em;
+  cursor: pointer;
+}
+
+.historyButton svg {
+  width: 100%;
+  height: 100%;
+}
+
+.historyButton:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.versionHistory {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid currentColor;
+}
+
+.versionHistory h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
