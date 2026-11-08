@@ -588,10 +588,23 @@ model SyncRun {
     // Agenda/minutes pairs the meeting matcher could join up.
     meetingsPaired      Int @default(0)
 
+    // A run is a sequence of steps worked through in several short function
+    // invocations; see lib/sync-run.ts. `step` is the next one to do, `state`
+    // its cursor and the running counts, `files` the walk it is working from.
+    step        String    @default("")
+    state       Json?
+    files       Json?
+    slices      Int       @default(0)
+    // Last checkpoint. A running run whose heartbeat stops was cut off.
+    heartbeatAt DateTime  @default(now())
+    // Held by the invocation working the run, so two never work it at once.
+    leaseUntil  DateTime?
+
     startedAt  DateTime  @default(now())
     finishedAt DateTime?
 
     @@index([startedAt])
+    @@index([status])
 }
 
 // A News-Letter article the archive fetched, read, and decided not to keep.

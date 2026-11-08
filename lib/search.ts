@@ -192,24 +192,36 @@ export async function indexDocumentPassages(
  *
  * Passing `force` re-splits the whole corpus, which is what to run after
  * changing the rules in lib/passages.ts.
+ *
+ * With a `deadline`, no document is started after it; `lastId` is where to
+ * pass `afterId` to carry on, and `complete` says there was nothing left.
+ * A document that splits into no passages would otherwise be selected again
+ * forever, which is why the cursor is by id rather than by what is missing.
  */
 export async function rebuildPassages(
-    options: { force?: boolean } = {},
-): Promise<{ documents: number; passages: number }> {
+    options: { force?: boolean; afterId?: string | null; deadline?: number } = {},
+): Promise<{ documents: number; passages: number; lastId: string | null; complete: boolean }> {
     const documents = await prisma.document.findMany({
         where: {
             NOT: { content: "" },
             ...(options.force ? {} : { passages: { none: {} } }),
+            ...(options.afterId ? { id: { gt: options.afterId } } : {}),
         },
         select: { id: true, content: true },
+        orderBy: { id: "asc" },
     });
 
     let passages = 0;
+    let indexed = 0;
+    let lastId = options.afterId ?? null;
     for (const document of documents) {
+        if (options.deadline !== undefined && Date.now() >= options.deadline) break;
         passages += await indexDocumentPassages(document.id, document.content);
+        indexed += 1;
+        lastId = document.id;
     }
 
-    return { documents: documents.length, passages };
+    return { documents: indexed, passages, lastId, complete: indexed === documents.length };
 }
 
 // ---------------------------------------------------------------------------

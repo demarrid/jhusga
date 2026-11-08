@@ -76,6 +76,7 @@ const SUITES = [
     "summarize",
     "summary-failures",
     "sync-batching",
+    "sync-run",
     "titles",
     "render",
     "outline",

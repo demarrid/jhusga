@@ -1,32 +1,27 @@
 import { saveDocumentMedia } from "@/lib/document-media";
 import { recordDocumentVersion } from "@/lib/document-version-history";
-import { beginAdministratorLookupRun, type AdministratorResult } from "@/lib/administrator-lookup";
+import { type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
 import { createHash } from "node:crypto";
 
-import { MASTER_FOLDER_ID, MAX_LINK_ROUNDS, SESSION_NUMBER } from "@/config/sga";
+import { SESSION_NUMBER } from "@/config/sga";
 import { matchAccount } from "@/lib/accounts";
 import { findQuote } from "@/lib/anchor";
 import { bodyForDocument } from "@/lib/bodies";
 import { extractContributors, UNIVERSITY_OFFICE } from "@/lib/contributors";
-import { refreshRevisionAuthors } from "@/lib/drive-revisions";
 import { assessChange } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor } from "@/lib/meetings";
-import {
-    applyManualNameAliases,
-    pruneStaleAliases,
-    resetNameResolverCache,
-    resolveAffiliates,
-} from "@/lib/names";
+import { resolveAffiliates } from "@/lib/names";
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
-import { isDirectorySheetName, recordAllDirectories } from "@/lib/directory";
+import { isDirectorySheetName } from "@/lib/directory";
 import { documentDate, linkedSession } from "@/lib/identity";
 import {
     GOOGLE_DOC_MIME,
     GOOGLE_SHEET_MIME,
     GOOGLE_SLIDES_MIME,
+    type DriveFile,
     type WalkedFile,
     driveViewLink,
     exportDocxAsText,
@@ -38,7 +33,6 @@ import {
     getFile,
     isDocxFile,
     isPdfFile,
-    walkFolder,
 } from "@/lib/drive";
 import {
     exportSharePointAsText,
@@ -51,7 +45,7 @@ import { SECONDARY_KINDS, classifyDocument } from "@/lib/kinds";
 import { lineageKeyFor } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
 import { prisma } from "@/lib/prisma";
-import { indexDocumentPassages, rebuildPassages } from "@/lib/search";
+import { indexDocumentPassages } from "@/lib/search";
 
 /**
  * Reconciling the database against the SGA master Drive folder.
@@ -99,28 +93,11 @@ export type SyncSummary = {
     revisionAuthorFileIds: string[];
     revisionAuthors: { imported: number; failed: number; skipped: number };
     /**
-     * Milliseconds each phase took, in the order they ran. The cron has a
-     * five-minute ceiling and this is how to see which phase is eating it.
+     * Milliseconds each phase took, summed over every invocation that worked
+     * on it. This is how to see which phase is eating the run.
      */
     timings: Record<string, number>;
 };
-
-async function timed<T>(
-    summary: SyncSummary,
-    phase: string,
-    work: () => Promise<T>,
-): Promise<T> {
-    const started = Date.now();
-    try {
-        return await work();
-    } finally {
-        summary.timings[phase] = Date.now() - started;
-        // Logged as it happens rather than returned at the end: a run the
-        // platform kills at its time limit returns nothing, and the last
-        // line in the log is then the last phase that finished.
-        console.log(`sync phase ${phase}: ${summary.timings[phase]}ms`);
-    }
-}
 
 /**
  * Re-locate every citation into a document whose text just changed.
@@ -705,7 +682,7 @@ export async function recordContributors(
 /** "button" is a reader pressing Request sync on the documents page. */
 export type SyncTrigger = "cron" | "manual" | "button";
 
-type SyncOptions = { trigger?: SyncTrigger; force?: boolean };
+export type SyncOptions = { trigger?: SyncTrigger; force?: boolean };
 
 async function exportIngestible(file: WalkedFile): Promise<string | null> {
     if (isSharePointFileId(file.id)) {
@@ -1159,21 +1136,6 @@ function worthFollowing(file: { name: string; mimeType: string }): boolean {
     );
 }
 
-/**
- * Ingest the documents the archive links to but does not hold.
- *
- * An SGA agenda is mostly a list of links, and what it links to is the
- * substance of the meeting: the bill up for a second reading, the slate of CSE
- * appointees, the committee's initiative tracker. Almost none of those files
- * are ever filed into the master folder -- they are written wherever their
- * author was working and pasted into the agenda -- so walking the folder
- * collects every agenda and none of the things the agendas are about.
- *
- * So the links get followed. A link out of a document the SGA filed is
- * evidence enough that the target is SGA business: somebody with a seat put it
- * in front of the Senate. Nothing is guessed at, and a file Drive will not
- * serve is simply left where it is.
- */
 /** Bounded independent I/O; drain workers before propagating a failure. */
 async function mapSyncIo<T, R>(items: T[], task: (item: T) => Promise<R>): Promise<R[]> {
     const results: R[] = new Array(items.length);
@@ -1190,130 +1152,147 @@ async function mapSyncIo<T, R>(items: T[], task: (item: T) => Promise<R>): Promi
     return results;
 }
 
-export async function followLinks(
+/** A linked file one round of the follower has decided to ingest. */
+export type PendingLink = {
+    fileId: string;
+    url: string;
+    sessionNumber: number;
+    /** Drive's metadata, fetched while preparing; null for a SharePoint link. */
+    file: DriveFile | null;
+};
+
+/**
+ * Prepare one round of ingesting the documents the archive links to but does
+ * not hold.
+ *
+ * An SGA agenda is mostly a list of links, and what it links to is the
+ * substance of the meeting: the bill up for a second reading, the slate of CSE
+ * appointees, the committee's initiative tracker. Almost none of those files
+ * are ever filed into the master folder -- they are written wherever their
+ * author was working and pasted into the agenda -- so walking the folder
+ * collects every agenda and none of the things the agendas are about.
+ *
+ * So the links get followed. A link out of a document the SGA filed is
+ * evidence enough that the target is SGA business: somebody with a seat put it
+ * in front of the Senate. Nothing is guessed at, and a file Drive will not
+ * serve is simply left where it is.
+ *
+ * Every target is added to `passedOver`, which is kept across rounds so a file
+ * that is private, deleted, or a PDF is asked about once per sync rather than
+ * once per round. Unchanged files are refreshed here in bulk and counted in
+ * `unchanged`; what remains is returned for `ingestPendingLink`, one at a time,
+ * so a round can be split across invocations.
+ */
+export async function prepareLinkRound(
+    passedOver: Set<string>,
     options: SyncOptions,
     summary: SyncSummary,
-): Promise<number> {
-    // Kept across rounds so a file that is private, deleted, or a PDF is asked
-    // about once per sync rather than once per round.
-    const passedOver = new Set<string>();
-    let linkedIn = 0;
+): Promise<{ pending: PendingLink[]; unchanged: number }> {
+    const targets = await unheldTargets();
+    const driveIds = [...targets.keys()].filter(id => !passedOver.has(id) && !isSharePointFileId(id));
+    const metadata = await mapSyncIo(driveIds, async id => [id, await getFile(id)] as const);
+    const metadataById = new Map(metadata);
+    const stableFiles = metadata.flatMap(([id, file]) => file && worthFollowing(file)
+        ? [{ ...file, folderPath: "", sessionNumber: targets.get(id)?.sessionNumber ?? SESSION_NUMBER }]
+        : []);
+    const unchangedIds = await refreshUnchangedFiles(stableFiles, "link", options, summary);
 
-    for (let round = 0; round < MAX_LINK_ROUNDS; round += 1) {
-        const targets = await unheldTargets();
-        const driveIds = [...targets.keys()].filter(id => !passedOver.has(id) && !isSharePointFileId(id));
-        const metadata = await mapSyncIo(driveIds, async id => [id, await getFile(id)] as const);
-        const metadataById = new Map(metadata);
-        const stableFiles = metadata.flatMap(([id, file]) => file && worthFollowing(file)
-            ? [{ ...file, folderPath: "", sessionNumber: targets.get(id)?.sessionNumber ?? SESSION_NUMBER }]
-            : []);
-        const unchangedIds = await refreshUnchangedFiles(stableFiles, "link", options, summary);
+    const pending: PendingLink[] = [];
+    let unchanged = 0;
 
-        let ingestedThisRound = 0;
+    for (const [fileId, target] of targets) {
+        if (passedOver.has(fileId)) continue;
+        // Check each target once per run, including successfully ingested files.
+        passedOver.add(fileId);
 
-        for (const [fileId, target] of targets) {
-            if (passedOver.has(fileId)) continue;
-            // Check each target once per run, including successfully ingested files.
-            passedOver.add(fileId);
+        const sessionNumber = target.sessionNumber ?? SESSION_NUMBER;
 
-            const sessionNumber = target.sessionNumber ?? SESSION_NUMBER;
-
-            if (isSharePointFileId(fileId)) {
-                const file = await getSharePointFile(target.url);
-                if (!file) {
-                    passedOver.add(fileId);
-                    continue;
-                }
-
-                const stored = await ingestFile(
-                    {
-                        id: file.id,
-                        name: file.name,
-                        mimeType: file.mimeType,
-                        createdTime: file.createdTime,
-                        modifiedTime: file.modifiedTime,
-                        webViewLink: file.webViewLink || target.url,
-                        owner: file.ownerName
-                            ? { displayName: file.ownerName, emailAddress: null }
-                            : null,
-                        lastModifyingUser: file.lastEditorName
-                            ? { displayName: file.lastEditorName, emailAddress: null }
-                            : null,
-                        // Graph reports permissions on a different call to the
-                        // one that fetches the file, and this path only ever
-                        // has an anonymous sharing link to go on. Null is
-                        // "unknown", which the hold thresholds treat as
-                        // ordinary -- only a confirmed `true` tightens them.
-                        anyoneCanEdit: null,
-                        // A SharePoint link is the file, not a pointer to one.
-                        shortcutTo: null,
-                        folderPath: "",
-                        sessionNumber,
-                    },
-                    "link",
-                    options,
-                    summary,
-                );
-                if (!stored) {
-                    passedOver.add(fileId);
-                    continue;
-                }
-                ingestedThisRound += 1;
-                linkedIn += 1;
-                continue;
-            }
-
-            if (unchangedIds.has(fileId)) {
-                ingestedThisRound += 1;
-                linkedIn += 1;
-                continue;
-            }
-
-            const driveFile = metadataById.get(fileId);
-            if (!driveFile) {
-                passedOver.add(fileId);
-                continue;
-            }
-
-            if (!worthFollowing(driveFile)) {
-                passedOver.add(fileId);
-                continue;
-            }
-
-            const stored = await ingestFile(
-                { ...driveFile, folderPath: "", sessionNumber },
-                "link",
-                options,
-                summary,
-            );
-            if (!stored) {
-                passedOver.add(fileId);
-                continue;
-            }
-            ingestedThisRound += 1;
-            linkedIn += 1;
+        if (isSharePointFileId(fileId)) {
+            pending.push({ fileId, url: target.url, sessionNumber, file: null });
+            continue;
         }
 
-        // Nothing new arrived, so the next round would find the same targets.
-        if (ingestedThisRound === 0) break;
+        if (unchangedIds.has(fileId)) {
+            unchanged += 1;
+            continue;
+        }
+
+        const driveFile = metadataById.get(fileId);
+        if (!driveFile || !worthFollowing(driveFile)) continue;
+        pending.push({ fileId, url: target.url, sessionNumber, file: driveFile });
     }
 
-    return linkedIn;
+    return { pending, unchanged };
 }
 
-export async function syncMasterFolder(
-    options: SyncOptions = {},
-): Promise<SyncSummary> {
-    const syncRun = await prisma.syncRun.create({
-        data: {
-            status: "running",
-            masterFolderId: MASTER_FOLDER_ID,
-            trigger: options.trigger ?? "manual",
-        },
-    });
+/** Ingest one file `prepareLinkRound` kept; false when it could not be stored. */
+export async function ingestPendingLink(
+    link: PendingLink,
+    options: SyncOptions,
+    summary: SyncSummary,
+): Promise<boolean> {
+    if (link.file) {
+        return ingestFile(
+            { ...link.file, folderPath: "", sessionNumber: link.sessionNumber },
+            "link",
+            options,
+            summary,
+        );
+    }
 
-    const summary: SyncSummary = {
-        syncRunId: syncRun.id,
+    const file = await getSharePointFile(link.url);
+    if (!file) return false;
+
+    return ingestFile(
+        {
+            id: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            createdTime: file.createdTime,
+            modifiedTime: file.modifiedTime,
+            webViewLink: file.webViewLink || link.url,
+            owner: file.ownerName
+                ? { displayName: file.ownerName, emailAddress: null }
+                : null,
+            lastModifyingUser: file.lastEditorName
+                ? { displayName: file.lastEditorName, emailAddress: null }
+                : null,
+            // Graph reports permissions on a different call to the
+            // one that fetches the file, and this path only ever
+            // has an anonymous sharing link to go on. Null is
+            // "unknown", which the hold thresholds treat as
+            // ordinary -- only a confirmed `true` tightens them.
+            anyoneCanEdit: null,
+            // A SharePoint link is the file, not a pointer to one.
+            shortcutTo: null,
+            folderPath: "",
+            sessionNumber: link.sessionNumber,
+        },
+        "link",
+        options,
+        summary,
+    );
+}
+
+/**
+ * Google Docs, uploaded Word documents and PDFs, plus the few sheets that say
+ * who the SGA is: rosters, email lists, and the attendance workbook, which is
+ * the only record of which seat each member holds. Every other sheet the walk
+ * finds stays unexported.
+ */
+export function ingestibleFromWalk(file: WalkedFile): boolean {
+    return (
+        file.mimeType === GOOGLE_DOC_MIME ||
+        isDocxFile(file) ||
+        isPdfFile(file) ||
+        (file.mimeType === GOOGLE_SHEET_MIME &&
+            (isDirectorySheetName(file.name) || isAttendanceSheetName(file.name)))
+    );
+}
+
+export function emptySyncSummary(syncRunId: string): SyncSummary {
+    return {
+        syncRunId,
         filesSeen: 0,
         documentsCreated: 0,
         documentsUpdated: 0,
@@ -1333,138 +1312,4 @@ export async function syncMasterFolder(
         revisionAuthors: { imported: 0, failed: 0, skipped: 0 },
         timings: {},
     };
-
-    beginAdministratorLookupRun(Date.now() + 150_000);
-    try {
-        const files = await timed(summary, "walk", () => walkFolder(MASTER_FOLDER_ID));
-
-        // Confirmed alternate full names are permanent; inferred short-name
-        // aliases can expire as the roster changes.
-        await timed(summary, "manualAliases", () => applyManualNameAliases());
-        await timed(summary, "aliases", () => pruneStaleAliases());
-        resetNameResolverCache();
-
-        // Google Docs, uploaded Word documents and PDFs, plus the few sheets
-        // that say who the SGA is: rosters, email lists, and the attendance
-        // workbook, which is the only record of which seat each member holds.
-        // Every other sheet stays unexported.
-        const docs = files.filter(
-            (file) =>
-                file.mimeType === GOOGLE_DOC_MIME ||
-                isDocxFile(file) ||
-                isPdfFile(file) ||
-                (file.mimeType === GOOGLE_SHEET_MIME &&
-                    (isDirectorySheetName(file.name) || isAttendanceSheetName(file.name))),
-        );
-        summary.filesSeen = files.length;
-
-        await timed(summary, "ingest", async () => {
-            const unchangedIds = await refreshUnchangedFiles(docs, "walk", options, summary);
-            // Content ingestion and identity resolution retain their serial order.
-            for (const file of docs) {
-                if (!unchangedIds.has(file.id)) await ingestFile(file, "walk", options, summary);
-            }
-        });
-
-        // Note: documents removed from Drive are intentionally left in place
-        // rather than deleted, so existing citations do not break. They stop
-        // having their lastSyncedAt refreshed, which is how to spot them.
-
-        summary.documentsLinkedIn = await timed(summary, "links", () =>
-            followLinks(options, summary),
-        );
-
-        // A past session's directory is rebuilt only when one of its documents
-        // changed: its rosters are years old and rebuilding every session on
-        // every run was the slowest phase of the sync. `--force` rebuilds all.
-        await timed(summary, "directories", () =>
-            recordAllDirectories(
-                options.force ? {} : { pastSessions: summary.sessionsChanged },
-            ),
-        );
-
-        // Whole-corpus passes. Each of these needs every document to exist
-        // before it can be right, so they run once at the end rather than per
-        // document inside the walk.
-        await timed(summary, "sessions", () => recordSessions());
-        summary.meetingsPaired = (
-            await timed(summary, "meetings", () => recordMeetings())
-        ).paired;
-        summary.documentsDated = await timed(summary, "dates", () => recordDates());
-        // Titles depend on the meeting keys the pass above just wrote.
-        await timed(summary, "titles", () => recordTitles());
-        await timed(summary, "kinds", () => recordKinds());
-        // Revisit held governing edits after the full evidence corpus is present.
-        // Missing optional tables/provider failures leave the edit held.
-        await timed(summary, "amendmentReview", async () => {
-            try {
-                const { reviewGoverningChanges } = await import("@/lib/governing-review");
-                const results = await reviewGoverningChanges();
-                for (const result of results) console.log(`amendment: ${result.status} ${result.title} — ${result.reason}`);
-            } catch (error) {
-                console.warn("Amendment review unavailable:", error instanceof Error ? error.message : String(error));
-            }
-        });
-        await timed(summary, "administratorReview", async () => {
-            try {
-                const { revisitAdministratorMentions } = await import("@/lib/administrator-backfill");
-                await revisitAdministratorMentions();
-            } catch (error) {
-                console.warn("Administrator review unavailable:", error instanceof Error ? error.message : String(error));
-            }
-        });
-        // Classification must finish first: a new file does not have its
-        // minutes role until recordMeetings runs. Never fetch history for an
-        // agenda, bill, resolution, or an edit awaiting publication review.
-        summary.revisionAuthors = await timed(summary, "revisionAuthors", () =>
-            refreshRevisionAuthors(summary.revisionAuthorFileIds),
-        );
-        summary.referencesLinked = await timed(summary, "references", () =>
-            rebuildReferences(),
-        );
-        summary.driveAccountsLinked = await timed(summary, "driveAccounts", () =>
-            recordDriveAccounts(),
-        );
-
-        // Catches documents ingested before the search index existed, and any
-        // whose passages were lost. Documents that already have them cost
-        // nothing here, because they are not selected.
-        await timed(summary, "passages", () => rebuildPassages());
-
-        await prisma.syncRun.update({
-            where: { id: syncRun.id },
-            data: {
-                status: "success",
-                finishedAt: new Date(),
-                filesSeen: summary.filesSeen,
-                documentsCreated: summary.documentsCreated,
-                documentsUpdated: summary.documentsUpdated,
-                documentsUnchanged: summary.documentsUnchanged,
-                documentsArchived: summary.documentsArchived,
-                annotationsOrphaned: summary.annotationsOrphaned,
-                sectionsInvalidated: summary.sectionsInvalidated,
-                contributorsLinked: summary.contributorsLinked,
-                referencesLinked: summary.referencesLinked,
-                meetingsPaired: summary.meetingsPaired,
-            },
-        });
-
-        return summary;
-    } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        await prisma.syncRun.update({
-            where: { id: syncRun.id },
-            data: {
-                status: "error",
-                error: message,
-                finishedAt: new Date(),
-                filesSeen: summary.filesSeen,
-                documentsCreated: summary.documentsCreated,
-                documentsUpdated: summary.documentsUpdated,
-                documentsUnchanged: summary.documentsUnchanged,
-                documentsArchived: summary.documentsArchived,
-            },
-        });
-        throw cause;
-    }
 }

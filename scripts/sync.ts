@@ -8,7 +8,7 @@
  *   npm run sync -- --skip-newsletter    -- Drive only
  *
  * The nightly Drive cron does not do the paper: honouring jhunewsletter.com's
- * crawl delay would blow its five-minute budget. A manual run has no such
+ * crawl delay would blow its time limit. A manual run has no such
  * ceiling, so it is the place a new article is noticed without waiting for
  * `/api/cron/newsletter`. Reaching 2001 is `--newsletter-backfill`, or
  * `npm run newsletter -- --backfill`.
@@ -83,7 +83,7 @@ async function main() {
         }
     }
 
-    const { syncMasterFolder } = await import("../lib/sync");
+    const { syncMasterFolder } = await import("../lib/sync-run");
     const summary = await syncMasterFolder({ trigger: "manual", force });
     Object.assign(timings, summary.timings);
     const { timings: _driveTimings, ...counts } = summary;

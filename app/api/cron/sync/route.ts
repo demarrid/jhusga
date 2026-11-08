@@ -1,36 +1,29 @@
-import { invalidateArchiveCache } from "@/lib/archive-cache";
-import { timingSafeEqual } from "node:crypto";
+import { after } from "next/server";
 
-import { runFullSync } from "@/lib/full-sync";
+import { invalidateArchiveCache } from "@/lib/archive-cache";
+import { hasCronSecret } from "@/lib/cron-auth";
+import {
+    abandonSyncRun,
+    activeSyncRun,
+    continueSyncRun,
+    isAbandoned,
+    isStalled,
+    startSyncRun,
+} from "@/lib/sync-run";
 
 /**
  * The daily automated pass: re-read the master folder, then regenerate any
  * section whose sources changed and restate any document whose summary is
- * missing or out of date. See lib/full-sync.ts.
+ * missing or out of date. See lib/sync-run.ts.
  *
- * Vercel Cron sends `Authorization: Bearer $CRON_SECRET` when CRON_SECRET is
- * set on the project, so the same check covers both the scheduler and manual
- * curl invocations.
+ * The run is started here and worked through in slices by later invocations,
+ * so this answers as soon as the first slice is scheduled. A run that stalled
+ * since the last trigger is resumed rather than started over.
  */
 
 export const dynamic = "force-dynamic";
-// Keep this literal within the deployed Hobby plan limit.
+// Keep this literal within the deployed Hobby plan limit; see config/sync.ts.
 export const maxDuration = 60;
-
-function isAuthorised(request: Request): boolean {
-    const secret = process.env.CRON_SECRET;
-    if (!secret) return false;
-
-    const provided = request.headers.get("authorization") ?? "";
-    const expected = `Bearer ${secret}`;
-
-    // Equal-length buffers are required by timingSafeEqual.
-    const providedBuffer = Buffer.from(provided);
-    const expectedBuffer = Buffer.from(expected);
-    if (providedBuffer.length !== expectedBuffer.length) return false;
-
-    return timingSafeEqual(providedBuffer, expectedBuffer);
-}
 
 export async function GET(request: Request) {
     if (!process.env.CRON_SECRET) {
@@ -40,16 +33,31 @@ export async function GET(request: Request) {
         );
     }
 
-    if (!isAuthorised(request)) {
+    if (!hasCronSecret(request)) {
         return Response.json({ error: "Unauthorised" }, { status: 401 });
     }
 
-    try {
-        return Response.json({ ok: true, ...(await runFullSync("cron")) });
-    } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        return Response.json({ ok: false, error: message }, { status: 500 });
-    } finally {
-        invalidateArchiveCache();
+    let active = await activeSyncRun();
+    if (active && isAbandoned(active)) {
+        await abandonSyncRun(active.id);
+        active = null;
     }
+    if (active && !isStalled(active)) {
+        return Response.json({ ok: true, runId: active.id, message: "A sync is already running." });
+    }
+
+    const runId = active?.id ?? (await startSyncRun("cron"));
+    const origin = new URL(request.url).origin;
+    after(async () => {
+        try {
+            await continueSyncRun(runId, origin);
+        } finally {
+            invalidateArchiveCache();
+        }
+    });
+
+    return Response.json(
+        { ok: true, runId, message: active ? "Resumed the interrupted sync." : "Sync started." },
+        { status: 202 },
+    );
 }

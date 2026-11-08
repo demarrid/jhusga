@@ -10,27 +10,66 @@ type Status = "idle" | "running" | "done" | "error";
 /** How long the tick or the cross stays up before the button looks idle again. */
 const RESULT_SHOWN_MS = 5_000;
 
+/** How often a running sync is asked how it is getting on. */
+const POLL_MS = 3_000;
+
+/** A sync is a few minutes; past this the button stops waiting and says so. */
+const GIVE_UP_MS = 20 * 60_000;
+
 const IDLE_LABEL = "Request sync with Drive";
+
+type Reply = { ok?: boolean; message?: string; runId?: string; status?: string; stalled?: boolean };
+
+async function ask(input: string, init?: RequestInit): Promise<{ response: Response; body: Reply | null }> {
+    const response = await fetch(input, { cache: "no-store", ...init });
+    return { response, body: (await response.json().catch(() => null)) as Reply | null };
+}
 
 /**
  * Starts the same pass the nightly cron runs, and spins until it finishes.
  *
- * The request is held open for the whole sync -- a minute or two -- rather
- * than polled, because the route has nothing to report until it is done. What
- * it says afterwards (synced, nothing changed, try again in five minutes) is
- * the button's tooltip and is announced to screen readers.
+ * The sync is worked through in short server invocations over a few minutes,
+ * so the button starts it and then polls. A run whose hand-off between
+ * invocations was lost is nudged once to resume. What the sync says as it goes
+ * and afterwards (synced, nothing changed, try again in five minutes) is the
+ * button's tooltip and is announced to screen readers.
  */
 export default function SyncButton() {
     const router = useRouter();
     const [status, setStatus] = useState<Status>("idle");
     const [message, setMessage] = useState(IDLE_LABEL);
     const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const mounted = useRef(true);
 
     useEffect(() => {
+        mounted.current = true;
         return () => {
+            mounted.current = false;
             if (resetTimer.current) clearTimeout(resetTimer.current);
         };
     }, []);
+
+    async function follow(runId: string): Promise<{ ok: boolean; reply: string }> {
+        const started = Date.now();
+        let nudged = false;
+
+        while (mounted.current && Date.now() - started < GIVE_UP_MS) {
+            await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+            const { response, body } = await ask(`/api/sync?run=${encodeURIComponent(runId)}`);
+            if (!response.ok) {
+                return { ok: false, reply: body?.message ?? "The sync could not be reached." };
+            }
+            if (body?.status !== "running") {
+                return { ok: body?.ok === true, reply: body?.message ?? "Synced." };
+            }
+            if (body.message) setMessage(body.message);
+            if (body.stalled && !nudged) {
+                nudged = true;
+                await ask("/api/sync", { method: "POST" });
+            }
+        }
+        return { ok: false, reply: "The sync is still running. Check back in a few minutes." };
+    }
 
     async function requestSync() {
         if (status === "running") return;
@@ -43,16 +82,19 @@ export default function SyncButton() {
         let reply = "The sync could not be reached.";
 
         try {
-            const response = await fetch("/api/sync", { method: "POST" });
-            const body = (await response.json().catch(() => null)) as
-                | { ok?: boolean; message?: string }
-                | null;
+            const { response, body } = await ask("/api/sync", { method: "POST" });
             ok = response.ok && body?.ok === true;
             reply = body?.message ?? (ok ? "Synced." : "The sync could not be started.");
+            if (ok && body?.runId) {
+                setMessage(reply);
+                ({ ok, reply } = await follow(body.runId));
+            }
         } catch {
-            // Network failure; the default reply above says so.
+            ok = false;
+            reply = "The sync could not be reached.";
         }
 
+        if (!mounted.current) return;
         setStatus(ok ? "done" : "error");
         setMessage(reply);
         if (ok) router.refresh();
