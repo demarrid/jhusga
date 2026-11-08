@@ -16,7 +16,7 @@ import { type SyncSummary, type SyncTrigger, syncMasterFolder } from "@/lib/sync
  */
 
 /** Model requests and retries share this deadline, leaving time for cleanup. */
-export const MODEL_WORK_CUTOFF_MS = 105_000;
+export const MODEL_WORK_CUTOFF_MS = 40_000;
 
 export type FullSyncResult = {
     sync: SyncSummary;

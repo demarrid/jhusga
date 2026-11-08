@@ -5,7 +5,8 @@ import { summarizeStaleDocuments, SUMMARY_RUN_BUDGET } from "@/lib/summarize";
 
 /** An independent budget so ingestion cannot starve document summaries. */
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// Keep this literal within the deployed Hobby plan limit.
+export const maxDuration = 60;
 
 function isAuthorised(request: Request): boolean {
     const secret = process.env.CRON_SECRET;
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
     }
 
     try {
-        const results = await summarizeStaleDocuments({ limit: SUMMARY_RUN_BUDGET, deadline: Date.now() + 260_000 });
+        const results = await summarizeStaleDocuments({ limit: SUMMARY_RUN_BUDGET, deadline: Date.now() + 40_000 });
         return Response.json({ ok: true, considered: results.length, written: results.filter(row => row.status === "fresh" && !row.skipped).length, failed: results.filter(row => row.status === "failed").length });
     } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause);

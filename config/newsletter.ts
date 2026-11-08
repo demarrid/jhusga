@@ -125,7 +125,8 @@ export const MAX_ARTICLES_PER_RUN = Number(
  * both are needed because the crawl delay makes them different questions. A
  * serverless function is killed at its `maxDuration` with no chance to record
  * what it managed, so the run stops itself a little short of that and reports.
- * Four minutes against the route's five.
+ * The CLI defaults to four minutes; the cron route caps this at 40 seconds
+ * to leave headroom under its 60-second platform limit.
  */
 export const NEWSLETTER_RUN_BUDGET_MS = Number(
     process.env.NEWSLETTER_RUN_BUDGET_MS || 240_000,

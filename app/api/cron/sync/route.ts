@@ -14,7 +14,8 @@ import { runFullSync } from "@/lib/full-sync";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// Keep this literal within the deployed Hobby plan limit.
+export const maxDuration = 60;
 
 function isAuthorised(request: Request): boolean {
     const secret = process.env.CRON_SECRET;

@@ -19,7 +19,8 @@ import { consumeRateLimit } from "@/lib/ratelimit";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// Keep this literal within the deployed Hobby plan limit.
+export const maxDuration = 60;
 
 function reply(status: number, ok: boolean, message: string) {
     return Response.json({ ok, message }, { status });
