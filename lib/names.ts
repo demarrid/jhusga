@@ -950,6 +950,11 @@ export function universityNameLookup(
         /\b(?:senators?|student body|sga|caucus|justice|parliamentarian|treasurer|secretary|committee|programming council|vpots|president of the senate)\b/i.test(mention.office)) return null;
     if (!universityTitle && givenNameCandidates(mention.name, regulars).length) return null;
     if (!universityTitle && diminutiveCandidates(mention.name, regulars).length) return null;
+    // Explicit attendance names reach the typo resolver, or remain as written
+    // when the archive has no match. A known bare surname still needs review.
+    if (!universityTitle && /^(?:present|absent|excused|late)$/.test(mention.role ?? "") &&
+        (misspellingCandidates(mention.name, regulars).length ||
+            surnameCandidates(mention.name, regulars).length === 0)) return null;
     return ["jhu", mention.office, mention.name, "site:jhu.edu"].filter(Boolean).join(" ");
 }
 

@@ -1,6 +1,6 @@
 import type { AnnotationSpan } from "@/lib/anchor";
 import { csvCellRanges, SHEET_BREAK } from "@/lib/csv";
-import { cellBreakAt } from "@/lib/markdown";
+import { cellBreakAt, maskImagePayloads } from "@/lib/markdown";
 import { indexSections } from "@/lib/outline";
 
 /**
@@ -170,6 +170,7 @@ export function renderDocument(
     spans: AnnotationSpan[],
     options: RenderOptions = {},
 ): Block[] {
+    content = maskImagePayloads(content);
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
     const inline: Inline = (ranges, mode) =>

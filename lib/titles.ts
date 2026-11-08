@@ -29,6 +29,7 @@
  * see `standardTitles`.
  */
 
+import { toPlainText } from "./markdown";
 import { formatDateNumeric } from "@/lib/dates";
 import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 import { meetingHeaderDate } from "@/lib/identity";
@@ -545,6 +546,18 @@ function standingTitle(input: TitleInput): string | null {
     return `${name} (${sessionOrdinal(input.sessionNumber)} Session)`;
 }
 
+/** Read the actual resolution title between its purpose and credit lines. */
+function resolutionTitle(input: TitleInput): string | null {
+    if (input.kind !== "resolution" || !input.content) return null;
+    const lines = input.content.slice(0, 6000).split(/\r?\n/).map(toPlainText).filter(Boolean);
+    const purpose = lines.findIndex(line => /^A Resolution\b/i.test(line));
+    if (purpose < 0) return null;
+    const title = lines[purpose + 1];
+    const credit = lines[purpose + 2];
+    return title && title.length <= 180 && credit && /^Introduced by:/i.test(credit)
+        && !/^(?:SECTION|Introduced|Sponsored|Presented)\b/i.test(title) ? title : null;
+}
+
 /**
  * The name the site would give this document, or null to keep the filename.
  *
@@ -565,7 +578,7 @@ export function canonicalTitle(
     // arguing about. A headline is shown exactly as printed.
     if (isSecondaryKind(input.kind)) return null;
 
-    return meetingTitle(input, dates) ?? logTitle(input) ?? committeeMinutesTitle(input) ?? standingTitle(input);
+    return resolutionTitle(input) ?? meetingTitle(input, dates) ?? logTitle(input) ?? committeeMinutesTitle(input) ?? standingTitle(input);
 }
 
 /**

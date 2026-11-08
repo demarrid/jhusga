@@ -100,7 +100,7 @@ export function contributorRoleLabel(role: string): string {
 
 /** Line prefixes that introduce a list of people, mapped to what they mean. */
 const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolean }[] = [
-    { pattern: /^introduced\s+by$/i, role: "introducer" },
+    { pattern: /^(?:introduced\s+by|introducers?)$/i, role: "introducer" },
     { pattern: /^(?:sponsored\s+by|sponsors?|co-?sponsors?)$/i, role: "sponsor" },
     { pattern: /^(?:staff\s+present|staff|faculty|admin|advisors?)$/i, role: "staff" },
     {
@@ -1013,6 +1013,7 @@ const SPEAKER_NOISE = new Set([
  */
 const SPEAKER_HEADING_WORDS = new Set([
     "reading",
+    "forward",
     "items",
     "item",
     "meeting",
@@ -1106,7 +1107,8 @@ function universityIntroduction(line: string): { speaker: string; office: string
             String.raw`(?:[A-Za-z’'-]+(?:\s+[A-Za-z’'-]+){0,2}\s*,\s*)?(?:the\s+)?(${UNIVERSITY_TITLE})`,
             "i",
         ));
-    if (!match || !UNIVERSITY_TITLE_CONTEXT.test(match[2]!)) return null;
+    if (!match || !UNIVERSITY_TITLE_CONTEXT.test(match[2]!) ||
+        nameKey(match[1]!).split(" ").some(word => SPEAKER_HEADING_WORDS.has(word))) return null;
     const office = match[2]!.trim().replace(/\b(dean|provost|professor|chancellor|director)[a-z]{1,2}\b/gi, "$1");
     return { speaker: match[1]!, office };
 }
@@ -1404,7 +1406,7 @@ export function extractContributors(
     const found = new Map<string, ExtractedContributor>();
     const minutes = (!!kind && kind.startsWith("minutes.")) ||
         (kind === "unknown" && /\btown\s+hall\b/i.test(title ?? ""));
-    const lines = markdown.split(/\r?\n/);
+    const lines = markdown.split(/\r?\n|\v/);
 
     // Meeting partners can appear only in the filename. Keep them as people
     // mentioned, not authors or proof of attendance.
@@ -1488,6 +1490,13 @@ export function extractContributors(
         }
 
         const indent = indentOf(rawLine);
+        // PDF text loses table columns. Keep the people, but do not infer
+        // attendance from a combined Present/Absent header.
+        if (minutes && /^Present\s+Absent$/i.test(line)) {
+            attendance = { role: "mentioned", indent, numbered: false };
+            carryingList = null;
+            continue;
+        }
         const attendanceHeading = minutes ? attendanceLabel(line) : null;
         if (attendanceHeading) {
             attendance = { role: attendanceHeading, indent, numbered: LIST_ITEM.test(rawLine) };

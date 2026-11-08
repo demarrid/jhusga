@@ -38,7 +38,7 @@ export function cellBreakAt(text: string, index: number): number {
 }
 
 /** `[image1]: <data:image/png;base64,...>` at the foot of the export. */
-const IMAGE_DEFINITION = /^\s*\[[^\]\n]+\]:\s*<data:[^>]*>[ \t]*$/gm;
+const IMAGE_DEFINITION = /^[ \t]*(?:\[[^\]\n]+\])?:[ \t]*<data:image\/[^>]*>(?:[ \t]+["\'][^\r\n]*["\'])?[ \t]*$/gm;
 
 /** `![alt](url)` and `![alt][ref]`, including the empty `![]()` case. */
 const INLINE_IMAGE = /!\[[^\]\n]*\](?:\([^)\n]*\)|\[[^\]\n]*\])/g;
@@ -60,6 +60,11 @@ const REFERENCE_LINK = /\[([^\]\n]*)\]\[[^\]\n]*\]/g;
 
 /** Any remaining link-reference definition line. */
 const LINK_DEFINITION = /^\s*\[[^\]\n]+\]:\s*\S.*$/gm;
+
+/** Hide legacy payloads without shifting citation or navigation offsets. */
+export function maskImagePayloads(markdown: string): string {
+    return markdown.replace(IMAGE_DEFINITION, match => match.replace(/[^\r\n]/g, " "));
+}
 
 /**
  * Remove image payloads from an export, preserving everything else verbatim.

@@ -47,6 +47,7 @@ const SUITES = [
     "contributors",
     "directory",
     "document-find",
+    "document-presentation",
     "document-sort",
     "document-versions",
     "document-corrections",

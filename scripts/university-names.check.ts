@@ -24,6 +24,10 @@ const people = new Map<string, {id:string;name:string;nameKey:string;positions?:
     hopkinsAlias: {findUnique:async ({where}:{where:{aliasKey:string}}) => where.aliasKey === "martin" ? {hopkinsAffiliateId:"kai"} : null},
 };
 async function main() {
+    assert.equal(universityNameLookup({name:"Saavani", role:"present", evidence:"Present: Saavani"}, [kai]), null);
+    const isaac = { ...kai, id: "isaac", name: "Isaac Zhang", nameKey: "isaac zhang" };
+    assert.equal(universityNameLookup({name:"Issac", role:"present", evidence:"Present: Issac"}, [isaac]), null);
+    assert.equal(universityNameLookup({name:"Issac", role:"present", office:"Dean", evidence:"Dean Issac"}, [isaac]), "jhu Dean Issac site:jhu.edu");
     resetNameResolverCache();
     const dean = {name:"Martin",office:"Associate Dean",evidence:"Associate Dean Martin"};
     assert.equal(universityNameLookup(dean,[kai]),"jhu Associate Dean Martin site:jhu.edu");
