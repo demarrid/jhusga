@@ -51,6 +51,7 @@ export default function DocumentViewer({ blocks }: { blocks: Block[] }) {
                 </div>
             )}
             {renderBlocks(titleLength > 1 ? blocks.slice(titleLength) : blocks)}
+
         </article>
     );
 }
@@ -265,7 +266,7 @@ function BlockView({ block }: { block: Block }) {
  * template leaves plenty -- is nothing at all.
  */
 function LayoutRow({ row }: { row: TableRow }) {
-    const filled = row.cells.filter((cell) => runsText(cell).trim().length > 0);
+    const filled = row.cells.filter((cell) => runsText(cell).trim().length > 0 || cell.some(run => run.image));
     if (filled.length === 0) return null;
 
     const [item, ...aside] = filled;
@@ -419,6 +420,12 @@ function renderRuns(runs: InlineRun[], gaps = true): ReactNode {
 }
 
 function Run({ run, gaps }: { run: InlineRun; gaps: boolean }) {
+    if (run.image) return (
+        // Version-bound images retain their dimensions and scale to the reading pane.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={run.image.src} width={run.image.width} height={run.image.height} alt={run.image.alt}
+            className={run.image.inline ? styles.documentInlineImage : styles.documentImage} loading="lazy" />
+    );
     if (run.navigationId) return <span id={run.navigationId} className={styles.sectionAnchor} />;
     let node: ReactNode = gaps ? withLineGaps(run.text) : run.text;
 
@@ -500,7 +507,7 @@ function presentTable(block: Extract<Block, { kind: "table" }>): {
     let caption: InlineRun[] | null = null;
 
     if (header) {
-        const filled = header.cells.filter((cell) => runsText(cell).trim().length > 0);
+        const filled = header.cells.filter((cell) => runsText(cell).trim().length > 0 || cell.some(run => run.image));
         if (filled.length === 1 && header.cells.length > 1) {
             caption = filled[0]!;
             header = null;

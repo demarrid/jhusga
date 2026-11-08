@@ -7,7 +7,7 @@
  * the framework.
  *
  * The only mail this site sends is a sign-in code. That matters for what is
- * *not* here: no templates, no batching, no marketing list, and no record of
+ * *not* here: no batching, no marketing list, and no record of
  * who was written to. See lib/login.ts -- the address is hashed before it
  * touches the database, and the plaintext exists only for the length of the
  * request that mails it.
@@ -38,10 +38,14 @@ function from(): string {
     const address = process.env.RESEND_FROM;
     if (!address) {
         throw new Error(
-            'RESEND_FROM is not set; use a verified sender, e.g. "SGA <noreply@jhusga.org>"',
+            'RESEND_FROM is not set; use a verified sender, e.g. "SGA at JHU <noreply@jhusga.org>"',
         );
     }
-    return address;
+    // Keep the verified mailbox from deployment config, but use one public name
+    // even when an older RESEND_FROM value still includes a previous display name.
+    const mailbox = /<([^<>]+)>\s*$/.exec(address)?.[1] ?? address.trim();
+    if (!/^[^\s<>@]+@[^\s<>@]+$/.test(mailbox)) throw new Error("RESEND_FROM must contain one sender address");
+    return `SGA at JHU <${mailbox}>`;
 }
 
 /**

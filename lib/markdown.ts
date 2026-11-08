@@ -8,8 +8,9 @@
  * on every generation, and the leftover `![]()` markers surface as gibberish in
  * document descriptions.
  *
- * None of it is content, so it is stripped at ingest. Everything else is left
- * exactly as exported, because citation offsets index into the stored string.
+ * Image bytes and placements are captured separately by lib/document-media.ts.
+ * They are stripped from stored text and model input; the viewer restores images
+ * from the version-bound media records without changing citation offsets.
  */
 
 /**
@@ -73,18 +74,34 @@ export function maskImagePayloads(markdown: string): string {
  * still produces an unchanged hash.
  */
 export function sanitizeExport(markdown: string): string {
-    return (
-        markdown
-            .replace(IMAGE_DEFINITION, "")
-            .replace(INLINE_IMAGE, "")
-            .replace(EMPTY_BRACKET_LINK, "")
-            .replace(BARE_IMAGE_REF, "")
-            // An image on its own line leaves trailing spaces behind.
-            .replace(/[ \t]+$/gm, "")
-            // ...and often an empty paragraph where the image used to be.
-            .replace(/\n{3,}/g, "\n\n")
-            .trim()
-    );
+    return sanitizeExportWithOffsets(markdown, []).content;
+}
+
+/** Apply the same cleanup while mapping removed image locations into stored text. */
+export function sanitizeExportWithOffsets(markdown: string, positions: number[]): { content: string; offsets: number[] } {
+    let content = markdown;
+    let offsets = [...positions];
+    function replace(pattern: RegExp, replacement: string) {
+        const edits = Array.from(content.matchAll(pattern), match => ({ start: match.index, length: match[0].length }));
+        offsets = offsets.map(offset => {
+            let delta = 0;
+            for (const edit of edits) {
+                if (offset < edit.start) break;
+                if (offset <= edit.start + edit.length) return edit.start + delta + Math.min(offset - edit.start, replacement.length);
+                delta += replacement.length - edit.length;
+            }
+            return offset + delta;
+        });
+        content = content.replace(pattern, replacement);
+    }
+    replace(IMAGE_DEFINITION, "");
+    replace(INLINE_IMAGE, "");
+    replace(EMPTY_BRACKET_LINK, "");
+    replace(BARE_IMAGE_REF, "");
+    replace(/[ \t]+$/gm, "");
+    replace(/\n{3,}/g, "\n\n");
+    replace(/^\s+|\s+$/g, "");
+    return { content, offsets };
 }
 
 /**

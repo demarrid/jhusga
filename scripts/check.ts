@@ -34,6 +34,7 @@ import path from "node:path";
  * lib/prisma.ts, which is what makes that true.
  */
 const SUITES = [
+    "sign-in-email",
     "anchor",
     "archive",
     "archive-cache",
@@ -50,6 +51,8 @@ const SUITES = [
     "document-presentation",
     "document-sort",
     "document-versions",
+    "document-media",
+    "document-media-sync",
     "document-corrections",
     "drive",
     "drive-revisions",

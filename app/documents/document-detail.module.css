@@ -542,7 +542,9 @@
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-work-sans), Tahoma, sans-serif;
-  font-size: 0.8rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
 }
 
 .viewer caption {
@@ -973,4 +975,18 @@
 .articleSummary {
   max-width: 65rem;
   padding: clamp(3rem, 6vw, 5rem) max(6vw, 1.5rem) clamp(6rem, 10vw, 9rem);
+}
+
+.documentImage {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0.75rem auto;
+}
+
+.documentInlineImage {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    vertical-align: middle;
 }

@@ -1,3 +1,4 @@
+import type { DocumentImage } from "@/lib/document-images";
 import type { AnnotationSpan } from "@/lib/anchor";
 import { csvCellRanges, SHEET_BREAK } from "@/lib/csv";
 import { cellBreakAt, maskImagePayloads } from "@/lib/markdown";
@@ -27,6 +28,7 @@ import { indexSections } from "@/lib/outline";
  */
 
 export type InlineRun = {
+    image?: Omit<DocumentImage, "offset">;
     navigationId?: string;
     text: string;
     bold: boolean;
@@ -174,16 +176,29 @@ export function renderDocument(
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
     const inline: Inline = (ranges, mode) =>
-        inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets);
+        inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets, options.images?.filter(image => image.inline));
 
     const lines = toLines(content);
     // Same keys the outline links to. Stamping them here, rather than wrapping
     // the stored text, leaves citation offsets where they were.
     const { anchors, minutesEntries } = indexSections(content);
 
-    return options.sheetDelimiter
-        ? parseSheet(lines, options.sheetDelimiter, inline, anchors)
-        : parseBlocks(lines, inline, anchors, minutesEntries);
+    if (options.sheetDelimiter) return parseSheet(lines, options.sheetDelimiter, inline, anchors);
+    // Recovered images sit at verified paragraph boundaries. Parse each segment
+    // with the original source offsets and shared citation/section anchors.
+    const blocks: Block[] = [];
+    let from = 0;
+    for (const image of [...(options.images ?? [])].filter(image => !image.inline).sort((a, b) => a.offset - b.offset)) {
+        const at = image.offset === content.length ? lines.length : lines.findIndex(line => line.start === image.offset);
+        if (at < from) continue;
+        blocks.push(...parseBlocks(lines.slice(from, at), inline, anchors, minutesEntries));
+        const asset = { src: image.src, alt: image.alt, width: image.width, height: image.height };
+        blocks.push({ kind: "paragraph", runs: [{ text: "", image: asset,
+            bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] });
+        from = at;
+    }
+    blocks.push(...parseBlocks(lines.slice(from), inline, anchors, minutesEntries));
+    return blocks;
 }
 
 /** The section ids the blocks carry: every target an outline link can land on. */
@@ -208,6 +223,7 @@ export function blockSectionIds(blocks: Block[]): Set<string> {
 }
 
 export type RenderOptions = {
+    images?: DocumentImage[];
     navigationTargets?: { id: string; offset: number }[];
     /**
      * Set for a spreadsheet, to the delimiter its rows use. See
@@ -478,6 +494,11 @@ function isAgendaItem(text: string): boolean {
     );
 }
 
+/** Drop Docs' heading metadata from display, retaining every source offset. */
+function withoutHeadingId(line: Line): Line {
+    return { ...line, text: line.text.replace(/\s+\{#[^}\n]+\}\s*$/, "") };
+}
+
 function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>, minutesEntries?: ReadonlyMap<number, string>): Block[] {
     const blocks: Block[] = [];
     let index = 0;
@@ -508,7 +529,7 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
                         kind: "heading",
                         level: heading[1].length,
                         // Hide exported heading IDs without changing source offsets.
-                        runs: inline([lineRange(afterMarker({ ...line, text: line.text.replace(/\s+\{#[^}\n]+\}\s*$/, "") }, heading[0].length))]),
+                        runs: inline([lineRange(afterMarker(withoutHeadingId(line), heading[0].length))]),
                         ...(sectionId ? { sectionId } : {}),
                     },
             );
@@ -897,7 +918,7 @@ function parseList(
     const startAgendaItem = (line: Line, marker: Marker) => {
         const rest = line.text.slice(marker.width);
         const heading = HEADING.exec(rest);
-        const range = lineRange(afterMarker(line, marker.width + (heading?.[0].length ?? 0)));
+        const range = lineRange(afterMarker(heading ? withoutHeadingId(line) : line, marker.width + (heading?.[0].length ?? 0)));
         const sectionId = anchors.get(line.start);
         if (isBlank(line.text.slice(range.start - line.start))) {
             current = { ranges: [range], blocks: [], headingLevel: 0, sectionId, value: marker.number };
@@ -1045,7 +1066,7 @@ function parseList(
         const task = !first.ordered && !heading ? /^\[([ xX])\]\s+/.exec(rest) : null;
 
         current = {
-            ranges: [lineRange(afterMarker(line, width + (task?.[0].length ?? 0)))],
+            ranges: [lineRange(afterMarker(heading ? withoutHeadingId(line) : line, width + (task?.[0].length ?? 0)))],
             ...(task ? { checked: task[1].toLowerCase() === "x" } : {}),
             blocks: [],
             headingLevel: heading ? heading[1].length : 0,
@@ -1173,6 +1194,7 @@ function inlineRuns(
     anchored: Set<string>,
     mode?: "cell",
     navigationTargets: { id: string; offset: number }[] = [],
+    images: DocumentImage[] = [],
 ): InlineRun[] {
     let flattened = flatten(content, ranges);
     // Layout cells keep an hour of notes. HTML may have restored some
@@ -1239,11 +1261,30 @@ function inlineRuns(
         buffer += character;
     }
 
+    function insertImages(index: number) {
+        const offset = offsets[index] ?? ranges.at(-1)?.end ?? 0;
+        for (const [ordinal, image] of images.entries()) {
+            const key = `image:${image.src}:${image.offset}:${ordinal}`;
+            // Table cells trim edge spaces; an image at that edge still belongs
+            // to the cell. Never cross a pipe, newline, or non-space character.
+            const belongs = ranges.some(range =>
+                (range.start <= image.offset && image.offset <= range.end) ||
+                (image.offset > range.end && /^[ \t]*$/.test(content.slice(range.end, image.offset))) ||
+                (image.offset < range.start && /^[ \t]*$/.test(content.slice(image.offset, range.start))));
+            if (anchored.has(key) || !belongs || (offset < image.offset && index < text.length)) continue;
+            flush();
+            runs.push({ text: "", image: { src: image.src, alt: image.alt, width: image.width, height: image.height, inline: true },
+                bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false });
+            anchored.add(key);
+        }
+    }
+
     let linkTextEnd = -1;
     let linkResumeAt = -1;
     let index = 0;
 
     while (index < text.length) {
+        insertImages(index);
         // `>=` rather than `==`: an escape at the end of the label can step
         // over the closing bracket, and a link left open would swallow the block.
         if (linkTextEnd !== -1 && index >= linkTextEnd) {
@@ -1332,5 +1373,6 @@ function inlineRuns(
 
     flush();
 
+    insertImages(text.length);
     return runs;
 }

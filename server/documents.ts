@@ -1,3 +1,5 @@
+import { loadDocumentImages } from "@/lib/document-media";
+import { sanitizeExport } from "@/lib/markdown";
 import { unstable_cache } from "next/cache";
 import { ARCHIVE_CACHE_SECONDS, ARCHIVE_CACHE_TAG } from "@/lib/archive-cache";
 import { SESSION_NUMBER } from "@/config/sga";
@@ -772,13 +774,18 @@ export async function loadDocument(
 
     if (!document) return null;
     let historical = false;
+    let imageVersionTime = document.driveModifiedTime;
     if (versionId) {
         const version = await prisma.documentVersion.findFirst({
             where: { id: versionId, status: "published", revision: { documentId } },
             include: { revision: true },
         });
         if (!version) return null;
-        if (version.revision.content !== document.content) {
+        imageVersionTime = version.sourceModifiedTime;
+        // Old exports retained image payloads that the current text strips.
+        // Reuse summaries and their original offsets only when cleaned text matches.
+        if (version.revision.content !== document.content &&
+            sanitizeExport(version.revision.content) !== document.content) {
             historical = true;
             document.content = version.revision.content;
             document.title = version.revision.title;
@@ -944,6 +951,7 @@ export async function loadDocument(
         // The stored text is untouched -- citations still index into the CSV
         // exactly as it came out of Drive -- and only the parse differs.
         blocks: renderDocument(document.content, document.documentAnnotations, {
+            images: await loadDocumentImages(document.id, document.content, versionId, imageVersionTime),
             navigationTargets: agendaMatches.map(match => ({ id: `minutes-${match.startOffset}`, offset: match.startOffset })),
             sheetDelimiter: sheetDelimiter(document.mimeType),
         }),

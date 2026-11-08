@@ -258,7 +258,9 @@ export default async function DocumentPage({
                             <h2>{document.legislationEdition?.role === "draft" ? "Draft summary" : "Summary"}</h2>
                             {view.historical ? <p className={styles.asideMeta}>
                                 This version has no saved summary.{" "}
-                                <Link href={latestHref} scroll={false}>View the latest version</Link>.
+                                {view.selected.id !== view.latest.id && <>
+                                    <Link href={latestHref} scroll={false}>View the latest version</Link>.
+                                </>}
                             </p> : <DocumentRestatement restatement={document.restatement} />}
                         </section>
 

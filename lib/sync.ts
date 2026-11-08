@@ -1,3 +1,4 @@
+import { saveDocumentMedia } from "@/lib/document-media";
 import { recordDocumentVersion } from "@/lib/document-version-history";
 import { beginAdministratorLookupRun, type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
@@ -30,6 +31,7 @@ import {
     driveViewLink,
     exportDocxAsText,
     exportDocumentAsMarkdown,
+    exportDocumentWithMedia,
     exportPdfAsText,
     exportPresentationAsText,
     exportSpreadsheetAsCsv,
@@ -882,7 +884,10 @@ export async function ingestFile(
         return true;
     }
 
-    const content = await exportIngestible(file);
+    const media = file.mimeType === GOOGLE_DOC_MIME ? await exportDocumentWithMedia(file.id) : null;
+    const content = media ? media.content : await exportIngestible(file);
+    // Do not attach images from a moving source to the timestamp listed earlier.
+    if (media && (await getFile(file.id))?.modifiedTime !== file.modifiedTime) return false;
     // A SharePoint file we cannot flatten is not stored as an empty row.
     if (content === null) return false;
 
@@ -908,13 +913,15 @@ export async function ingestFile(
                         : {}),
                 },
             });
-            if (existing.reviewState === "held") {
-                const revision = await tx.documentRevision.findUnique({
-                    where: { documentId_contentHash: { documentId: existing.id, contentHash } },
-                    select: { id: true },
-                });
-                if (revision) await recordDocumentVersion(tx, revision.id, driveModifiedTime, "published");
-            }
+            // Image-only edits still create a source occurrence even when text
+            // deduplicates to an existing revision.
+            const revision = await tx.documentRevision.upsert({
+                where: { documentId_contentHash: { documentId: existing.id, contentHash } },
+                create: { documentId: existing.id, contentHash, content, title: file.name, driveModifiedTime },
+                update: {},
+            });
+            const versionId = await recordDocumentVersion(tx, revision.id, driveModifiedTime, "published");
+            if (media) await saveDocumentMedia(tx, versionId, media);
         });
         summary.documentsUnchanged += 1;
         return true;
@@ -992,8 +999,9 @@ export async function ingestFile(
             update: {},
         });
 
-        await recordDocumentVersion(tx, revision.id, driveModifiedTime,
+        const versionId = await recordDocumentVersion(tx, revision.id, driveModifiedTime,
             !existing || verdict.publish ? "published" : "held");
+        if (media) await saveDocumentMedia(tx, versionId, media);
         if (existing && !verdict.publish) {
             await tx.document.update({
                 where: { id: document.id },

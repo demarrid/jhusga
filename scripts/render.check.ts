@@ -21,6 +21,40 @@ function check(label: string, condition: boolean, detail?: unknown) {
     }
 }
 
+const exportedHeading = "1. ## ***Senators want clearer strategic direction as a group*** {#senators-want-clearer-strategic-direction-as-a-group}\n\nBody text with {ordinary braces}.";
+const headingQuote = findQuote(exportedHeading, "Senators want clearer strategic direction as a group")!;
+const exportedHeadingBlocks = renderDocument(exportedHeading, [{ id: "heading-quote", ...headingQuote }]);
+const exportedHeadingRuns = allRuns(exportedHeadingBlocks);
+check("numbered headings hide exported anchor syntax and render emphasis",
+    !runsText(exportedHeadingRuns).includes("{#") && !runsText(exportedHeadingRuns).includes("***") &&
+    exportedHeadingRuns.some(run => run.bold && run.italic && run.text.includes("Senators")));
+check("heading cleanup preserves citations and ordinary braces",
+    highlighted(exportedHeadingBlocks, "heading-quote") === "Senators want clearer strategic direction as a group" &&
+    runsText(exportedHeadingRuns).includes("{ordinary braces}"));
+const nestedHeading = renderDocument("- Intro\n    1. ## **Nested heading** {#nested-heading}", []);
+check("nested list headings also hide exported IDs", !runsText(allRuns(nestedHeading)).includes("{#"));
+
+const imageSource = "# Results\n\nThe reported score is 4.2.\n\n## Next section\n";
+const imageQuote = findQuote(imageSource, "The reported score is 4.2.")!;
+const imageOffset = imageSource.indexOf("\n") + 1;
+const imageBlocks = renderDocument(imageSource, [{ id: "image-quote", ...imageQuote }], {
+    images: [
+        { offset: imageOffset, src: "/chart.png", alt: "Results chart", width: 600, height: 300 },
+        { offset: imageOffset, src: "/chart-2.png", alt: "Second chart", width: 600, height: 300 },
+    ],
+});
+check("source images appear after their heading, in order, before the following text",
+    imageBlocks[0]?.kind === "heading" &&
+    imageBlocks[1]?.kind === "paragraph" && imageBlocks[1].runs[0].image?.src === "/chart.png" &&
+    imageBlocks[2]?.kind === "paragraph" && imageBlocks[2].runs[0].image?.src === "/chart-2.png" &&
+    imageBlocks[3]?.kind === "paragraph" && runsText(imageBlocks[3].runs).includes("reported score"));
+check("inline source images preserve citation offsets and section anchors",
+    highlighted(imageBlocks, "image-quote") === "The reported score is 4.2." &&
+    JSON.stringify([...blockSectionIds(imageBlocks)]) === JSON.stringify([...blockSectionIds(renderDocument(imageSource, []))]));
+check("invalid image positions cannot split source text",
+    JSON.stringify(renderDocument(imageSource, [], { images: [{ offset: 2, src: "/chart.png", alt: "", width: 1, height: 1 }] })) ===
+    JSON.stringify(renderDocument(imageSource, [])));
+
 const flattenedProvisions = "**4.3.1.3 ORDER** 4.3.1.3.7 Closing of a Session 4.3.1.3.7.1 Meetings are open. 4.3.1.3.~~7~~8 Suspension of Rules";
 const provisionSource = `| Current | Proposed |\n| --- | --- |\n| ${"Existing language remains in this comparison. ".repeat(4)} | ${flattenedProvisions} |`;
 const provisionQuote = findQuote(provisionSource, "Meetings are open.")!;

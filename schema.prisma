@@ -278,8 +278,34 @@ model DocumentVersion {
     // published | held | rejected | unknown (legacy publication not provable)
     status String @default("held")
 
+    media DocumentMedia?
+
     @@index([revisionId, status])
     @@index([status, observedAt])
+}
+
+// Image bytes and placement belong to a source occurrence, not deduplicated text.
+model DocumentMedia {
+    versionId String @id
+    version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+    contentHash String
+    createdAt DateTime @default(now())
+    images DocumentImage[]
+}
+
+model DocumentImage {
+    id String @id @default(uuid())
+    versionId String
+    media DocumentMedia @relation(fields: [versionId], references: [versionId], onDelete: Cascade)
+    ordinal Int
+    offset Int
+    inline Boolean @default(false)
+    alt String
+    width Int
+    height Int
+    mimeType String
+    bytes Bytes
+    @@unique([versionId, ordinal])
 }
 
 // OAuth history is separate from published/held archive versions. Null content
