@@ -7,7 +7,7 @@ import type { DocumentDetail } from "@/server/documents";
 import DocumentOutline from "@/app/(components)/DocumentOutline";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentVersionSelector from "@/app/(components)/DocumentVersionSelector";
-import { getVersionedDocument } from "@/server/document-versions";
+import { getVersionedDocument, getDocumentVersionContent } from "@/server/document-versions";
 import DocumentDiff from "@/app/(components)/DocumentDiff";
 import { collapseUnchanged, diffLines } from "@/lib/diff";
 import DocumentViewer from "@/app/(components)/DocumentViewer";
@@ -98,9 +98,9 @@ export default async function DocumentPage({
     const { document } = view;
     const comparing = query.diff === "1";
     const previousOption = view.options[view.options.findIndex(option => option.id === view.selected.id) - 1];
-    const previous = comparing && previousOption
-        ? await loadVersionedDocument(documentId, previousOption.id) : null;
-    const comparison = previous ? diffLines(previous.document.content, document.content) : null;
+    const previous = previousOption
+        ? await getDocumentVersionContent(document, previousOption.id) : null;
+    const comparison = previous !== null ? diffLines(previous, document.content) : null;
     const latestHref = `/documents/${documentId}?${new URLSearchParams({ version: view.latest.id, ...(returnTo ? { returnTo } : {}) })}`;
 
     const authoredSections = documentSections(document.content, {
@@ -255,8 +255,8 @@ export default async function DocumentPage({
             ) : (
             <div className={styles.readerLayout}>
                 <article className={styles.documentPane}>
-                    <DocumentVersionSelector options={view.options} selectedId={view.selected.id} comparing={comparing} />
-                    {comparing && <section id="document-version-history" className={styles.versionHistory} aria-label="Version history">
+                    <DocumentVersionSelector key={view.selected.id} options={view.options} selectedId={view.selected.id} initiallyComparing={comparing} hasPrevious={comparison !== null}>
+                    <section id="document-version-history" className={styles.versionHistory} aria-label="Version history">
                         <h2>Version history</h2>
                         <p>Choose a version above to compare it with the version immediately before it.</p>
                         {comparison && previousOption ? <>
@@ -267,7 +267,8 @@ export default async function DocumentPage({
                                 ? <p>These versions are identical.</p>
                                 : <DocumentDiff ops={collapseUnchanged(comparison)} />}
                         </> : <p>This is the earliest saved version; there is no previous version to compare.</p>}
-                    </section>}
+                    </section>
+                    </DocumentVersionSelector>
                     <DocumentViewer key={view.selected.id} blocks={document.blocks} />
                 </article>
 

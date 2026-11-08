@@ -1,15 +1,16 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Select from "@/app/(components)/Select";
 import type { DocumentVersionOption } from "@/lib/document-versions";
 import styles from "@/app/documents/document-detail.module.css";
 
-export default function DocumentVersionSelector({ options, selectedId, comparing = false }: {
-    options: DocumentVersionOption[]; selectedId: string; comparing?: boolean;
+export default function DocumentVersionSelector({ options, selectedId, initiallyComparing = false, hasPrevious, children }: {
+    options: DocumentVersionOption[]; selectedId: string; initiallyComparing?: boolean; hasPrevious: boolean; children: ReactNode;
 }) {
     const router = useRouter();
+    const [comparing, setComparing] = useState(initiallyComparing && hasPrevious);
     const [pending, startTransition] = useTransition();
     const latestId = options.at(-1)?.id;
     const choices = [...options].reverse().map(option => ({
@@ -18,7 +19,7 @@ export default function DocumentVersionSelector({ options, selectedId, comparing
     }));
     const selected = choices.find(choice => choice.value === selectedId);
 
-    return <div className={styles.versionSentence} aria-busy={pending}>
+    return <><div className={styles.versionSentence} aria-busy={pending}>
         You are viewing the{" "}
         {choices.length < 2 ? selected?.label : <Select
             variant="inline"
@@ -33,7 +34,7 @@ export default function DocumentVersionSelector({ options, selectedId, comparing
             }}
         />}{" "}
         version.{" "}
-        <button
+        {hasPrevious && <button
             type="button"
             className={styles.historyButton}
             aria-label={comparing ? "Close version history" : "View version history"}
@@ -45,13 +46,16 @@ export default function DocumentVersionSelector({ options, selectedId, comparing
                 if (comparing) url.searchParams.delete("diff");
                 else url.searchParams.set("diff", "1");
                 url.hash = "";
-                startTransition(() => router.push(`${url.pathname}${url.search}`, { scroll: false }));
+                setComparing(!comparing);
+                window.history.replaceState(null, "", `${url.pathname}${url.search}`);
             }}
         >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7" />
                 <path d="M12 7v5l3 2" />
             </svg>
-        </button>
-    </div>;
+        </button>}
+    </div>
+    {comparing && children}
+    </>;
 }

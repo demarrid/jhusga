@@ -1025,3 +1025,12 @@
   margin-top: 0;
   font-size: 1rem;
 }
+
+.versionHistory > h2,
+.versionHistory > p {
+  color: #6a7c8f;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  font-weight: 400;
+  margin: 0 0 0.5rem;
+}
