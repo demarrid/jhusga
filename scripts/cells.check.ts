@@ -127,5 +127,30 @@ check(
     restoreCellBreaks(bulleted, bulletedHtml),
 );
 
+const commented = `| Open Forum Bylaws comments Consent Agenda Discussion Standardizing Bill ID | All Present |\n| :---- | ----- |`;
+const commentedHtml =
+    `<table><tr><td><p><span>Open Forum</span></p><ul>` +
+    `<li><span>Bylaws comments</span></li>` +
+    `<li><span>Consent Agenda Discussion</span><sup><a href="#cmnt1" id="cmnt_ref1">[a]</a></sup></li>` +
+    `<li><span>Standardizing Bill ID</span></li>` +
+    `</ul></td><td>All Present</td></tr></table>`;
+check(
+    "a comment marker in the HTML does not drop the cell's breaks",
+    restoreCellBreaks(commented, commentedHtml).includes(
+        `Bylaws comments${CELL_BREAK}Consent Agenda Discussion${CELL_BREAK}Standardizing Bill ID`,
+    ),
+    restoreCellBreaks(commented, commentedHtml),
+);
+
+const struck = `| ~~3.2.1.2.7 Reviews legislation~~ 3.2.1.2.8 Assists new members | Current |\n| :---- | ----- |`;
+const struckHtml =
+    `<table><tr><td><p><span style="text-decoration:line-through">3.2.1.2.7 Reviews legislation</span></p>` +
+    `<p><span>3.2.1.2.8 Assists new members</span></p></td><td>Current</td></tr></table>`;
+check(
+    "a break after struck-through text goes after the closing ~~",
+    restoreCellBreaks(struck, struckHtml).includes(`legislation~~${CELL_BREAK}3.2.1.2.8`),
+    restoreCellBreaks(struck, struckHtml),
+);
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

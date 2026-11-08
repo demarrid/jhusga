@@ -134,12 +134,15 @@ function taggedBodies(html: string, tag: string, includeNested: boolean): string
  * The lines an author put in a cell, in order.
  *
  * Docs writes a paragraph as `<p>`, a typed break as `<br>`, and a list item
- * as `<li>`. Everything else is chrome.
+ * as `<li>`. Everything else is chrome -- including the `[a]` that marks a
+ * reviewer's comment, which the markdown export leaves out, so a line still
+ * carrying it is never found and every break in the cell is dropped.
  */
 function cellLines(html: string): string[] {
     const text = html
         .replace(/<script[\s\S]*?<\/script>/gi, "")
         .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<sup\b[^>]*>\s*<a\b[^>]*href="#cmnt\d+"[^>]*>[\s\S]*?<\/a>\s*<\/sup>/gi, "")
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<\/(?:p|div|li|h[1-6]|blockquote)\s*>/gi, "\n")
         .replace(/<[^>]+>/g, "");
@@ -266,12 +269,12 @@ function spliceBreaks(md: string, htmlLines: string[]): string {
 
 /**
  * Walk past markdown that belongs to the words just matched: closing
- * `**` and the `](url)` of a link. The HTML line ended on the label, so
- * the break belongs after that chrome, not inside it.
+ * `**`, `~~`, and the `](url)` of a link. The HTML line ended on the label,
+ * so the break belongs after that chrome, not inside it.
  */
 function afterMarkup(md: string, index: number): number {
     let cursor = index;
-    while (cursor < md.length && md[cursor] === "*") cursor += 1;
+    while (cursor < md.length && (md[cursor] === "*" || md[cursor] === "~")) cursor += 1;
     if (md[cursor] === "]" && md[cursor + 1] === "(") {
         let depth = 1;
         cursor += 2;

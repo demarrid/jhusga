@@ -156,6 +156,7 @@ const PLACEHOLDER_WORDS = new Set([
     "absent",
     "excused",
     "unexcused",
+    "late",
     "everyone",
     "adjourned",
     // An agenda links to the bill templates from inside its own report
@@ -1392,6 +1393,8 @@ function indentOf(rawLine: string): number {
     return (/^[ \t]*/.exec(rawLine)?.[0] ?? "").replace(/\t/g, "    ").length;
 }
 
+const MEETING_PARTNER = /\bmeeting\s+(?:with|witih|w\/)\s+(.+?)\s*$/i;
+
 /**
  * Read every person named by a labelled line, an attendance table, a report
  * heading, or a remark attributed to them.
@@ -1404,13 +1407,15 @@ export function extractContributors(
     kind?: string,
 ): ExtractedContributor[] {
     const found = new Map<string, ExtractedContributor>();
+    // A senator's own "Meeting w/ Alyse" notes are not filed as minutes (see
+    // isCommitteeRecordsFolder), but they are written as speaker turns.
     const minutes = (!!kind && kind.startsWith("minutes.")) ||
-        (kind === "unknown" && /\btown\s+hall\b/i.test(title ?? ""));
+        (kind === "unknown" && (/\btown\s+hall\b/i.test(title ?? "") || MEETING_PARTNER.test(title ?? "")));
     const lines = markdown.split(/\r?\n|\v/);
 
     // Meeting partners can appear only in the filename. Keep them as people
     // mentioned, not authors or proof of attendance.
-    const meetingPartner = minutes && title?.match(/\bmeeting\s+(?:with|witih)\s+(.+?)\s*$/i);
+    const meetingPartner = minutes && title?.match(MEETING_PARTNER);
     if (meetingPartner) {
         const partner = parsePersonToken(meetingPartner[1]!);
         if (partner && looksLikePersonName(partner.name)) {

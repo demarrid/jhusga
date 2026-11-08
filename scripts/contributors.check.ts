@@ -1200,6 +1200,12 @@ check("semicolon and recorded-video speaker labels retain known-person safeguard
     ["Mahima", "Royce"].every(name => informalSpeakers.some(p => p.name === name && p.role === "interlocutor" && p.onlyIfKnown)));
 check("informal speaker labels are limited to minutes",
     !extractContributors(informalTurns, "Funding bill", "bill.funding").some(p => p.role === "interlocutor"));
+check("an attendance status legend names nobody",
+    extractContributors("*Present; Absent (Uncommunicated and/or Unexcused); Excused (Excused Absence); Late (More than 5 mins late)*", "IA Committee Meeting Minutes", "minutes.committee").length === 0);
+const meetingNotes = extractContributors("Maggie: We want as many people to go through it\n\nalyse: online training is the federally required online training", "11/6 - Meeting w/ Alyse", "unknown");
+check("personal meeting notes read their speakers and the partner in the title",
+    meetingNotes.some(p => p.name === "Alyse" && p.role === "mentioned") &&
+    ["Maggie", "Alyse"].every(name => meetingNotes.some(p => p.name === name && p.role === "interlocutor" && p.onlyIfKnown)));
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
