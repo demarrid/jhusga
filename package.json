@@ -42,6 +42,7 @@
     "unpdf": "^1.8.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.4.3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

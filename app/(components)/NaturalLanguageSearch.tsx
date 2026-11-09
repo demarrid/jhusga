@@ -360,15 +360,10 @@ function readReducedMotion(): boolean {
 }
 
 function Answer({ answer }: { answer: QuestionAnswer }) {
-    // A question naming a period is answered by date across every session, so
-    // its reading is "period" and the label falls through to the archive
-    // rather than naming current law.
     const scopeLabel =
-        answer.reading === "current"
-            ? "current law and News-Letter reporting"
-            : answer.reading === "membership"
-              ? "the contact list"
-              : "the archive";
+        answer.reading === "membership"
+            ? "the contact list"
+            : "the archive";
 
     const reason = noAnswerReason(answer, scopeLabel);
 
@@ -485,7 +480,7 @@ function noAnswerReason(answer: QuestionAnswer, scopeLabel: string): string | nu
         case "empty":
             return answer.matches.length === 0
                 ? null
-                : `Nothing in ${scopeLabel} answers that outright. The documents below are the closest matches.`;
+                : "The passages retrieved did not provide enough evidence to answer. The matching documents are below.";
         case "failed":
             return "No answer could be written whose quotes all check out against the documents, so none is shown. The documents below are where to look.";
         case "unavailable":

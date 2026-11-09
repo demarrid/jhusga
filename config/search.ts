@@ -12,33 +12,28 @@ export const MAX_QUESTION_CHARS = 300;
  * Which sessions a question is asked of.
  *
  * The question box no longer asks the reader to pick: it searches the whole
- * archive and then keeps the documents that are in force, unless the question
- * itself is about the past. The CLI still uses these when somebody wants to
- * force one or the other.
+ * archive. The CLI still uses these when somebody wants to limit retrieval
+ * to the current session.
  */
 export type SearchScope = "current" | "all";
 
 /**
- * Whether a question is about the rules now, or about how they used to be.
- *
- * "How do I get a bill passed" should only read the constitution and bylaws
- * now in force. "When is the last time the constitution was updated" has to
- * look at older editions, and at the amendments between them.
+ * A ranking hint, never a restriction on which records can be searched.
+ * Unqualified questions search across the archive. Explicit questions about
+ * current rules prefer the latest governing editions, with history available
+ * as context rather than authority for the rules now.
  */
-export type QuestionFocus = "current" | "historical";
+export type QuestionFocus = "archive" | "current" | "historical";
 
 /**
  * Whether a question is about the rules now, or about how they used to be.
  *
- * Default is current: most people asking the archive want the constitution
- * in force, not the 112th's. A question that names a change, a comparison,
- * a crisis, or "the last time" has to look further back.
+ * Default is the archive: missing a historical cue must not hide records.
  *
  * Conjugations count, and they are listed rather than packed into one
  * expression so a cue cannot steal a word boundary from its neighbour.
  * "How have the bylaws changed over time" is the same kind of question as
- * "how has the constitution changed"; treating it as current law drops every
- * older edition before the model ever sees them.
+ * "how has the constitution changed"; both should be described as historical.
  *
  * "Earliest" and "oldest" only count next to a document. Bare, they are how
  * somebody asks who the oldest sitting senator is, which is a roster
@@ -71,20 +66,19 @@ const HISTORICAL_QUESTION = [
 ];
 
 export function questionFocus(question: string): QuestionFocus {
-    return HISTORICAL_QUESTION.some((pattern) => pattern.test(question))
-        ? "historical"
-        : "current";
+    if (HISTORICAL_QUESTION.some((pattern) => pattern.test(question))) return "historical";
+    const namesRules = /\b(?:rules?|law|constitution|bylaws?|procedure|requirements?)\b/i.test(question);
+    const namesPresent = /\b(?:current|currently|now|latest|most recent|in force)\b/i.test(question);
+    return namesRules && namesPresent ? "current" : "archive";
 }
 
 /**
  * How a question was understood, before a model ran.
  *
- * These are detectors, not judgements. The answer shows which one fired, so
- * a reader who asked about the earliest bylaws can see that older editions
- * were left out because of the wording, not because the archive holds nothing
- * earlier.
+ * These describe ranking and explicit date or roster lookups. Subject search
+ * does not exclude older records based on a guessed intent.
  */
-export type QuestionReading = "current" | "historical" | "period" | "membership";
+export type QuestionReading = QuestionFocus | "period" | "membership";
 
 /** The sentence under an answer that names the detector which ran. */
 export function describeQuestionReading(
@@ -92,6 +86,8 @@ export function describeQuestionReading(
     timeframe?: { label: string; outside: boolean } | null,
 ): string {
     switch (reading) {
+        case "archive":
+            return "Searched across the archive, including older records and News-Letter reporting.";
         case "membership":
             return "This was read as a question about who holds a seat now, so it was answered from the contact list and roster, not from the constitution.";
         case "period":
@@ -102,9 +98,9 @@ export function describeQuestionReading(
                 ? `This was read as a question about ${timeframe.label}. The archive holds nothing dated in that period.`
                 : `This was read as a question about ${timeframe.label}, so the documents below are the ones dated in that period.`;
         case "historical":
-            return "This was read as a question about how the rules used to be, so older editions were included.";
+            return "Searched across the archive for historical evidence, including older records and editions.";
         case "current":
-            return "This was read as a question about the rules now, so older editions were left out.";
+            return "Prioritized the latest governing editions, with older records available as context.";
     }
 }
 

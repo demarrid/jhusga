@@ -109,7 +109,7 @@ for (const test of CASES) {
 console.log(`\n${CASES.length - failures}/${CASES.length} passed`);
 
 let focusFailures = 0;
-function focusCheck(question: string, expected: "current" | "historical") {
+function focusCheck(question: string, expected: "archive" | "current" | "historical") {
     const actual = questionFocus(question);
     const ok = actual === expected;
     if (!ok) focusFailures += 1;
@@ -117,10 +117,17 @@ function focusCheck(question: string, expected: "current" | "historical") {
 }
 
 console.log("\nquestionFocus");
-focusCheck("how do I get a bill passed", "current");
-focusCheck("how do I change the bylaws", "current");
+focusCheck("how do I get a bill passed", "archive");
+focusCheck("how do I change the bylaws", "archive");
 focusCheck("what is the most recent constitution", "current");
-focusCheck("who is the oldest sitting senator", "current");
+focusCheck("who is the oldest sitting senator", "archive");
+focusCheck("has a senator ever been removed", "archive");
+focusCheck("What motions has aarshi made", "archive");
+focusCheck("tell me about disputes over funding", "archive");
+focusCheck("what did the judiciary decide about elections", "archive");
+focusCheck("what are the current election rules", "current");
+focusCheck("compare current rules with previous rules", "historical");
+focusCheck("why is dining funding controversial now", "archive");
 focusCheck("when is the last time the constitution was updated", "historical");
 focusCheck("compare constitution 2026 april to constitution 2025 fall", "historical");
 focusCheck("why can't I find the constitutional crisis", "historical");
@@ -144,14 +151,19 @@ function readingCopyCheck(
     if (!ok) console.log(`       expected ${expected}\n       actual   ${actual}`);
 }
 readingCopyCheck(
-    "current names the cut",
+    "current describes a preference, not an exclusion",
     describeQuestionReading("current"),
-    "This was read as a question about the rules now, so older editions were left out.",
+    "Prioritized the latest governing editions, with older records available as context.",
 );
 readingCopyCheck(
     "historical names the older editions",
     describeQuestionReading("historical"),
-    "This was read as a question about how the rules used to be, so older editions were included.",
+    "Searched across the archive for historical evidence, including older records and editions.",
+);
+readingCopyCheck(
+    "unqualified questions search the archive",
+    describeQuestionReading("archive"),
+    "Searched across the archive, including older records and News-Letter reporting.",
 );
 readingCopyCheck(
     "a period names the dates",

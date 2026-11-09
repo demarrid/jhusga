@@ -59,6 +59,15 @@ that evidence alone. The answer goes through the same verification gate as
 everything else: quotes that are not in the document are dropped, and an
 answer with no surviving quotes is never shown.
 
+Unqualified questions search across sessions and document types. Explicit
+questions about current rules prioritize the latest governing editions without
+excluding older minutes, decisions, or other context. Governing passages carry
+edition labels so an older rule is not presented as current law. A failed answer
+means the retrieved excerpts were insufficient, not that the archive has no answer.
+Matching more of the question takes priority over repeating a generic word:
+"What motions has Aarshi made" retrieves minutes naming Aarshi ahead of motion
+handouts, including minutes that use "moved" instead of "motion".
+
 The retrieval half is deterministic and costs nothing, so the documents that
 matched are shown whether or not the model produced anything -- a deployment
 with no `AI_API_KEY` still has a working search. Answers are cached against a

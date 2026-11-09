@@ -22,6 +22,7 @@ const NOISE_WORDS = new Set([
     "about", "into", "over", "under", "and", "or", "but", "if", "than", "then",
     "that", "this", "these", "those", "it", "its", "as", "any", "all", "some",
     "get", "tell", "me", "you", "i", "we", "they", "please", "know", "like",
+    "make", "makes", "made", "making",
     "happen", "happens", "happened", "happening", "going", "anything",
     "everything", "something", "nothing", "else", "news", "recap", "update",
     "sga", "jhu", "hopkins", "johns", "university", "student", "students",
@@ -53,9 +54,17 @@ export function questionTerms(question: string): string[] {
  * caucus position introduced" shares no single passage with all of "first",
  * "caucus", "position" and "introduced". Ranking is what separates the passage
  * matching three terms from the one matching a common term once, so an OR
- * query ranked by `ts_rank_cd` behaves like the AND a reader expects, without
- * failing outright when one word is absent.
+ * query keeps partial matches eligible. Retrieval ranks the number of query
+ * concepts matched before term frequency, so repeating "motion" cannot bury
+ * a passage that also names the person the reader asked about.
  */
 export function tsQueryFor(terms: string[]): string {
-    return terms.join(" | ");
+    return tsQueriesFor(terms).join(" | ");
+}
+
+/** Alternatives count as one concept, not extra matches for a verbose passage. */
+export function tsQueriesFor(terms: string[]): string[] {
+    return [...new Set(terms.map((term) =>
+        /^motions?$/.test(term) ? "(motion | moved)" : term,
+    ))];
 }

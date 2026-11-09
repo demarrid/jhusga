@@ -1,6 +1,6 @@
 'use server'
 
-import { MAX_QUESTION_CHARS } from "@/config/search";
+import { MAX_QUESTION_CHARS, questionFocus } from "@/config/search";
 import {
     answerQuestion,
     sourceDocumentsForQuestion,
@@ -57,8 +57,8 @@ export async function askArchive(
     const empty: QuestionAnswer = {
         question: asked,
         scope: "all",
-        focus: "current",
-        reading: "current",
+        focus: questionFocus(asked),
+        reading: questionFocus(asked),
         status: "empty",
         content: "",
         citations: [],

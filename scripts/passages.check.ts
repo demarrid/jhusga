@@ -1,5 +1,5 @@
 import { splitIntoPassages } from "../lib/passages";
-import { questionTerms } from "../lib/terms";
+import { questionTerms, tsQueriesFor } from "../lib/terms";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -131,6 +131,15 @@ check(
 );
 
 console.log("\nquestionTerms");
+
+check(
+    "person motion questions preserve the name and remove the question frame",
+    questionTerms("What motions has aarshi made").join(",") === "motions,aarshi",
+);
+check(
+    "motion and moved are alternatives for one concept",
+    tsQueriesFor(questionTerms("What motions has aarshi made")).join(",") === "(motion | moved),aarshi",
+);
 
 const terms = questionTerms("How many caucus senators can there be?");
 

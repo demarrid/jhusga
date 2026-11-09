@@ -28,9 +28,10 @@ import path from "node:path";
 /**
  * Every suite, in the order it runs.
  *
- * `db` is last because it is the only one that opens a database. The rest
- * assert against pure functions and fixtures, so they run anywhere, including
- * a checkout with no `.env` -- see the note on lazy construction in
+ * `db` is last because it is the only one that opens the configured database.
+ * The rest use pure functions and fixtures (search-ranking uses an in-memory
+ * PostgreSQL instance), so they run in a checkout with no `.env` -- see the
+ * note on lazy construction in
  * lib/prisma.ts, which is what makes that true.
  */
 const SUITES = [
@@ -69,6 +70,7 @@ const SUITES = [
     "office",
     "passages",
     "search",
+    "search-ranking",
     "summarize",
     "summary-failures",
     "sync-batching",
