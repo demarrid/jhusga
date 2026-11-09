@@ -39,12 +39,18 @@ let hourStarted = 0;
 let hourlyCalls = 0;
 const inflight = new Map<string, Promise<AdministratorResult | null>>();
 
-/** The caller starts one bounded ingestion run; this does not reset the hourly cap. */
-export function beginAdministratorLookupRun(deadline = Number.POSITIVE_INFINITY) {
-    runRemaining = 4;
+/**
+ * The caller starts one bounded ingestion run; this does not reset the hourly cap.
+ * A run split across invocations passes back what `administratorLookupsLeft` reported.
+ */
+export function beginAdministratorLookupRun(deadline = Number.POSITIVE_INFINITY, remaining = 4) {
+    runRemaining = remaining;
     // Drive enumeration can take minutes before reaching contributors.
     runDeadline = 0;
     absoluteDeadline = deadline;
+}
+export function administratorLookupsLeft(): number {
+    return runRemaining;
 }
 export function administratorLookupBudgetRemaining(): number {
     return Date.now() >= Math.min(runDeadline || Infinity,absoluteDeadline) ? 0 : runRemaining;

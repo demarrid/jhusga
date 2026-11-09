@@ -1,3 +1,4 @@
+import { captureDocumentMedia, type CapturedDocument } from "@/lib/document-media";
 import {
     ARCHIVE_FOLDER_PATTERN,
     EXCLUDED_FOLDER_PATTERNS,
@@ -517,17 +518,17 @@ const TABLE_ROW = /^[ \t]*\|/m;
 export async function exportDocumentAsMarkdown(
     fileId: string,
 ): Promise<string> {
-    // Images are stripped here rather than downstream so that the stored text,
-    // the hash, the model input, and the citation offsets all agree on one
-    // version of the document.
-    const markdown = sanitizeExport(await exportFile(fileId, "text/markdown"));
-    if (!TABLE_ROW.test(markdown)) return markdown;
+    return (await exportDocumentWithMedia(fileId)).content;
+}
 
-    try {
-        return restoreCellBreaks(markdown, await exportFile(fileId, "text/html"));
-    } catch {
-        return markdown;
+/** Capture images before text cleanup, using the same export as the text. */
+export async function exportDocumentWithMedia(fileId: string): Promise<CapturedDocument> {
+    let markdown = await exportFile(fileId, "text/markdown");
+    if (TABLE_ROW.test(markdown)) {
+        try { markdown = restoreCellBreaks(markdown, await exportFile(fileId, "text/html")); }
+        catch { /* The markdown remains readable if the HTML export is unavailable. */ }
     }
+    return captureDocumentMedia(markdown);
 }
 
 /**

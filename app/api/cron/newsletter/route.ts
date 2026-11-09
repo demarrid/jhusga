@@ -12,7 +12,7 @@ import { ingestNewsletterCoverage } from "@/lib/coverage";
  * the SGA changed, which is usually nothing and always finishes. This one is
  * bounded by a crawl delay the paper asked for in robots.txt, and honouring it
  * means a single run cannot finish -- ten seconds an article against a serverless
- * function's five minutes is about twenty articles. Folding that into the sync
+ * function's one-minute limit allows only a few articles. Folding that into the sync
  * would give a job that reliably times out and a sync that stops reporting.
  *
  * So the run stops itself on a budget and says so, and the next night carries
@@ -22,7 +22,8 @@ import { ingestNewsletterCoverage } from "@/lib/coverage";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// Keep this literal within the deployed Hobby plan limit.
+export const maxDuration = 60;
 
 function isAuthorised(request: Request): boolean {
     const secret = process.env.CRON_SECRET;
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
         const newsletter = await ingestNewsletterCoverage({
             // A little under the platform's limit, so the run records what it
             // did instead of being killed mid-article with nothing to show.
-            runBudgetMs: Math.min(NEWSLETTER_RUN_BUDGET_MS, 240_000),
+            runBudgetMs: Math.min(NEWSLETTER_RUN_BUDGET_MS, 40_000),
         });
 
         return Response.json({ ok: true, newsletter });

@@ -126,7 +126,7 @@ export default async function Discussion({
                 </nav>
 
             {posts.length === 0 ? (
-                <p className={styles.muted}>
+                <p className={`${styles.muted} ${styles.emptyNotice}`}>
                     {selected
                         ? `Nothing in ${selected.name} yet.`
                         : "Nothing has been posted yet."}

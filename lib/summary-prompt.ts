@@ -24,7 +24,7 @@ import { isSecondaryKind } from "@/lib/kinds";
  * secondary source is told does not invalidate the several hundred SGA
  * summaries written to instructions nobody has touched.
  */
-const PROMPT_VERSION = "document-summary-v2";
+const PROMPT_VERSION = "document-summary-v3";
 const SECONDARY_PROMPT_VERSION = "secondary-summary-v1";
 
 /**
@@ -73,6 +73,8 @@ ${CITATION_RULES}
 
 Grounding:
 - Use only this document. Never use outside knowledge.
+- Distinguish table entries from their quantities: two rows can record three disciplinary marks. Check any stated total against the quantity column; omit totals you cannot establish.
+- A participant list and a placeholder agenda do not establish that a meeting occurred or that anyone attended. Describe listed participants as scheduled, never as having attended. If a meeting file contains only logistics, a roster, and an unfilled agenda such as "Ideas for agenda", set insufficientContent to true.
 - Set "insufficientContent" to true, and leave "content" empty, only when the document is an unfilled template (placeholder text such as "XXX", "Senator #1", or a blank date) or a stub with no real content. A short but genuine document still gets a summary.
 
 ${REPLY_FORMAT}`;

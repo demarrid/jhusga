@@ -11,4 +11,5 @@ export async function recordDocumentVersion(tx: Prisma.TransactionClient, revisi
         // Never downgrade a previously accepted occurrence on a retry.
         update: status === "published" ? { status } : {},
     });
+    return id;
 }

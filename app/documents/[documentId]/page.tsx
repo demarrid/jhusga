@@ -7,7 +7,9 @@ import type { DocumentDetail } from "@/server/documents";
 import DocumentOutline from "@/app/(components)/DocumentOutline";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentVersionSelector from "@/app/(components)/DocumentVersionSelector";
-import { getVersionedDocument } from "@/server/document-versions";
+import { getVersionedDocument, getDocumentVersionContent } from "@/server/document-versions";
+import DocumentDiff from "@/app/(components)/DocumentDiff";
+import { collapseUnchanged, diffLines } from "@/lib/diff";
 import DocumentViewer from "@/app/(components)/DocumentViewer";
 import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
@@ -85,7 +87,7 @@ export default async function DocumentPage({
 }: {
     // Next 16 passes route params as a promise.
     params: Promise<{ documentId: string }>;
-    searchParams: Promise<{ returnTo?: string | string[]; version?: string | string[] }>;
+    searchParams: Promise<{ returnTo?: string | string[]; version?: string | string[]; diff?: string | string[] }>;
 }) {
     const { documentId } = await params;
     const query = await searchParams;
@@ -94,6 +96,11 @@ export default async function DocumentPage({
     const view = await loadVersionedDocument(documentId, requested);
     if (!view) notFound();
     const { document } = view;
+    const comparing = query.diff === "1";
+    const previousOption = view.options[view.options.findIndex(option => option.id === view.selected.id) - 1];
+    const previous = previousOption
+        ? await getDocumentVersionContent(document, previousOption.id) : null;
+    const comparison = previous !== null ? diffLines(previous, document.content) : null;
     const latestHref = `/documents/${documentId}?${new URLSearchParams({ version: view.latest.id, ...(returnTo ? { returnTo } : {}) })}`;
 
     const authoredSections = documentSections(document.content, {
@@ -248,7 +255,20 @@ export default async function DocumentPage({
             ) : (
             <div className={styles.readerLayout}>
                 <article className={styles.documentPane}>
-                    <DocumentVersionSelector options={view.options} selectedId={view.selected.id} />
+                    <DocumentVersionSelector key={view.selected.id} options={view.options} selectedId={view.selected.id} initiallyComparing={comparing} hasPrevious={comparison !== null}>
+                    <section id="document-version-history" className={styles.versionHistory} aria-label="Version history">
+                        <h2>Version history</h2>
+                        <p>Choose a version above to compare it with the version immediately before it.</p>
+                        {comparison && previousOption ? <>
+                            <p>{previousOption.label} → {view.selected.label}</p>
+                            <p>{comparison.added} lines added, {comparison.removed} removed.</p>
+                            {comparison.coarse && <p>These versions differ too extensively to align line by line; changed text is shown as a replacement.</p>}
+                            {comparison.added === 0 && comparison.removed === 0
+                                ? <p>These versions are identical.</p>
+                                : <DocumentDiff ops={collapseUnchanged(comparison)} />}
+                        </> : <p>This is the earliest saved version; there is no previous version to compare.</p>}
+                    </section>
+                    </DocumentVersionSelector>
                     <DocumentViewer key={view.selected.id} blocks={document.blocks} />
                 </article>
 
@@ -258,7 +278,9 @@ export default async function DocumentPage({
                             <h2>{document.legislationEdition?.role === "draft" ? "Draft summary" : "Summary"}</h2>
                             {view.historical ? <p className={styles.asideMeta}>
                                 This version has no saved summary.{" "}
-                                <Link href={latestHref} scroll={false}>View the latest version</Link>.
+                                {view.selected.id !== view.latest.id && <>
+                                    <Link href={latestHref} scroll={false}>View the latest version</Link>.
+                                </>}
                             </p> : <DocumentRestatement restatement={document.restatement} />}
                         </section>
 

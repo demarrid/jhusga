@@ -49,7 +49,8 @@ async function main() {
     } };
     Object.assign(globalThis, {
         __incrementalCache: backend,
-        prisma: { document: archiveDocuments, driveRevision: documents, hopkinsAffiliate: documents, hopkinsCategory: documents, documentContributor: documents },
+        prisma: { document: archiveDocuments, driveRevision: documents, hopkinsAffiliate: documents, hopkinsCategory: documents, documentContributor: documents,
+            documentMedia: { findFirst: async () => { reads++; return null; } } },
     });
     delete process.env.JHUSGA_DATA_MODE;
     const { getRecentActivity } = await import("../server/activity");

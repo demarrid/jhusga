@@ -53,3 +53,14 @@ function demoVersion(document: DocumentDetail, id: string): DocumentDetail {
     return { ...document, content, blocks: renderDocument(content, []), restatement: null,
         contributors: [], agendaMatches: [], references: [], unresolvedLinks: [] };
 }
+
+/** Read only the published snapshot text needed for a comparison. */
+export async function getDocumentVersionContent(document: DocumentDetail, versionId: string) {
+    if (isSecondaryKind(document.kind)) return null;
+    if (demoModeEnabled()) return demoVersion(document, versionId).content;
+    const version = await prisma.documentVersion.findFirst({
+        where: { id: versionId, status: "published", revision: { documentId: document.id } },
+        select: { revision: { select: { content: true } } },
+    });
+    return version?.revision.content ?? null;
+}

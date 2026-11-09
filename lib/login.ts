@@ -1,3 +1,4 @@
+import { signInEmail } from "@/lib/sign-in-email";
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
@@ -137,19 +138,7 @@ export async function requestLoginCode(email: string): Promise<RequestCodeResult
     try {
         await sendMail({
             to: address,
-            subject: `${code} is your jhusga.org sign-in code`,
-            text: [
-                `Your sign-in code for https://www.jhusga.org/ is ${code}.`,
-                `It will expire in ${LOGIN_CODE_MINUTES} minutes.`,
-                "",
-                "Do not share this code with anyone. If you did not ask for this, nothing has happened and you can ignore it.",
-            ].join("\n"),
-            html: [
-                `<p>Your sign-in code for<a href="https://www.jhusga.org/">jhusga.org</a> is <strong>${code}</strong>.</p>`,
-                `<p>It will expire in ${LOGIN_CODE_MINUTES} minutes.</p>`,
-                `<p style="color: #b91c1c;"><strong>Do not share this code with anyone.</strong></p>`,
-                `<p>If you did not ask for this, nothing has happened and you can ignore it.</p>`,
-            ].join(""),
+            ...signInEmail(code, LOGIN_CODE_MINUTES),
         });
     } catch (cause) {
         await prisma.loginCode.deleteMany({ where: { emailHash } });

@@ -100,7 +100,7 @@ export function contributorRoleLabel(role: string): string {
 
 /** Line prefixes that introduce a list of people, mapped to what they mean. */
 const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolean }[] = [
-    { pattern: /^introduced\s+by$/i, role: "introducer" },
+    { pattern: /^(?:introduced\s+by|introducers?)$/i, role: "introducer" },
     { pattern: /^(?:sponsored\s+by|sponsors?|co-?sponsors?)$/i, role: "sponsor" },
     { pattern: /^(?:staff\s+present|staff|faculty|admin|advisors?)$/i, role: "staff" },
     {
@@ -156,6 +156,7 @@ const PLACEHOLDER_WORDS = new Set([
     "absent",
     "excused",
     "unexcused",
+    "late",
     "everyone",
     "adjourned",
     // An agenda links to the bill templates from inside its own report
@@ -1013,6 +1014,7 @@ const SPEAKER_NOISE = new Set([
  */
 const SPEAKER_HEADING_WORDS = new Set([
     "reading",
+    "forward",
     "items",
     "item",
     "meeting",
@@ -1106,7 +1108,8 @@ function universityIntroduction(line: string): { speaker: string; office: string
             String.raw`(?:[A-Za-z’'-]+(?:\s+[A-Za-z’'-]+){0,2}\s*,\s*)?(?:the\s+)?(${UNIVERSITY_TITLE})`,
             "i",
         ));
-    if (!match || !UNIVERSITY_TITLE_CONTEXT.test(match[2]!)) return null;
+    if (!match || !UNIVERSITY_TITLE_CONTEXT.test(match[2]!) ||
+        nameKey(match[1]!).split(" ").some(word => SPEAKER_HEADING_WORDS.has(word))) return null;
     const office = match[2]!.trim().replace(/\b(dean|provost|professor|chancellor|director)[a-z]{1,2}\b/gi, "$1");
     return { speaker: match[1]!, office };
 }
@@ -1390,6 +1393,8 @@ function indentOf(rawLine: string): number {
     return (/^[ \t]*/.exec(rawLine)?.[0] ?? "").replace(/\t/g, "    ").length;
 }
 
+const MEETING_PARTNER = /\bmeeting\s+(?:with|witih|w\/)\s+(.+?)\s*$/i;
+
 /**
  * Read every person named by a labelled line, an attendance table, a report
  * heading, or a remark attributed to them.
@@ -1402,13 +1407,15 @@ export function extractContributors(
     kind?: string,
 ): ExtractedContributor[] {
     const found = new Map<string, ExtractedContributor>();
+    // A senator's own "Meeting w/ Alyse" notes are not filed as minutes (see
+    // isCommitteeRecordsFolder), but they are written as speaker turns.
     const minutes = (!!kind && kind.startsWith("minutes.")) ||
-        (kind === "unknown" && /\btown\s+hall\b/i.test(title ?? ""));
-    const lines = markdown.split(/\r?\n/);
+        (kind === "unknown" && (/\btown\s+hall\b/i.test(title ?? "") || MEETING_PARTNER.test(title ?? "")));
+    const lines = markdown.split(/\r?\n|\v/);
 
     // Meeting partners can appear only in the filename. Keep them as people
     // mentioned, not authors or proof of attendance.
-    const meetingPartner = minutes && title?.match(/\bmeeting\s+(?:with|witih)\s+(.+?)\s*$/i);
+    const meetingPartner = minutes && title?.match(MEETING_PARTNER);
     if (meetingPartner) {
         const partner = parsePersonToken(meetingPartner[1]!);
         if (partner && looksLikePersonName(partner.name)) {
@@ -1488,6 +1495,13 @@ export function extractContributors(
         }
 
         const indent = indentOf(rawLine);
+        // PDF text loses table columns. Keep the people, but do not infer
+        // attendance from a combined Present/Absent header.
+        if (minutes && /^Present\s+Absent$/i.test(line)) {
+            attendance = { role: "mentioned", indent, numbered: false };
+            carryingList = null;
+            continue;
+        }
         const attendanceHeading = minutes ? attendanceLabel(line) : null;
         if (attendanceHeading) {
             attendance = { role: attendanceHeading, indent, numbered: LIST_ITEM.test(rawLine) };

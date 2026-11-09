@@ -278,8 +278,34 @@ model DocumentVersion {
     // published | held | rejected | unknown (legacy publication not provable)
     status String @default("held")
 
+    media DocumentMedia?
+
     @@index([revisionId, status])
     @@index([status, observedAt])
+}
+
+// Image bytes and placement belong to a source occurrence, not deduplicated text.
+model DocumentMedia {
+    versionId String @id
+    version DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+    contentHash String
+    createdAt DateTime @default(now())
+    images DocumentImage[]
+}
+
+model DocumentImage {
+    id String @id @default(uuid())
+    versionId String
+    media DocumentMedia @relation(fields: [versionId], references: [versionId], onDelete: Cascade)
+    ordinal Int
+    offset Int
+    inline Boolean @default(false)
+    alt String
+    width Int
+    height Int
+    mimeType String
+    bytes Bytes
+    @@unique([versionId, ordinal])
 }
 
 // OAuth history is separate from published/held archive versions. Null content
@@ -562,10 +588,23 @@ model SyncRun {
     // Agenda/minutes pairs the meeting matcher could join up.
     meetingsPaired      Int @default(0)
 
+    // A run is a sequence of steps worked through in several short function
+    // invocations; see lib/sync-run.ts. `step` is the next one to do, `state`
+    // its cursor and the running counts, `files` the walk it is working from.
+    step        String    @default("")
+    state       Json?
+    files       Json?
+    slices      Int       @default(0)
+    // Last checkpoint. A running run whose heartbeat stops was cut off.
+    heartbeatAt DateTime  @default(now())
+    // Held by the invocation working the run, so two never work it at once.
+    leaseUntil  DateTime?
+
     startedAt  DateTime  @default(now())
     finishedAt DateTime?
 
     @@index([startedAt])
+    @@index([status])
 }
 
 // A News-Letter article the archive fetched, read, and decided not to keep.

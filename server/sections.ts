@@ -102,5 +102,8 @@ export async function getLatestSyncRun() {
     if (demoModeEnabled()) {
         return { id: "demo-sync", startedAt: new Date("2026-09-09T15:15:00.000Z"), finishedAt: new Date("2026-09-09T15:16:00.000Z"), status: "completed" };
     }
-    return prisma.syncRun.findFirst({ orderBy: { startedAt: "desc" } });
+    return prisma.syncRun.findFirst({
+        orderBy: { startedAt: "desc" },
+        select: { id: true, startedAt: true, finishedAt: true, status: true },
+    });
 }

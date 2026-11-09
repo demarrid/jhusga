@@ -75,6 +75,7 @@ async function main() {
             findMany: async ({ where }: { where: Where }) => rows.filter(row => matches(row, where)),
             findFirst: async ({ where }: { where: Where }) => rows.find(row => matches(row, where)) ?? null,
         },
+        documentMedia: { findFirst: async () => null },
         amendmentClearance: { findFirst: async () => null },
     } });
     const { getVersionedDocument } = await import("../server/document-versions");
@@ -95,6 +96,17 @@ async function main() {
     assert.equal(latest?.historical, false);
     assert.equal(latest?.document.restatement?.content, current.summary.content);
     assert.ok(latest?.document.heldNotice, "held source warning remains visible");
+    // Legacy exports kept unlabeled image definitions after losing their markers.
+    const image = "data:image/png;base64,aGVsbG8=";
+    rows[1].revision.content = `${current.content}\n\n: <${image}>`;
+    const withImages = await getVersionedDocument("document", "new");
+    assert.equal(withImages?.historical, false);
+    assert.equal(withImages?.document.restatement?.content, current.summary.content);
+    assert.equal(withImages?.document.content, current.content, "summary citation offsets retain their source text");
+    rows[0].revision.content += `\n\n[image1]: <${image}>`;
+    const oldImages = await getVersionedDocument("document", "old");
+    assert.equal(oldImages?.historical, true);
+    assert.equal(oldImages?.document.restatement, null);
     console.log("Document version checks passed: date defaults, DST, reversions, publication, scoping and summaries.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

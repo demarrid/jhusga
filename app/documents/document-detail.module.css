@@ -1,4 +1,6 @@
 .page {
+  /* Archived text can contain URLs and embedded data without word breaks. */
+  overflow-wrap: anywhere;
   min-height: 100vh;
   background: #f7f9fb;
   color: #172b44;
@@ -107,6 +109,7 @@
 }
 
 .sidebar {
+  min-width: 0;
   position: sticky;
   top: 6.5rem;
   display: flex;
@@ -475,6 +478,8 @@
 }
 
 .viewerTable {
+  min-width: 0;
+  max-width: 100%;
   margin: 1.5rem 0;
   overflow-x: auto;
 }
@@ -537,7 +542,9 @@
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-work-sans), Tahoma, sans-serif;
-  font-size: 0.8rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
 }
 
 .viewer caption {
@@ -552,14 +559,14 @@
 
 /* Provisions, not a roster: the same face as the bill around the table. */
 .viewer .proseTable {
-  table-layout: fixed;
+  table-layout: auto;
   font-family: inherit;
   font-size: 0.95rem;
   line-height: 1.55;
 }
 
-.proseTable td, .proseTable th {
-  overflow-wrap: anywhere;
+.viewer .viewerLongCell {
+  min-width: 24rem;
 }
 
 .signatureGroup {
@@ -615,6 +622,8 @@
   text-align: left;
   vertical-align: top;
   white-space: pre-wrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 /* A vendor URL is one long token. Breaking only the link keeps "Quantity"
@@ -893,7 +902,7 @@
 
 @media (max-width: 900px) {
   .readerLayout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .sidebar {
@@ -937,7 +946,7 @@
   }
 
   .viewerLayoutRow {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .viewerLayoutAside {
@@ -968,4 +977,62 @@
 .articleSummary {
   max-width: 65rem;
   padding: clamp(3rem, 6vw, 5rem) max(6vw, 1.5rem) clamp(6rem, 10vw, 9rem);
+}
+
+.documentImage {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0.75rem auto;
+}
+
+.documentInlineImage {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    vertical-align: middle;
+}
+
+.historyButton {
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  vertical-align: -0.125em;
+  cursor: pointer;
+}
+
+.historyButton svg {
+  width: 100%;
+  height: 100%;
+}
+
+.historyButton:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.versionHistory {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid currentColor;
+}
+
+.versionHistory h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.versionHistory > h2,
+.versionHistory > p {
+  color: #6a7c8f;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  font-weight: 400;
+  margin: 0 0 0.5rem;
 }
