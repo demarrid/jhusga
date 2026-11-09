@@ -223,7 +223,7 @@ function BlockView({ block }: { block: Block }) {
                 row.cells.filter((cell) => runsText(cell).trim().length >= 80).length >= 2,
             );
             return (
-                <div className={styles.viewerTable}>
+                <div className={styles.viewerTable} tabIndex={0} role="region" aria-label="Document table">
                     <table className={prose ? styles.proseTable : undefined}>
                         {presented.caption && (
                             <caption>{renderRuns(presented.caption)}</caption>
@@ -371,7 +371,7 @@ function Row({ row, cell }: { row: TableRow; cell: "th" | "td" }) {
     return (
         <tr>
             {row.cells.map((runs, index) => (
-                <Cell key={index}>
+                <Cell key={index} className={runsText(runs).trim().length >= 80 ? styles.viewerLongCell : undefined}>
                     {renderRuns(runs)}
                 </Cell>
             ))}

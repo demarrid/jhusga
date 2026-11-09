@@ -559,14 +559,14 @@
 
 /* Provisions, not a roster: the same face as the bill around the table. */
 .viewer .proseTable {
-  table-layout: fixed;
+  table-layout: auto;
   font-family: inherit;
   font-size: 0.95rem;
   line-height: 1.55;
 }
 
-.proseTable td, .proseTable th {
-  overflow-wrap: anywhere;
+.viewer .viewerLongCell {
+  min-width: 24rem;
 }
 
 .signatureGroup {
@@ -622,6 +622,8 @@
   text-align: left;
   vertical-align: top;
   white-space: pre-wrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 /* A vendor URL is one long token. Breaking only the link keeps "Quantity"
