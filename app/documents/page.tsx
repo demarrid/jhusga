@@ -26,6 +26,10 @@ import styles from "./documents.module.css";
 
 export const dynamic = "force-dynamic";
 
+// Also bounds the askArchive server action, which reads whole documents with a
+// model and runs well past the platform's default limit on broad questions.
+export const maxDuration = 60;
+
 const DOCUMENTS_DESCRIPTION =
   `Every public record of the SGA at Johns Hopkins, searchable in full: meeting ` +
   `agendas and minutes, legislation, the Constitution and Bylaws, and reports ` +

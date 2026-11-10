@@ -111,3 +111,32 @@ assert.equal(reportsOutline[0].children[0].href, reportsMatches[0].minutesHref);
 assert.ok(!JSON.stringify(reportsOutline).includes("Advisor Report"));
 console.log("Merged meeting outline checks passed.");
 
+
+// The complete agenda remains available when no generated match exists.
+import { documentSections, type DocumentSection } from "@/lib/outline";
+import { oldestAgenda } from "@/lib/meeting-agenda";
+const completeReports = meetingOutline([], reportsMatches, [], [], {
+    id: "reports-agenda", sections: documentSections(reportsAgenda),
+});
+assert.equal(completeReports[0].title, "Reports");
+assert.equal(completeReports[0].children[0].children.length, 2);
+assert.equal(completeReports[0].children[0].children[0].href, reportsMatches[0].minutesHref);
+assert.ok(completeReports[0].children.find(row => row.title === "Advisor Report")?.href?.startsWith("/documents/reports-agenda?version=latest#section-"));
+assert.equal(completeReports.at(-1)?.title, "Closing and Adjournment");
+const noMatches = meetingOutline([], [], [], [], { id: "a", sections: documentSections(agenda) });
+assert.equal(noMatches.length, documentSections(agenda).length);
+assert.ok(noMatches.every(row => row.href?.startsWith("/documents/a?version=latest#")));
+const withAuthored = meetingOutline(authored, enriched, [], [], { id: "agenda", sections: documentSections(agenda) });
+const flattenOutline = (rows: DocumentSection[]): DocumentSection[] => rows.flatMap(row => [row, ...flattenOutline(row.children)]);
+assert.equal(flattenOutline(withAuthored).filter(row => row.title === "First Reading").length, 1);
+assert.equal(flattenOutline(withAuthored).filter(row => row.title === "Second Reading").length, 1);
+const dates = [
+    { id: "copy", driveCreatedTime: new Date("2026-09-30"), createdAt: new Date("2026-10-01") },
+    { id: "original", driveCreatedTime: new Date("2026-09-28"), createdAt: new Date("2026-10-02") },
+];
+assert.equal(oldestAgenda(dates)[0].id, "original");
+assert.equal(dates[0].id, "copy");
+assert.deepEqual(oldestAgenda([]), []);
+assert.equal(oldestAgenda(dates.map(row => ({ ...row, driveCreatedTime: null })))[0].id, "copy");
+assert.equal(oldestAgenda(dates.map(row => ({ ...row, driveCreatedTime: new Date("2026-09-28") })))[0].id, "copy");
+console.log("Complete agenda and oldest-source selection checks passed.");

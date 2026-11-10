@@ -112,7 +112,7 @@ export default async function DocumentPage({
     const meetingSections = document.kind.startsWith("minutes.");
     const sections = meetingSections ? meetingOutline(authoredSections, document.agendaMatches ?? [],
         relevantDocuments(document.agendaReferences ?? [], document.references, agendas.map(row => row.id)).documents,
-        uniqueUnresolvedLinks([...(document.agendaUnresolvedLinks ?? []), ...document.unresolvedLinks])) : authoredSections;
+        uniqueUnresolvedLinks([...(document.agendaUnresolvedLinks ?? []), ...document.unresolvedLinks]), document.agendaOutline) : authoredSections;
 
     return (
         <main className={styles.page}>

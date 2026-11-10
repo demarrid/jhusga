@@ -6,14 +6,13 @@ import {
     useRef,
     useState,
     useSyncExternalStore,
-    useTransition,
     type CSSProperties,
 } from "react";
 
 import { askArchive, askArchiveSources } from "@/server/search";
 import CitedProse from "@/app/(components)/CitedProse";
 import LoadingBar from "@/app/(components)/LoadingBar";
-import { MAX_QUESTION_CHARS, describeQuestionReading } from "@/config/search";
+import { MAX_QUESTION_CHARS, describeQuestionReading, questionFocus } from "@/config/search";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
 import { formatDateShort } from "@/lib/dates";
@@ -90,7 +89,7 @@ export default function NaturalLanguageSearch() {
     const [question, setQuestion] = useState("");
     const [answer, setAnswer] = useState<QuestionAnswer | null>(null);
     const [reading, setReading] = useState<Reading>(NOTHING_READ);
-    const [pending, startTransition] = useTransition();
+    const [pending, setPending] = useState(false);
     const [exampleIndex, setExampleIndex] = useState(0);
     const [exampleSlide, setExampleSlide] = useState(true);
     const reducedMotion = usePrefersReducedMotion();
@@ -134,7 +133,7 @@ export default function NaturalLanguageSearch() {
         });
     }
 
-    function ask(asked: string) {
+    async function ask(asked: string) {
         // The button is disabled while a question is in flight, but the input
         // is not, so without this a held Enter key starts a second pair of
         // requests whose replies race the first. A ref rather than `pending`,
@@ -142,32 +141,41 @@ export default function NaturalLanguageSearch() {
         if (asking.current || asked.trim().length < 3) return;
         asking.current = true;
 
-        // Cleared here rather than inside the transition below: an update made
-        // in an async transition does not reach the screen until that
-        // transition settles, which would leave the last question's documents
-        // on show for the whole of the next one.
+        // Each question starts with fresh answer and progress state.
         setAnswer(null);
         setReading(NOTHING_READ);
 
-        startTransition(async () => {
-            // Retrieval is started first and in the same tick as generation, so
-            // the names of the documents being read can arrive while the model
-            // is still working. See askArchiveSources.
-            let finished = false;
-            const sourcesPromise = askArchiveSources(asked)
-                .then((documents) => {
-                    if (!finished) setReading({ documents, index: 0 });
-                })
-                .catch(() => {});
+        setPending(true);
+        // Retrieval is started first and in the same tick as generation, so
+        // the names of the documents being read can arrive while the model
+        // is still working. See askArchiveSources.
+        let finished = false;
+        void askArchiveSources(asked)
+            .then((documents) => {
+                if (!finished) setReading({ documents, index: 0 });
+            })
+            .catch(() => {});
 
-            try {
-                setAnswer(await askArchive(asked));
-            } finally {
-                finished = true;
-                await sourcesPromise;
-                asking.current = false;
-            }
-        });
+        // Allow the server's 60s limit to return, but also recover when a
+        // browser connection stalls or development has no platform limit.
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+            setAnswer(await Promise.race([
+                askArchive(asked),
+                new Promise<never>((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error("Answer timed out")), 65_000);
+                }),
+            ]));
+        } catch {
+            // A timed-out or failed action would otherwise reach the root
+            // error boundary and replace the whole page.
+            setAnswer(unreachableAnswer(asked));
+        } finally {
+            finished = true;
+            clearTimeout(timeout);
+            setPending(false);
+            asking.current = false;
+        }
     }
 
     // The bar only measures the walk through the documents, which is the part
@@ -184,7 +192,7 @@ export default function NaturalLanguageSearch() {
                 className={styles.form}
                 onSubmit={(event) => {
                     event.preventDefault();
-                    ask(question);
+                    void ask(question);
                 }}
             >
                 <div className={styles.questionField}>
@@ -451,6 +459,23 @@ function matchesHeading(answer: QuestionAnswer): string {
     }
 
     return answer.content ? "Read for this answer" : "Closest documents";
+}
+
+/** What to show when the answer never arrived, rather than an error page. */
+function unreachableAnswer(question: string): QuestionAnswer {
+    return {
+        question,
+        scope: "all",
+        focus: questionFocus(question),
+        reading: questionFocus(question),
+        status: "unavailable",
+        content: "",
+        citations: [],
+        matches: [],
+        timeframe: null,
+        generatedAt: null,
+        error: "The answer took too long to write or could not be reached. Try asking again, or use Find documents.",
+    };
 }
 
 function sentenceCase(text: string): string {

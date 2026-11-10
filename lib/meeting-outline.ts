@@ -3,7 +3,7 @@ import type { AgendaMatch } from "@/lib/agenda-mapping";
 import type { RelatedDocument, UnresolvedLink } from "@/server/documents";
 
 /** Keep the agenda's ancestry while locating each branch in the minutes. */
-export function meetingOutline(sections: DocumentSection[], matches: AgendaMatch[], documents: RelatedDocument[], unresolved: UnresolvedLink[] = []): DocumentSection[] {
+export function meetingOutline(sections: DocumentSection[], matches: AgendaMatch[], documents: RelatedDocument[], unresolved: UnresolvedLink[] = [], agenda?: { id: string; sections: DocumentSection[] }): DocumentSection[] {
     const result = structuredClone(sections);
     const used = new Set<string>();
     const usedUrls = new Set<string>();
@@ -98,5 +98,27 @@ export function meetingOutline(sections: DocumentSection[], matches: AgendaMatch
         ...unresolved.filter(link => !usedUrls.has(link.url)).map(link => ({ title: link.text || "Document", href: link.url })),
     ];
     if (remaining.length) result.push({ id: "linked-documents", title: "Documents", group: true, documentLinks: remaining, children: [] });
-    return result;
+    if (!agenda) return result;
+    // Unmatched scheduled sections link to the agenda, never to invented proceedings.
+    const consumed = new Set<DocumentSection>();
+    const complete = (rows: DocumentSection[]): DocumentSection[] => rows.map(item => {
+        const named = candidates.filter(row => normalize(row.title) === normalize(item.title));
+        const existing = branches.get(agenda.id + ":" + item.id)
+            ?? (named.length === 1 ? named[0] : undefined);
+        const matched = existing && !consumed.has(existing) ? existing : undefined;
+        if (matched) consumed.add(matched);
+        const children = complete(item.children);
+        return { ...item, ...(matched ?? {}),
+            id: matched?.id ?? "agenda-source-" + agenda.id + "-" + item.id,
+            href: matched ? matched.href ?? "#" + matched.id
+                : "/documents/" + agenda.id + "?version=latest#" + item.id,
+            children: [...children, ...(matched?.children ?? [])],
+        };
+    });
+    const completed = complete(agenda.sections);
+    const unconsumed = (rows: DocumentSection[]): DocumentSection[] => rows
+        .filter(row => !consumed.has(row))
+        .map(row => ({ ...row, children: unconsumed(row.children) }));
+    // Reused nodes appear only under their agenda parent; keep minutes-only sections.
+    return [...unconsumed(completed), ...unconsumed(result)];
 }

@@ -1,3 +1,6 @@
+import { oldestAgenda } from "@/lib/meeting-agenda";
+import { documentSections, type DocumentSection } from "@/lib/outline";
+import { blockSectionIds } from "@/lib/render";
 import { loadDocumentImages } from "@/lib/document-media";
 import { sanitizeExport } from "@/lib/markdown";
 import { unstable_cache } from "next/cache";
@@ -596,6 +599,7 @@ export type DocumentDetail = {
     agendaReferences?: RelatedDocument[];
     agendaUnresolvedLinks?: UnresolvedLink[];
     agendaMatches?: AgendaMatch[];
+    agendaOutline?: { id: string; sections: DocumentSection[] };
     /** Documents this one links to, in the order they appear in the text. */
     references: RelatedDocument[];
     /** Documents that link here -- usually the meetings that took this up. */
@@ -834,16 +838,18 @@ export async function loadDocument(
                     ],
                     NOT: { id: document.id },
                 },
-                select: { ...relatedSelect, content: true, folderPath: true, datedAt: true, driveCreatedTime: true, meetingKey: true, meetingRole: true },
+                select: { ...relatedSelect, content: true, folderPath: true, datedAt: true, driveCreatedTime: true, createdAt: true, meetingKey: true, meetingRole: true },
                 orderBy: { title: "asc" },
             })
             : [];
 
-    const matchedCounterparts = counterpartDocuments.filter(row => {
+    const allCounterparts = counterpartDocuments.filter(row => {
         const other = meetingForDocument(row);
         if (derivedMeeting.key && other.key) return other.key === derivedMeeting.key && other.role === wantedRole;
         return !!document.meetingKey && row.meetingKey === document.meetingKey && row.meetingRole === wantedRole;
     });
+    const matchedCounterparts = wantedRole === "agenda" ? oldestAgenda(allCounterparts) : allCounterparts;
+    const selectedAgenda = wantedRole === "agenda" ? matchedCounterparts[0] : undefined;
     // Resolve only hyperlinks in the published text, including agendas whose
     // reference graph has not yet been refreshed by sync.
     const agendaLinks = wantedRole === "agenda"
@@ -906,6 +912,9 @@ export async function loadDocument(
         agendaReferences: [...agendaReferences.values()],
         agendaUnresolvedLinks: [...agendaUnresolvedLinks.values()],
         agendaMatches,
+        agendaOutline: selectedAgenda ? { id: selectedAgenda.id, sections: documentSections(selectedAgenda.content, {
+            anchored: blockSectionIds(renderDocument(selectedAgenda.content, [])),
+        }) } : undefined,
         references: [...directReferences.values()],
         referencedBy: document.referencesIn.map((edge) => toRelated(edge.fromDocument)),
         unresolvedLinks: unresolvedLinks.map((link) => ({

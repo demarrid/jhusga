@@ -33,6 +33,13 @@ const MAX_ANSWERS_PER_WINDOW = 12;
  */
 const MAX_LOOKUPS_PER_WINDOW = 40;
 
+/**
+ * How long the model may spend on an answer, retries included. Kept under the
+ * /documents page's maxDuration with room for retrieval and verification, so a
+ * slow answer ends with the matched documents rather than a killed function.
+ */
+const ANSWER_BUDGET_MS = 45_000;
+
 // Per-instance, which is the honest bound available without a shared store:
 // it caps what one serverless instance will spend, not what the fleet will.
 // Worth replacing with a Postgres counter if the site is ever a target.
@@ -80,7 +87,7 @@ export async function askArchive(
         };
     }
 
-    return answerQuestion(asked);
+    return answerQuestion(asked, { deadline: Date.now() + ANSWER_BUDGET_MS });
 }
 
 /**

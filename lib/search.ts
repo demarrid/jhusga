@@ -1469,7 +1469,13 @@ async function citationsFor(answerId: string): Promise<AnswerCitation[]> {
  */
 export async function answerQuestion(
     question: string,
-    options: { scope?: SearchScope; focus?: QuestionFocus; force?: boolean } = {},
+    options: {
+        scope?: SearchScope;
+        focus?: QuestionFocus;
+        force?: boolean;
+        /** Absolute time by which the model must have replied, retries included. */
+        deadline?: number;
+    } = {},
 ): Promise<QuestionAnswer> {
     const scope = options.scope ?? "all";
     const asked = question.trim().slice(0, MAX_QUESTION_CHARS);
@@ -1617,6 +1623,7 @@ export async function answerQuestion(
         const generated = await generateJson<ModelResponse>({
             system: SYSTEM_PROMPT,
             user: buildUserPrompt(asked, passages, timeframe, now),
+            deadline: options.deadline,
         });
         response = generated.value;
         model = generated.model;
@@ -1627,6 +1634,14 @@ export async function answerQuestion(
             promptHash: fingerprint,
             error: message,
         });
+        // Running out of time says nothing about whether the documents hold an
+        // answer, so it is not reported as one that failed verification.
+        if (options.deadline !== undefined && Date.now() >= options.deadline) {
+            return fallback(
+                "unavailable",
+                "Writing an answer took longer than this site allows. The documents below are where to look.",
+            );
+        }
         return fallback("failed", message);
     }
 
