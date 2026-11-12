@@ -55,6 +55,8 @@ type RunState = {
     force: boolean;
     /** Sections, summaries and pruning. The routes do them; the CLI runs its own. */
     modelWork: boolean;
+    /** The independent recovery cron does not regenerate page sections. */
+    summariesOnly?: boolean;
     summary: SyncSummary;
     /** Administrator searches left in this run's allowance; see lib/administrator-lookup.ts. */
     lookupsLeft: number;
@@ -73,6 +75,7 @@ type RunState = {
     };
     revisionAuthors?: { at: number };
     passages?: { afterId: string | null };
+    summaries?: { considered: string[]; calls: number; quotaExhausted?: boolean };
 };
 
 export type Slice = {
@@ -231,30 +234,41 @@ async function passagesStep(slice: Slice): Promise<boolean> {
     return false;
 }
 
-/**
- * Regenerate any section whose sources changed, then restate documents whose
- * summary is missing or out of date. Model requests, retries included, are
- * aborted at the slice deadline; whatever is left stays queued for next time.
- */
-async function modelStep(slice: Slice): Promise<boolean> {
-    const { generateStaleSections } = await import("@/lib/generate");
+/** Summaries checkpoint independently and resume with a fresh invocation budget. */
+export async function modelStep(slice: Slice): Promise<boolean> {
     const { SUMMARY_RUN_BUDGET, summarizeStaleDocuments } = await import("@/lib/summarize");
     const { isAiQuotaExhausted } = await import("@/lib/ai");
+    const queue = slice.state.summaries ??= { considered: [], calls: 0 };
+    if (queue.calls >= SUMMARY_RUN_BUDGET) return true;
+    const results = await summarizeStaleDocuments({
+        limit: SUMMARY_RUN_BUDGET - queue.calls,
+        excludeIds: queue.considered,
+        deadline: slice.deadline,
+        minimumRemainingMs: 30_000,
+        onResult: async (result) => {
+            queue.considered.push(result.documentId);
+            if (!result.skipped) queue.calls += 1;
+            if (result.error) console.warn(`summary: ${result.title} — ${result.error}`);
+            await slice.checkpoint();
+        },
+    });
+    if (results.some(result => isAiQuotaExhausted(result.error))) {
+        queue.quotaExhausted = true;
+        return true;
+    }
+    if (queue.calls >= SUMMARY_RUN_BUDGET) return true;
+    // No results with enough time means the queue is exhausted. Otherwise hand
+    // off; failures are excluded for this run, so a bad document cannot loop.
+    return results.length === 0 && slice.deadline - Date.now() > 30_000;
+}
 
+async function sectionsStep(slice: Slice): Promise<boolean> {
+    if (slice.state.summaries?.quotaExhausted) return true;
+    const { generateStaleSections } = await import("@/lib/generate");
     const sections = await generateStaleSections({ deadline: slice.deadline });
     for (const result of sections) {
         if (result.error) console.warn(`section: ${result.key} ${result.status} (${result.error})`);
     }
-    if (sections.some((section) => isAiQuotaExhausted(section.error))) return true;
-
-    const summaries = await summarizeStaleDocuments({
-        limit: SUMMARY_RUN_BUDGET,
-        deadline: slice.deadline,
-        onResult: (result) => {
-            if (result.error && result.status === "failed") console.warn(`summary: ${result.title} — ${result.error}`);
-        },
-    });
-    console.log(`sync summaries: ${summaries.filter((result) => !result.skipped).length} written or attempted`);
     return true;
 }
 
@@ -346,7 +360,8 @@ const STEPS: Step[] = [
         run: once(async (state) => { state.summary.driveAccountsLinked = await recordDriveAccounts(); }),
     },
     { name: "passages", label: "Updating the search index", needsMs: 10_000, run: passagesStep },
-    { name: "model", label: "Writing summaries", needsMs: 20_000, modelWork: true, run: modelStep },
+    { name: "model", label: "Writing summaries", needsMs: 40_000, modelWork: true, run: modelStep },
+    { name: "sections", label: "Updating page sections", needsMs: 40_000, modelWork: true, run: sectionsStep },
     {
         // Expired sessions, sign-in codes and rate buckets.
         name: "prune", label: "Clearing expired records", needsMs: 5_000, modelWork: true,
@@ -363,7 +378,8 @@ export const FINISHED_STEP = "done";
 function stepFrom(steps: Step[], name: string, state: RunState): Step | null {
     const start = steps.findIndex((step) => step.name === name);
     if (start < 0) return null;
-    return steps.slice(start).find((step) => !step.modelWork || state.modelWork) ?? null;
+    return steps.slice(start).find((step) =>
+        (!step.modelWork || state.modelWork) && !(state.summariesOnly && step.name === "sections")) ?? null;
 }
 
 function stepAfter(steps: Step[], step: Step, state: RunState): Step | null {
@@ -407,19 +423,20 @@ function json(value: unknown): Prisma.InputJsonValue {
  */
 export async function startSyncRun(
     trigger: SyncTrigger,
-    options: { force?: boolean; modelWork?: boolean; exclusive?: boolean; steps?: Step[] } = {},
+    options: { force?: boolean; modelWork?: boolean; exclusive?: boolean; summariesOnly?: boolean; steps?: Step[] } = {},
 ): Promise<string> {
     const id = randomUUID();
     const state: RunState = {
         force: options.force ?? false,
         modelWork: options.modelWork ?? true,
+        summariesOnly: options.summariesOnly ?? false,
         summary: emptySyncSummary(id),
         lookupsLeft: 4,
         attempt: { step: "", count: 0 },
         skipped: [],
     };
     const created = await prisma.syncRun.create({
-        data: { id, status: "running", masterFolderId: MASTER_FOLDER_ID, trigger, step: (options.steps ?? STEPS)[0]!.name, state: json(state) },
+        data: { id, status: "running", masterFolderId: MASTER_FOLDER_ID, trigger, step: options.summariesOnly ? "model" : (options.steps ?? STEPS)[0]!.name, state: json(state) },
         select: { startedAt: true },
     });
 
@@ -594,6 +611,34 @@ export async function runSyncSlice(
     }
 }
 
+/** Follow only the site's apex/www redirect, preserving the cron credential. */
+export async function requestSyncContinuation(runId: string, origin: string, secret: string): Promise<Response> {
+    let url = new URL("/api/sync/continue", origin);
+    const signal = AbortSignal.timeout(10_000);
+    for (let redirects = 0; redirects <= 2; redirects += 1) {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+            body: JSON.stringify({ runId }),
+            cache: "no-store",
+            redirect: "manual",
+            signal,
+        });
+        if (![307, 308].includes(response.status)) return response;
+        const location = response.headers.get("location");
+        if (!location) throw new Error("Sync hand-off redirect has no location");
+        const next = new URL(location, url);
+        const sameSite = next.protocol === "https:" && next.port === url.port &&
+            next.hostname.replace(/^www\./, "") === url.hostname.replace(/^www\./, "");
+        if ((next.origin !== url.origin && !sameSite) || next.pathname !== "/api/sync/continue" || next.username || next.password) {
+            throw new Error("Refusing to forward sync credentials to an unexpected redirect");
+        }
+        await response.body?.cancel();
+        url = next;
+    }
+    throw new Error("Too many sync hand-off redirects");
+}
+
 /**
  * Work one slice, then hand the run to a fresh invocation if there is more.
  *
@@ -613,13 +658,7 @@ export async function continueSyncRun(runId: string, origin: string): Promise<Sl
     }
 
     try {
-        const response = await fetch(new URL("/api/sync/continue", origin), {
-            method: "POST",
-            headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
-            body: JSON.stringify({ runId }),
-            cache: "no-store",
-            signal: AbortSignal.timeout(10_000),
-        });
+        const response = await requestSyncContinuation(runId, origin, secret);
         if (!response.ok) console.error(`Sync hand-off for ${runId} was refused: ${response.status}`);
     } catch (cause) {
         console.error(`Sync hand-off for ${runId} failed:`, cause instanceof Error ? cause.message : String(cause));

@@ -10,7 +10,7 @@ are capped at 40 seconds; the CLI newsletter default remains four minutes.
 A full Drive pass takes two to three minutes, so no single 60-second invocation
 can do it. `lib/sync-run.ts` stores a run as a sequence of steps on its SyncRun
 row: the walk, ingesting changed files, following links, each whole-corpus
-pass, the search index, then sections, summaries, and pruning. The walk's file
+pass, the search index, then summaries, sections, and pruning. The walk's file
 list, each step's cursor, and the running counts live on the row as well,
 because the next slice is usually a different process.
 
@@ -18,7 +18,9 @@ Each invocation claims the run with a lease, starts new work for 40 seconds
 (`SYNC_SLICE_BUDGET_MS`), checkpoints after every file or pass, and leaves the
 rest of its limit for the unit already under way. If work remains it hands the
 run on by POSTing to `/api/sync/continue` with `Authorization: Bearer
-$CRON_SECRET`; that route answers at once and does its slice after responding.
+$CRON_SECRET`; that route answers at once and does its slice after responding. The hand-off
+follows only same-origin or apex/www HTTPS redirects, explicitly retaining
+authentication; automatic cross-origin redirects drop the bearer header.
 
 - `/api/cron/sync` and the Request sync button start a run and return. The
   button then polls `GET /api/sync?run=<id>` for progress.
@@ -39,10 +41,19 @@ and contributor identity resolution stay sequential. Linked Drive metadata reads
 also use bounded workers; directory category, email, and seat lookups are loaded
 once per session rather than once per person.
 
-Sections and summaries run in their own slice, with the slice deadline as their
-deadline. Each model request, including retries, is aborted at that deadline.
-Pending items stay queued for the next run. The manual CLI keeps its existing
-unbounded summary deadline.
+Summaries run before page sections, with a fresh 40-second slice. Each result
+checkpoints the considered document IDs and the attempt count. Further slices
+exclude those IDs, so a failed document cannot monopolize a run. The existing
+25-attempt allowance applies across all slices, not afresh in each invocation.
+A request is only started with at least 30 seconds left and is aborted at the
+slice deadline. Successful summaries are cached; unchanged model-generated
+“nothing substantive” verdicts are cached too. Remaining backlog stays queued
+for the next run. Sections get a separate slice after summaries.
+
+The independent summary cron now starts a leased summary-only run using the
+same continuation route, or resumes a stalled existing sync. It never starts
+an overlapping worker while a sync is live. No schema change or Fluid Compute
+is required. The manual CLI keeps its unbounded summary deadline.
 
 An OpenAI 429 with insufficient_quota or credit_balance_exhausted is a billing
 failure, not request throttling. Section and summary queues stop on that error,

@@ -1,27 +1,20 @@
+import { after } from "next/server";
+
 import { invalidateArchiveCache } from "@/lib/archive-cache";
-import { timingSafeEqual } from "node:crypto";
+import { hasCronSecret } from "@/lib/cron-auth";
+import {
+    abandonSyncRun,
+    activeSyncRun,
+    continueSyncRun,
+    isAbandoned,
+    isStalled,
+    startSyncRun,
+} from "@/lib/sync-run";
 
-import { summarizeStaleDocuments, SUMMARY_RUN_BUDGET } from "@/lib/summarize";
-
-/** An independent budget so ingestion cannot starve document summaries. */
+/** Independent summary recovery using the same leased, resumable run. */
 export const dynamic = "force-dynamic";
-// Keep this literal within the deployed Hobby plan limit.
+// Keep this literal within the deployed Hobby plan limit; see config/sync.ts.
 export const maxDuration = 60;
-
-function isAuthorised(request: Request): boolean {
-    const secret = process.env.CRON_SECRET;
-    if (!secret) return false;
-
-    const provided = request.headers.get("authorization") ?? "";
-    const expected = `Bearer ${secret}`;
-
-    // Equal-length buffers are required by timingSafeEqual.
-    const providedBuffer = Buffer.from(provided);
-    const expectedBuffer = Buffer.from(expected);
-    if (providedBuffer.length !== expectedBuffer.length) return false;
-
-    return timingSafeEqual(providedBuffer, expectedBuffer);
-}
 
 export async function GET(request: Request) {
     if (!process.env.CRON_SECRET) {
@@ -31,17 +24,31 @@ export async function GET(request: Request) {
         );
     }
 
-    if (!isAuthorised(request)) {
+    if (!hasCronSecret(request)) {
         return Response.json({ error: "Unauthorised" }, { status: 401 });
     }
 
-    try {
-        const results = await summarizeStaleDocuments({ limit: SUMMARY_RUN_BUDGET, deadline: Date.now() + 40_000 });
-        return Response.json({ ok: true, considered: results.length, written: results.filter(row => row.status === "fresh" && !row.skipped).length, failed: results.filter(row => row.status === "failed").length });
-    } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        return Response.json({ ok: false, error: message }, { status: 500 });
-    } finally {
-        invalidateArchiveCache();
+    let active = await activeSyncRun();
+    if (active && isAbandoned(active)) {
+        await abandonSyncRun(active.id);
+        active = null;
     }
+    if (active && !isStalled(active)) {
+        return Response.json({ ok: true, runId: active.id, message: "A sync is already running." });
+    }
+
+    const runId = active?.id ?? (await startSyncRun("cron", { summariesOnly: true }));
+    const origin = new URL(request.url).origin;
+    after(async () => {
+        try {
+            await continueSyncRun(runId, origin);
+        } finally {
+            invalidateArchiveCache();
+        }
+    });
+
+    return Response.json(
+        { ok: true, runId, message: active ? "Resumed the interrupted sync." : "Sync started." },
+        { status: 202 },
+    );
 }

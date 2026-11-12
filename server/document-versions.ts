@@ -12,7 +12,7 @@ export async function getVersionedDocument(documentId: string, requested?: strin
     if (!current) return null;
     // Newspaper snapshots are retained for internal comparisons, not public reading.
     // Ignore historical URLs and keep the current summary available.
-    if (isSecondaryKind(current.kind)) {
+    if (isSecondaryKind(current.kind) || current.discoveredVia === "archive") {
         const options = versionOptions([{ id: "latest", modifiedAt: null,
             observedAt: (current.lastSyncedAt ?? current.driveCreatedTime ?? new Date()).toISOString() }]);
         const selection = selectDocumentVersion(options, null, "latest")!;
@@ -30,7 +30,9 @@ export async function getVersionedDocument(documentId: string, requested?: strin
         id: row.id, modifiedAt: row.sourceModifiedTime?.toISOString() ?? null, observedAt: row.observedAt.toISOString(),
     })) : [{ id: "latest", modifiedAt: current.heldNotice ? null : current.driveModifiedTime?.toISOString() ?? null,
         observedAt: (current.lastSyncedAt ?? current.driveCreatedTime ?? new Date()).toISOString() }]);
-    const selection = selectDocumentVersion(options, current.datedAt, requested);
+    // Archive revisions are transcription corrections, not historical source edits.
+    // A historical document date must not select the earliest, uncorrected OCR.
+    const selection = selectDocumentVersion(options, current.discoveredVia === "archive" ? null : current.datedAt, requested);
     if (!selection) return null;
     const { selected } = selection;
     const document = selected.id === "latest" ? current : demo ? demoVersion(current, selected.id)
@@ -56,7 +58,7 @@ function demoVersion(document: DocumentDetail, id: string): DocumentDetail {
 
 /** Read only the published snapshot text needed for a comparison. */
 export async function getDocumentVersionContent(document: DocumentDetail, versionId: string) {
-    if (isSecondaryKind(document.kind)) return null;
+    if (isSecondaryKind(document.kind) || document.discoveredVia === "archive") return null;
     if (demoModeEnabled()) return demoVersion(document, versionId).content;
     const version = await prisma.documentVersion.findFirst({
         where: { id: versionId, status: "published", revision: { documentId: document.id } },

@@ -2,7 +2,6 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import Select from "@/app/(components)/Select";
 import type { DocumentVersionOption } from "@/lib/document-versions";
 import styles from "@/app/documents/document-detail.module.css";
 
@@ -21,18 +20,21 @@ export default function DocumentVersionSelector({ options, selectedId, initially
 
     return <><div className={styles.versionSentence} aria-busy={pending}>
         You are viewing the{" "}
-        {choices.length < 2 ? selected?.label : <Select
-            variant="inline"
-            ariaLabel="Document version"
+        {choices.length < 2 ? selected?.label : <select
+            className={styles.versionSelect}
+            aria-label="Document version"
+            disabled={pending}
             value={selectedId}
-            options={choices}
-            onChange={value => {
+            onChange={event => {
+                const value = event.target.value;
                 const url = new URL(window.location.href);
                 url.searchParams.set("version", value);
                 url.hash = "";
                 startTransition(() => router.push(`${url.pathname}${url.search}`, { scroll: false }));
             }}
-        />}{" "}
+        >
+            {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+        </select>}{" "}
         version.{" "}
         {hasPrevious && <button
             type="button"

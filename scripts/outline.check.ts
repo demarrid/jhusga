@@ -718,6 +718,23 @@ check("each branch lands on the authored minutes heading",
     dailySections.every(section => dailyBlocks.some(block => block.kind === "heading" &&
         block.sectionId === section.id && runsText(block.runs).startsWith("Meeting Minutes:"))));
 
+const rulesTitle = [
+    "JHU STUDENT GOVERNMENT ASSOCIATION — S-B.114.04.21.26-01 — SENATE PROCEDURAL RULES BILL 1",
+    "SENATE", "OF THE", "STUDENT GOVERNMENT ASSOCIATION", "OF", "THE JOHNS HOPKINS UNIVERSITY",
+    "{S-B.114.04.21.26-1}", "A BILL ESTABLISHING THE 2026-2027 LEGISLATIVE", "SESSION RULES",
+    "INTRODUCED BY:", "Vice President of the Senate and Chair of Internal Affairs Shreemann Patel",
+];
+for (const style of [(line: string) => line, (line: string) => `**${line}**`, (line: string) => `## ${line}`]) {
+    const content = [...rulesTitle.map(style), "SECTION 1. TITLE.", "This Bill may be referred to as the Rules Bill.",
+        "SECTION 2. DEFINITIONS.", "The following definitions apply."].join("\n\n");
+    const blocks = renderDocument(content, []);
+    const sections = documentSections(content, { anchored: blockSectionIds(blocks) });
+    check("legislative masthead, identifiers, title and credits are excluded for every export style",
+        flat(sections).join("|") === "SECTION 1. TITLE|SECTION 2. DEFINITIONS", flat(sections));
+    check("legislative body section anchors retain their source offsets",
+        idsOf(sections).join("|") === `section-${content.indexOf("SECTION 1.")}|section-${content.indexOf("SECTION 2.")}`);
+}
+
 if (failures > 0) {
     console.log(`\n${failures} failed`);
     process.exitCode = 1;

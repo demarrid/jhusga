@@ -96,6 +96,12 @@ async function main() {
     assert.equal(latest?.historical, false);
     assert.equal(latest?.document.restatement?.content, current.summary.content);
     assert.ok(latest?.document.heldNotice, "held source warning remains visible");
+    current.discoveredVia = "archive";
+    current.datedAt = new Date("1978-10-31T12:00:00Z");
+    assert.equal((await getVersionedDocument("document"))?.selected.id, "latest", "archive OCR corrections default to the latest transcription");
+    assert.equal((await getVersionedDocument("document", "old"))?.selected.id, "latest", "archive historical URLs cannot reopen obsolete OCR");
+    current.discoveredVia = "walk";
+    current.datedAt = dated;
     // Legacy exports kept unlabeled image definitions after losing their markers.
     const image = "data:image/png;base64,aGVsbG8=";
     rows[1].revision.content = `${current.content}\n\n: <${image}>`;

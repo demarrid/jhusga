@@ -251,12 +251,12 @@ export async function summarizeDocument(
 
     if (
         !options.force &&
-        document.summary?.status === "fresh" &&
+        (document.summary?.status === "fresh" || document.summary?.status === "empty") &&
         document.summary.promptHash === fingerprint
     ) {
         return {
             ...base,
-            status: "fresh",
+            status: document.summary.status === "empty" ? "empty" : "fresh",
             skipped: true,
             citationsVerified: await prisma.documentSummaryCitation.count({
                 where: { summaryId: document.summary.id },
@@ -411,7 +411,11 @@ export async function summarizeStaleDocuments(
          * document already being summarised is finished, so leave a margin.
          */
         deadline?: number;
-        onResult?: (result: SummarizeResult) => void;
+        /** Already considered by earlier slices of this run. */
+        excludeIds?: string[];
+        /** Leave a fresh request enough time instead of starting at the deadline. */
+        minimumRemainingMs?: number;
+        onResult?: (result: SummarizeResult) => void | Promise<void>;
     } = {},
 ): Promise<SummarizeResult[]> {
     const documents = await prisma.document.findMany({
@@ -429,6 +433,7 @@ export async function summarizeStaleDocuments(
             // `summarySystemPrompt`, which is where it belongs: excluding
             // articles here protected nothing it protects, and only left every
             // article's sidebar promising a summary nothing would ever write.
+            ...(options.excludeIds?.length ? { id: { notIn: options.excludeIds } } : {}),
             ...(options.session === undefined ? {} : { sessionNumber: options.session }),
             ...(options.force
                 ? {}
@@ -455,7 +460,7 @@ export async function summarizeStaleDocuments(
 
     for (const document of documents) {
         if (options.limit !== undefined && calls >= options.limit) break;
-        if (options.deadline !== undefined && Date.now() >= options.deadline) break;
+        if (options.deadline !== undefined && Date.now() + (options.minimumRemainingMs ?? 0) >= options.deadline) break;
 
         let result: SummarizeResult;
         try {
@@ -474,7 +479,7 @@ export async function summarizeStaleDocuments(
 
         if (!result.skipped) calls += 1;
         results.push(result);
-        options.onResult?.(result);
+        await options.onResult?.(result);
         if (isAiQuotaExhausted(result.error)) break;
     }
 

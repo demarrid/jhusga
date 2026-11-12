@@ -1,3 +1,4 @@
+import {manualArchiveIds} from "@/lib/manual-archive";
 import { saveDocumentMedia } from "@/lib/document-media";
 import { recordDocumentVersion } from "@/lib/document-version-history";
 import { type AdministratorResult } from "@/lib/administrator-lookup";
@@ -770,7 +771,7 @@ export async function refreshUnchangedFiles(
     const handled = new Set<string>();
     if (options.force || files.length === 0) return handled;
     // The voting register needs the existing missing-tabs repair in ingestFile.
-    const candidates = files.filter(file => file.modifiedTime && file.id !== PREFERRED_VOTING_RECORD_FILE);
+    const candidates = files.filter(file => !manualArchiveIds.has(file.id) && file.modifiedTime && file.id !== PREFERRED_VOTING_RECORD_FILE);
     if (!candidates.length) return handled;
     const existing = await prisma.document.findMany({
         where: { driveFileId: { in: candidates.map(file => file.id) } },
@@ -823,6 +824,7 @@ export async function ingestFile(
     options: SyncOptions,
     summary: SyncSummary,
 ): Promise<boolean> {
+    if (manualArchiveIds.has(file.id)) return false;
     const existing = await prisma.document.findUnique({
         where: { driveFileId: file.id },
         // Not `content`: most files are unchanged and take the cheap path
@@ -1073,14 +1075,15 @@ export function linkedSyncTargets(documents: {
     // Files discovered through links do not appear in the master-folder walk.
     // Recheck their metadata each sync, even after their first successful import.
     for (const document of documents) {
-        if (document.discoveredVia === "link") {
+        if (document.discoveredVia === "link" && !manualArchiveIds.has(document.driveFileId)) {
             targets.set(document.driveFileId, { sessionNumber: document.sessionNumber, url: document.source });
         }
     }
 
     for (const document of documents) {
+        if (document.discoveredVia === "archive") continue;
         for (const link of extractDocumentLinks(document.content)) {
-            if (held.has(link.fileId)) continue;
+            if (held.has(link.fileId) || manualArchiveIds.has(link.fileId)) continue;
 
             const known = targets.get(link.fileId);
             const session = document.sessionNumber;

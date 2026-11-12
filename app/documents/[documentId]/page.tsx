@@ -255,7 +255,7 @@ export default async function DocumentPage({
             ) : (
             <div className={styles.readerLayout}>
                 <article className={styles.documentPane}>
-                    <DocumentVersionSelector key={view.selected.id} options={view.options} selectedId={view.selected.id} initiallyComparing={comparing} hasPrevious={comparison !== null}>
+                    {document.discoveredVia !== "archive" && <DocumentVersionSelector key={view.selected.id} options={view.options} selectedId={view.selected.id} initiallyComparing={comparing} hasPrevious={comparison !== null}>
                     <section id="document-version-history" className={styles.versionHistory} aria-label="Version history">
                         <h2>Version history</h2>
                         <p>Choose a version above to compare it with the version immediately before it.</p>
@@ -268,7 +268,7 @@ export default async function DocumentPage({
                                 : <DocumentDiff ops={collapseUnchanged(comparison)} />}
                         </> : <p>This is the earliest saved version; there is no previous version to compare.</p>}
                     </section>
-                    </DocumentVersionSelector>
+                    </DocumentVersionSelector>}
                     <DocumentViewer key={view.selected.id} blocks={document.blocks} />
                 </article>
 

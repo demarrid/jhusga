@@ -1,3 +1,4 @@
+import {manualArchiveFolders, manualArchiveIds} from "@/lib/manual-archive";
 import { captureDocumentMedia, type CapturedDocument } from "@/lib/document-media";
 import {
     ARCHIVE_FOLDER_PATTERN,
@@ -169,7 +170,7 @@ async function driveFetch(url: string, attempt = 0): Promise<Response> {
  * so asking costs nothing.
  */
 const FILE_FIELDS =
-    "id, name, mimeType, createdTime, modifiedTime, webViewLink," +
+    "id, name, mimeType, parents, createdTime, modifiedTime, webViewLink," +
     " shortcutDetails(targetId, targetMimeType)," +
     " capabilities(canEdit, canModifyContent)," +
     " owners(displayName, emailAddress)," +
@@ -178,6 +179,7 @@ const FILE_FIELDS =
 type RawUser = { displayName?: string; emailAddress?: string };
 
 type RawFile = {
+    parents?: string[];
     id?: string;
     name?: string;
     mimeType?: string;
@@ -318,7 +320,9 @@ export async function getFile(fileId: string): Promise<DriveFile | null> {
         );
     }
 
-    return toDriveFile((await response.json()) as RawFile);
+    const raw = (await response.json()) as RawFile;
+    if (await belongsToManualArchive(raw)) return null;
+    return toDriveFile(raw);
 }
 
 /** Drive requests the walk keeps in flight at once. */
@@ -376,6 +380,7 @@ export function archiveSessionFor(folderName: string): number | null {
  * followed into the folder path, since that is the name a reader clicked.
  */
 export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
+    if (manualArchiveFolders.has(rootFolderId)) return [];
     const found: WalkedFile[] = [];
     const visited = new Set<string>([rootFolderId]);
 
@@ -422,7 +427,7 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
                 if (isFolder) {
                     const folderId = target?.id ?? child.id;
                     if (
-                        isExcluded(child.name) ||
+                        manualArchiveFolders.has(folderId) || isExcluded(child.name) ||
                         visited.has(folderId) ||
                         folder.depth + 1 > MAX_FOLDER_DEPTH
                     ) {
@@ -444,7 +449,7 @@ export async function walkFolder(rootFolderId: string): Promise<WalkedFile[]> {
                 // sharing -- so the target is fetched and the shortcut
                 // discarded. It is the target that gets exported and stored.
                 const file = target ? resolved.get(child.id) ?? null : child;
-                if (!file) continue;
+                if (!file || manualArchiveIds.has(file.id)) continue;
 
                 if (found.length >= MAX_FILES_PER_SYNC) {
                     throw new Error(
@@ -739,4 +744,18 @@ export function driveViewLink(file: DriveFile): string {
         return `https://drive.google.com/file/d/${file.id}/view`;
     }
     return `https://docs.google.com/document/d/${file.id}/edit`;
+}
+
+/** Linked files cannot bypass the manual-only folder policy. */
+async function belongsToManualArchive(raw: RawFile, visited = new Set<string>()): Promise<boolean> {
+    if (raw.id && manualArchiveIds.has(raw.id)) return true;
+    for (const id of raw.parents ?? []) {
+        if (manualArchiveFolders.has(id) || manualArchiveIds.has(id)) return true;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const params = new URLSearchParams({ fields: "id,parents", supportsAllDrives: "true", key: apiKey() });
+        const response = await driveFetch(`${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(id)}?${params}`);
+        if (await belongsToManualArchive(await response.json() as RawFile, visited)) return true;
+    }
+    return false;
 }

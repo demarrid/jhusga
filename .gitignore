@@ -48,3 +48,9 @@ next-env.d.ts
 
 # i use wsl
 *.Identifier
+# Local archive originals, OCR, and sensitive review reports
+/.archive-local/
+/.tmp/
+
+# Python bytecode
+__pycache__/

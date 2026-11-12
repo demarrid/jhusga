@@ -710,6 +710,16 @@ export function indexSections(content: string): Index {
     }
 
     const lines = toLines(content);
+    // Legislative title pages may use plain text, bold, or actual headings.
+    // Recognize the complete opening block before accepting any of its lines
+    // as sections; PDF running headers can otherwise close `front` too early.
+    const headingText = (text: string) => clean(text.replace(/^\s*#{1,6}\s+/, ""));
+    const firstProvision = lines.findIndex(line => /^section\s+(?:\d+|[ivxlcdm]+)[.\s:–—-]/i.test(headingText(line.text)));
+    const opening = lines.slice(0, Math.max(0, firstProvision)).map(line => headingText(line.text)).join("\n");
+    const legislativeTitleEnd = firstProvision >= 0 &&
+        /student government association/i.test(opening) &&
+        /^(?:a (?:bill|resolution)\b|an?\s+(?:sga\s+)?funding bill\b|(?:an?\s+)?act\s+to\b)/im.test(opening)
+        ? firstProvision : 0;
     // Student Services opens each entry with the same label, sometimes with
     // a copied date and sometimes with no date. Keep every occurrence.
     const minutesEntries = new Map<number, string>();
@@ -750,6 +760,7 @@ export function indexSections(content: string): Index {
         }).length >= 3;
 
     for (const [lineIndex, line] of lines.entries()) {
+        if (lineIndex < legislativeTitleEnd) continue;
         let text = line.text;
         let at = line.start;
 

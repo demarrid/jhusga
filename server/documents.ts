@@ -779,7 +779,7 @@ export async function loadDocument(
     if (!document) return null;
     let historical = false;
     let imageVersionTime = document.driveModifiedTime;
-    if (versionId) {
+    if (versionId && document.discoveredVia !== "archive") {
         const version = await prisma.documentVersion.findFirst({
             where: { id: versionId, status: "published", revision: { documentId } },
             include: { revision: true },

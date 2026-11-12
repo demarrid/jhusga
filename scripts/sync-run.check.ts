@@ -156,6 +156,14 @@ async function main() {
     assert.equal(row(stuck).leaseUntil, null);
     hangOn = null;
 
+    const recovery = await startSyncRun("cron", { summariesOnly: true, exclusive: false });
+    assert.equal(row(recovery).step, "model", "summary recovery starts without another Drive crawl");
+    const recoverySteps: Step[] = [model, {
+        name: "sections", label: "Sections", needsMs: 1, modelWork: true,
+        run: async () => { throw new Error("summary recovery must not regenerate sections"); },
+    }];
+    assert.equal(await runSyncSlice(recovery, 40_000, recoverySteps), "finished");
+
     // Two triggers at once: the later stands down for the earlier.
     rows.clear();
     const first = await startSyncRun("cron", { steps });

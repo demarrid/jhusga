@@ -30,10 +30,9 @@ export const ARCHIVE_FOLDER_PATTERN = /^(\d+)\s*(?:st|nd|rd|th)\s+SGA Master Fol
 
 /**
  * Folders skipped entirely. Kept deliberately short -- the point of the
- * archive is to chronicle everything, so only folders that cannot contain
- * readable governing text are excluded.
+ * archive is to chronicle everything, with Historical Documents reserved for explicit manual imports.
  */
-export const EXCLUDED_FOLDER_PATTERNS: RegExp[] = [/^Images$/i];
+export const EXCLUDED_FOLDER_PATTERNS: RegExp[] = [/^Images$/i, /^Historical Documents$/i];
 
 /** How deep to recurse below the master folder before giving up. */
 export const MAX_FOLDER_DEPTH = 10;

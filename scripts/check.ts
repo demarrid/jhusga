@@ -77,6 +77,7 @@ const SUITES = [
     "search-ranking",
     "summarize",
     "summary-failures",
+    "summary-continuation",
     "sync-batching",
     "sync-run",
     "titles",
