@@ -1,3 +1,4 @@
+import archiveReviewedKinds from "@/config/archive-reviewed-kinds.json";
 /**
  * Document taxonomy.
  *
@@ -44,6 +45,7 @@ export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
 /** Reviewed exceptions follow Drive identity across renames and future syncs. */
 const REVIEWED_DOCUMENT_KINDS: Record<string, DocumentKind> = {
+    ...archiveReviewedKinds as Record<string, DocumentKind>,
     // General Plan is working notes about the bylaws.
     "1an78T3Wl0r6Yh1hTfbyKGdXTPtA9LScD7FaTbOo0ceI": "unknown",
     "1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM": "bill.funding",

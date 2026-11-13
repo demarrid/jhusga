@@ -13,9 +13,18 @@ function dates(line:string):ArchiveDateEvidence[]{
  return out;
 }
 export function archiveDateCandidates(title:string,content:string):ArchiveDateEvidence[]{
+ // Session identifiers such as SGA-B-1819.05 are never calendar dates.
+ title=title.replace(/\b(?:SGA[-_. ]*)?[BR][-. ]+\d{2,4}(?:[-.]\d{2,4})?(?:[.-]\d+)*\b/gi,'');
+ content=content.replace(/[*\u200b]/g,'').replace(/\bthis\s+day\s+(\d{1,2}(?:st|nd|rd|th)?)\s+of\b/gi,'this $1 day of');
  const titleDates=dates(title);const lines=content.split('\n').map(s=>s.trim()).filter(Boolean);
  const candidates=[...titleDates];
- for(const clause of content.matchAll(/(?:considered|introduced|adopted|approved|enacted)\s+(?:on\s+)?(?:this\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:day\s+of\s+)?[A-Za-z]+\s+(?:in\s+(?:the\s+)?year\s+)?(?:18|19|20)\d{2}/gi))candidates.push(...dates(clause[0]));
+ // Read explicit date labels anywhere, including inline covers and final-page ratification notes.
+ for(const marker of content.matchAll(/\b(?:ratified|last\s+(?:revised|updated|amended)|revision\s+date|effective\s+date|date\s+(?:adopted|approved)|adopted|approved|revised|published|dated)\s*(?::|on\b|as\s+of\b)\s*([^\n]{1,100})/gi)){
+  const evidence=marker[0];if(/\[unclear:|\[illegible\]/i.test(evidence))continue;
+  candidates.push(...dates(evidence));
+ }
+
+ for(const clause of content.matchAll(/(?:considered|introduced|adopted|approved|enacted)\s+(?:on\s+)?(?:this\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:(?:day\s+)?of\s+)?[A-Za-z]+\s+(?:in\s+(?:the\s+)?year\s+)?(?:18|19|20)\d{2}/gi))candidates.push(...dates(clause[0]));
 
  for(const [i,line] of lines.entries()){
   if(line.length>350||/https?:|\[unclear:|\[illegible\]/i.test(line))continue;
@@ -25,7 +34,7 @@ export function archiveDateCandidates(title:string,content:string):ArchiveDateEv
  if(!candidates.length){const yearLine=lines.slice(0,5).find(l=>/^(?:#+\s*)?(?:18|19|20)\d{2}$/.test(l));if(yearLine){const year=yearLine.match(/\d{4}/)![0];candidates.push({date:valid(+year,1,1)!,precision:'year',evidence:yearLine});}}
  if(!candidates.length&&!/\b(?:18|19|20)\d{2}\s*[-–/]\s*(?:\d{2}|\d{4})\b/.test(title)){
   const years=[...new Set(title.match(/\b(?:18|19|20)\d{2}\b/g)||[])];
-  if(years.length===1&&!/bill|resolution|\bS\.?\s*B\.?/i.test(title))candidates.push({date:valid(+years[0],1,1)!,precision:'year',evidence:title});
+  if(years.length===1&&!/bill|resolution|\bact\b|\bS\.?\s*B\.?/i.test(title))candidates.push({date:valid(+years[0],1,1)!,precision:'year',evidence:title});
  }
  return candidates;
 }

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import styles from "./Select.module.css";
 
-export type SelectOption = { value: string; label: string };
+export type SelectOption = { value: string; label: string; icon?: ReactNode; accessibleLabel?: string };
 
 /**
  * A dropdown the site draws itself.
@@ -153,7 +153,7 @@ export default function Select({
             >
                 <span className={styles.value}>
                     {selectedIndex >= 0
-                        ? options[selectedIndex]?.label
+                        ? <>{options[selectedIndex]?.label}{options[selectedIndex]?.icon}</>
                         : value || options[0]?.label || ""}
                 </span>
                 <span className={styles.arrow} aria-hidden="true" />
@@ -167,13 +167,14 @@ export default function Select({
                             id={`${listId}-${index}`}
                             role="option"
                             aria-selected={option.value === value}
+                            aria-label={option.accessibleLabel}
                             className={`${styles.option} ${
                                 index === activeIndex ? styles.active : ""
                             }`}
                             onMouseEnter={() => setActiveIndex(index)}
                             onClick={() => commit(index)}
                         >
-                            <span>{option.label}</span>
+                            <span>{option.label}{option.icon}</span>
                             {option.value === value && (
                                 <span className={styles.tick} aria-hidden="true" />
                             )}

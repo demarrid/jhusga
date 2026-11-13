@@ -77,12 +77,6 @@
     "date": "2018-10-01T12:00:00.000Z",
     "sourceKey": "1K2I6eWIwQkPQOXnG-KGL0ra_njRrg2O6"
   },
-  "29ca905c-d0a6-482c-80fe-f7684f4147fc": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "1awLOlE3XSCZ8Xn8JMS5H83nZiECCIdeM"
-  },
   "c2e24c71-be5c-4c25-9539-fa9b6d2ec6b2": {
     "label": "2020",
     "precision": "year",
@@ -293,48 +287,6 @@
     "date": "2013-02-01T12:00:00.000Z",
     "sourceKey": "1prV-u92rHLfb-7v-VWAtFMw5S9ZJQeVc"
   },
-  "7a13066c-abaf-4480-8046-dcb1a78134fa": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "19jAQXZjZBZQYc2zs6NHpAmYdSP-TceE8"
-  },
-  "360a94fe-4b04-4734-b893-69a72129b851": {
-    "label": "1920",
-    "precision": "year",
-    "date": "1920-01-01T12:00:00.000Z",
-    "sourceKey": "1TEac3wKqDZ3DW8K2B692JNYQAZhbZNKo"
-  },
-  "7ce19bbd-b03d-4a8a-87fd-fdf6da0c4989": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "1K8kTjt0UHyqb12IHbSc-iyZADUbyeaMY"
-  },
-  "ca0953f6-06f9-4f13-9b7e-1aa1fa8cf392": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "1MdZCIMDfeBVbJdPwlNBnx08jystB_FSQ"
-  },
-  "56e2fa34-c383-4f0e-81c9-0456107a8051": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "1u4oYCLiIZq5KSjUcteazU1Z0WaObzhCy"
-  },
-  "5e6fc694-4b25-4559-9224-e63c1b093af0": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "1MQZENih__zGaZRgUEWlTmazVi8WJZ0gF"
-  },
-  "eb52777e-e060-4a78-80b7-36c1b17dd58b": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "1aCGXfSwLC0RtGbBBOVeBhVSe-WD68-Ul"
-  },
   "61ed2fe5-4a10-4699-b2ae-b6f071d809d6": {
     "label": "September 2018",
     "precision": "month",
@@ -515,12 +467,6 @@
     "date": "2018-01-01T12:00:00.000Z",
     "sourceKey": "1v54vrWa6AzxkZeKL8eZcxjMg03gOpNZR"
   },
-  "db0c26ec-113e-4841-ac6f-61db6af653a2": {
-    "label": "1819",
-    "precision": "year",
-    "date": "1819-01-01T12:00:00.000Z",
-    "sourceKey": "1mkvCRc8lMlTmv6zT_HSqbdb9wlT1xI_I"
-  },
   "8b9acd01-44eb-401e-9118-d069ec572ef8": {
     "label": "2016",
     "precision": "year",
@@ -610,5 +556,17 @@
     "precision": "year",
     "date": "2022-01-01T12:00:00.000Z",
     "sourceKey": "1sYHOBvriloIqVO2_rCMTBXJJHLQn8rrW"
+  },
+  "7a13066c-abaf-4480-8046-dcb1a78134fa": {
+    "label": "November 2018",
+    "date": "2018-11-01T12:00:00Z",
+    "precision": "month",
+    "sourceKey": "19jAQXZjZBZQYc2zs6NHpAmYdSP-TceE8"
+  },
+  "db0c26ec-113e-4841-ac6f-61db6af653a2": {
+    "label": "2018",
+    "date": "2018-01-01T12:00:00Z",
+    "precision": "year",
+    "sourceKey": "1mkvCRc8lMlTmv6zT_HSqbdb9wlT1xI_I"
   }
 }

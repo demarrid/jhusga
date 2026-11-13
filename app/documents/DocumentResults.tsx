@@ -163,13 +163,18 @@ export default function DocumentResults({
                     <label htmlFor="document-sort">Sort by</label>
                     <Select
                         id="document-sort"
+                        ariaLabel={`Sort by ${DOCUMENT_SORT_LABELS[chosenSort]}. Select again to reverse direction.`}
                         size="small"
                         value={chosenSort.replace(/-asc$/, "")}
                         onReselect={(value) => chooseSort(value as DocumentSort)}
                         onChange={(value) => chooseSort(value as DocumentSort)}
                         options={documentSortsFor(hasQuery).map((option) => ({
                             value: option,
-                            label: option === "relevant" ? DOCUMENT_SORT_LABELS[option] : `${DOCUMENT_SORT_LABELS[option]} (${chosenSort === `${option}-asc` ? "oldest" : "newest"} first)`,
+                            label: DOCUMENT_SORT_LABELS[option],
+                            accessibleLabel: `${DOCUMENT_SORT_LABELS[option]}, ${chosenSort === `${option}-asc` ? "oldest" : "newest"} first`,
+                            icon: option === "relevant" ? undefined : <svg aria-hidden="true" width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" strokeWidth="1" style={{display:"inline-block",verticalAlign:"middle",marginLeft:"6px"}}>
+                                <path d={chosenSort === `${option}-asc` ? "M6 12V2M2 6l4-4 4 4" : "M6 2v10M2 8l4 4 4-4"} />
+                            </svg>,
                         }))}
                     />
                 </div>
