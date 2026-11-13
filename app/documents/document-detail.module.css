@@ -960,10 +960,9 @@
    sits in the layout's top padding (or, stacked, the gap under the sidebar),
    so the document still starts level with the summary beside it. */
 .versionSentence {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
+  position: relative;
   margin: 0 0 1.25rem;
+  overflow-wrap: anywhere;
   color: #6a7c8f;
   font-size: 0.75rem;
   line-height: 1.6;
@@ -971,6 +970,9 @@
 }
 
 .versionSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
   field-sizing: content;
   max-width: 100%;
   padding: 0;

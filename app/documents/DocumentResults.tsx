@@ -11,7 +11,7 @@ import Select from "@/app/(components)/Select";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel } from "@/lib/contributors";
-import { formatDateShort, formatDateTime } from "@/lib/dates";
+import { archivePartialDateISO, DOCUMENT_DATE_LABELS, formatDateShort, formatDateTime } from "@/lib/dates";
 import {
     DOCUMENT_PAGE_SIZE,
     DOCUMENT_SORT_LABELS,
@@ -150,7 +150,7 @@ export default function DocumentResults({
     }, [canLoad, loaded.next]);
 
     function chooseSort(next: DocumentSort) {
-        if (next === chosenSort) return;
+        if (next === chosenSort.replace(/-asc$/, "") && next !== "relevant") next = (chosenSort.endsWith("-asc") ? next : `${next}-asc`) as DocumentSort;
         setChosenSort(next);
         apply({ sort: next === defaultDocumentSort(hasQuery) ? "" : next });
     }
@@ -164,11 +164,12 @@ export default function DocumentResults({
                     <Select
                         id="document-sort"
                         size="small"
-                        value={chosenSort}
+                        value={chosenSort.replace(/-asc$/, "")}
+                        onReselect={(value) => chooseSort(value as DocumentSort)}
                         onChange={(value) => chooseSort(value as DocumentSort)}
                         options={documentSortsFor(hasQuery).map((option) => ({
                             value: option,
-                            label: DOCUMENT_SORT_LABELS[option],
+                            label: option === "relevant" ? DOCUMENT_SORT_LABELS[option] : `${DOCUMENT_SORT_LABELS[option]} (${chosenSort === `${option}-asc` ? "oldest" : "newest"} first)`,
                         }))}
                     />
                 </div>
@@ -321,14 +322,14 @@ function DocumentCard({
  */
 function DocumentDates({ document, sort }: { document: DocumentListing; sort: DocumentSort }) {
     const candidates: [string, Date | null][] =
-        sort === "created"
+        sort.replace(/-asc$/, "") === "created"
             ? [
                   ["Created", document.driveCreatedTime],
                   ["Dated", document.datedAt],
               ]
             : [document.datedAt ? ["Dated", document.datedAt] : ["Created", document.driveCreatedTime]];
     candidates.push(["Updated", document.driveModifiedTime]);
-    if (sort === "added") candidates.unshift(["Added", document.createdAt]);
+    if (sort.replace(/-asc$/, "") === "added") candidates.unshift(["Added", document.createdAt]);
 
     const shown: { label: string; date: Date }[] = [];
     for (const [label, date] of candidates) {
@@ -342,8 +343,8 @@ function DocumentDates({ document, sort }: { document: DocumentListing; sort: Do
             {shown.map(({ label, date }, index) => (
                 <span key={label}>
                     {index > 0 && " · "}
-                    <time dateTime={date.toISOString()} title={formatDateTime(date) ?? undefined}>
-                        {`${label} ${formatDateShort(date)}`}
+                    <time dateTime={label === "Dated" && DOCUMENT_DATE_LABELS[document.id] ? archivePartialDateISO(document.id) : date.toISOString()} title={label === "Dated" && DOCUMENT_DATE_LABELS[document.id] ? "Source gives only a partial date; exact day unknown" : formatDateTime(date) ?? undefined}>
+                        {`${label} ${label === "Dated" && DOCUMENT_DATE_LABELS[document.id] ? DOCUMENT_DATE_LABELS[document.id] : formatDateShort(date)}`}
                     </time>
                 </span>
             ))}

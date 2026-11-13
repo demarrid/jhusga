@@ -7,11 +7,15 @@
 
 import { updatedDate, type DatedDocument } from "@/lib/dates";
 
-export const DOCUMENT_SORTS = ["relevant", "modified", "dated", "created", "added"] as const;
+export const DOCUMENT_SORTS = ["relevant", "modified", "dated", "created", "added", "modified-asc", "dated-asc", "created-asc", "added-asc"] as const;
 
 export type DocumentSort = (typeof DOCUMENT_SORTS)[number];
 
 export const DOCUMENT_SORT_LABELS: Record<DocumentSort, string> = {
+    "modified-asc": "Modified (oldest first)",
+    "dated-asc": "Dated (oldest first)",
+    "created-asc": "Created (oldest first)",
+    "added-asc": "Added (oldest first)",
     relevant: "Most relevant",
     modified: "Modified",
     dated: "Dated",
@@ -21,7 +25,7 @@ export const DOCUMENT_SORT_LABELS: Record<DocumentSort, string> = {
 
 /** Relevance only means something against a typed query. */
 export function documentSortsFor(hasQuery: boolean): readonly DocumentSort[] {
-    return hasQuery ? DOCUMENT_SORTS : DOCUMENT_SORTS.filter((sort) => sort !== "relevant");
+    return DOCUMENT_SORTS.filter(sort => !sort.endsWith("-asc") && (hasQuery || sort !== "relevant"));
 }
 
 /** The order a listing opens in, and so the one its URL leaves unsaid. */
@@ -41,7 +45,7 @@ export function isDocumentSort(value: unknown): value is DocumentSort {
  * Relevance without a query has nothing to rank by and reads the same way.
  */
 export function parseDocumentSort(value: string | null | undefined, hasQuery: boolean): DocumentSort {
-    return isDocumentSort(value) && documentSortsFor(hasQuery).includes(value)
+    return isDocumentSort(value) && (hasQuery || value !== "relevant")
         ? value
         : defaultDocumentSort(hasQuery);
 }
@@ -56,6 +60,7 @@ export function parseDocumentSort(value: string | null | undefined, hasQuery: bo
  * it among the dated ones under its Drive time would be a guess.
  */
 function sortDate(document: SortableDocument, sort: DocumentSort): Date | null {
+    sort = sort.replace(/-asc$/, "") as DocumentSort;
     if (sort === "added") return document.createdAt;
     if (sort === "dated") return document.datedAt;
     if (sort === "created") return document.driveCreatedTime;
@@ -91,7 +96,7 @@ export function compareDocuments(
 
     const a = sortDate(left, sort);
     const b = sortDate(right, sort);
-    if (a && b && a.getTime() !== b.getTime()) return b.getTime() - a.getTime();
+    if (a && b && a.getTime() !== b.getTime()) return (sort.endsWith("-asc") ? -1 : 1) * (b.getTime() - a.getTime());
     if (a && !b) return -1;
     if (b && !a) return 1;
 

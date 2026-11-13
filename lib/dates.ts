@@ -1,3 +1,4 @@
+import archivePrecision from "@/config/archive-date-precision.json";
 /**
  * Dates as the site shows them.
  *
@@ -125,3 +126,8 @@ export function formatDateTime(date: Date | null | undefined): string | null {
         minute: "2-digit",
     });
 }
+
+/** Source-supported partial dates; sorting anchors do not imply an exact day. */
+export const ARCHIVE_DATE_PRECISION: Record<string, {label:string;precision:string;date:string;sourceKey:string}> = archivePrecision;
+export const DOCUMENT_DATE_LABELS: Record<string,string> = Object.fromEntries(Object.entries(ARCHIVE_DATE_PRECISION).map(([id,value])=>[id,value.label]));
+export function archivePartialDateISO(id:string):string|undefined {const value=ARCHIVE_DATE_PRECISION[id];return value?.date.slice(0,value.precision==='year'?4:7);}

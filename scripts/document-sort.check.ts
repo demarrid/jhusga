@@ -42,6 +42,9 @@ const ids = (sort: "modified" | "dated" | "created") =>
     [...documents].sort((a, b) => compareDocuments(a, b, sort)).map((d) => d.id);
 
 console.log("compareDocuments");
+check("oldest created first keeps unknown dates last", [...documents].sort((a,b)=>compareDocuments(a,b,"created-asc")).map(d=>d.id).join() === "template,minutes,bill,orphan");
+check("ascending sort survives URL parsing", parseDocumentSort("added-asc",false) === "added-asc");
+
 
 check("modified is newest Drive modification first", ids("modified").join() === "template,minutes,bill,orphan", ids("modified"));
 check("dated puts documents with no date of their own last", ids("dated").join() === "minutes,bill,orphan,template", ids("dated"));

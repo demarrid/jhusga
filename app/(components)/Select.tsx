@@ -23,6 +23,7 @@ export default function Select({
     value,
     options,
     onChange,
+    onReselect,
     id,
     ariaLabel,
     size = "default",
@@ -32,6 +33,7 @@ export default function Select({
     value: string;
     options: SelectOption[];
     onChange: (value: string) => void;
+    onReselect?: (value: string) => void;
     id?: string;
     ariaLabel?: string;
     size?: "default" | "small";
@@ -83,7 +85,10 @@ export default function Select({
         const option = options[index];
         setOpen(false);
         triggerRef.current?.focus();
-        if (option && option.value !== value) onChange(option.value);
+        if (option) {
+            if (option.value !== value) onChange(option.value);
+            else onReselect?.(option.value);
+        }
     }
 
     function onKeyDown(event: React.KeyboardEvent) {

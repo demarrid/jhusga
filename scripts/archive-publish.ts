@@ -1,3 +1,4 @@
+import {classifyDocument} from '../lib/kinds';
 /** Resumable full-archive publication. Vision results never replace raw OCR evidence. */
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -61,8 +62,8 @@ async function main(){
   if(existing&&existing.contentHash!==hash)await writeFile(base+'publish-backups/'+existing.id+'-'+existing.contentHash+'.json',JSON.stringify(existing));
   const document=await prisma.$transaction(async tx=>{
    if(existing&&existing.contentHash===hash)return existing;
-   const data={title:r.title,displayTitle:r.title,source:r.source,mimeType:r.mimeType,folderPath:r.folderPath,description:r.description,sessionNumber:r.sessionNumber,datedAt:r.datedAt,content:r.content,contentHash:hash,discoveredVia:'archive',lastSyncedAt:new Date()};
-   let d;if(existing){const updated=await tx.document.updateMany({where:{id:existing.id,contentHash:existing.contentHash},data});if(updated.count!==1)throw Error('Concurrent document change');d={...existing,...data};}else d=await tx.document.create({data:{driveFileId:r.key,kind:'unknown',...data}});
+   const data={kind:existing?.kind && existing.kind!=='unknown' ? existing.kind : classifyDocument({name:r.title,folderPath:r.folderPath,driveFileId:r.key,content:r.content,mimeType:r.mimeType}),title:r.title,displayTitle:r.title,source:r.source,mimeType:r.mimeType,folderPath:r.folderPath,description:r.description,sessionNumber:r.sessionNumber,datedAt:existing?.datedAt ?? r.datedAt,content:r.content,contentHash:hash,discoveredVia:'archive',lastSyncedAt:new Date()};
+   let d;if(existing){const updated=await tx.document.updateMany({where:{id:existing.id,contentHash:existing.contentHash},data});if(updated.count!==1)throw Error('Concurrent document change');d={...existing,...data};}else d=await tx.document.create({data:{driveFileId:r.key,...data}});
    const revision=await tx.documentRevision.upsert({where:{documentId_contentHash:{documentId:d.id,contentHash:hash}},create:{documentId:d.id,title:d.title,content:r.content,contentHash:hash},update:{}});await recordDocumentVersion(tx,revision.id,null,'published');
    await tx.documentSummary.updateMany({where:{documentId:d.id,status:{in:['fresh','empty']}},data:{status:'stale'}});return d;
   });

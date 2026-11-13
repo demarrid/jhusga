@@ -17,7 +17,7 @@ import { sessionOrdinal } from "@/config/session";
 import { documentReturnPath } from "@/lib/document-navigation";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
-import { formatDate } from "@/lib/dates";
+import { DOCUMENT_DATE_LABELS, formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
 import { documentSections } from "@/lib/outline";
 import { meetingOutline } from "@/lib/meeting-outline";
@@ -128,7 +128,7 @@ export default async function DocumentPage({
                     document.sessionNumber !== null &&
                     `${sessionOrdinal(document.sessionNumber)} session`,
                     document.datedAt
-                        ? `dated ${formatDate(document.datedAt)}`
+                        ? `dated ${DOCUMENT_DATE_LABELS[document.id] ?? formatDate(document.datedAt)}`
                         : document.driveCreatedTime &&
                         `created ${formatDate(document.driveCreatedTime)}`,
                     document.driveModifiedTime &&
