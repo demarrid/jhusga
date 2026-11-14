@@ -287,6 +287,19 @@ check(
     ),
 );
 check(
+    "an abbreviated executive meeting header beats the template creation date",
+    isoDay(documentDate({
+        title: "Executive #10",
+        content: "# Executive Meeting #10\n\n## Nov 13th, 2026 / 4:00 PM / Barber Room, BSC 201",
+        driveCreatedTime: new Date("2026-11-06T21:08:53.019Z"),
+        sessionNumber: 114,
+    })) === "2026-11-13",
+);
+check(
+    "a dotted month abbreviation retains its stated year",
+    isoDay(documentDate({title: "Minutes", content: "Nov. 13th, 2026"})) === "2026-11-13",
+);
+check(
     "an agenda is dated by its meeting header, not a bill number on it",
     isoDay(
         documentDate({

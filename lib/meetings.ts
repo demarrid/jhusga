@@ -98,12 +98,17 @@ const MONTH_MISSPELLINGS: Record<string, string> = {
     feburary: "february",
 };
 
-const MONTH_NAMES = [...MONTHS, ...Object.keys(MONTH_MISSPELLINGS)].join("|");
+const MONTH_ABBREVIATIONS: Record<string, string> = Object.fromEntries(
+    MONTHS.map((month) => [month.slice(0, 3), month]),
+);
+MONTH_ABBREVIATIONS.sept = "september";
+
+const MONTH_NAMES = [...MONTHS, ...Object.keys(MONTH_MISSPELLINGS), ...Object.keys(MONTH_ABBREVIATIONS)].join("|");
 
 /** 1-12, or 0 for a word that is not a month. */
 function monthNumber(name: string): number {
     const lower = name.toLowerCase();
-    return MONTHS.indexOf(MONTH_MISSPELLINGS[lower] ?? lower) + 1;
+    return MONTHS.indexOf(MONTH_MISSPELLINGS[lower] ?? MONTH_ABBREVIATIONS[lower] ?? lower) + 1;
 }
 
 /**
@@ -121,7 +126,7 @@ const PARTIAL_DATE = /(?<![\d./])(\d{1,2})\s*\/\s*(\d{1,2})(?![\d/])/;
  * skipped afterwards: there is no word boundary between the "3" and the "rd".
  */
 const TEXTUAL_DATE = new RegExp(
-    `\\b(?:(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_NAMES})|(${MONTH_NAMES})\\s+(\\d{1,2})(?:st|nd|rd|th)?)\\b(?:,?\\s*((?:19|20)\\d{2}))?`,
+    `\\b(?:(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_NAMES})\\.?|(${MONTH_NAMES})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?)\\b(?:,?\\s*((?:19|20)\\d{2}))?`,
     "i",
 );
 
