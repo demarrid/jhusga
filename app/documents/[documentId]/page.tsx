@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import type { DocumentDetail } from "@/server/documents";
+import DocumentUpdateBanner from "@/app/(components)/DocumentUpdateBanner";
 import DocumentOutline from "@/app/(components)/DocumentOutline";
 import DocumentRestatement from "@/app/(components)/DocumentRestatement";
 import DocumentVersionSelector from "@/app/(components)/DocumentVersionSelector";
@@ -116,6 +117,7 @@ export default async function DocumentPage({
 
     return (
         <main className={styles.page}>
+          <DocumentUpdateBanner key={documentId + view.latest.id} documentId={documentId} latestVersionId={view.latest.id} />
           <header className={styles.masthead}>
             <Link className={styles.backLink} href={returnTo ?? "/documents"}>{returnTo ? "← Back to search" : "← All documents"}</Link>
             <h1>{document.title}</h1>

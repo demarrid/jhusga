@@ -1,0 +1,24 @@
+.banner {
+  padding: 0.75rem max(6vw, 1.5rem);
+  background: #e9ebee;
+  color: #59616c;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.banner button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+}
+.banner button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
