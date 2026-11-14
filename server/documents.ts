@@ -20,7 +20,7 @@ import {
 } from "@/lib/document-sort";
 import { heldNotice } from "@/lib/integrity";
 import { agendaMappingKey, agendaMappingHash, agendaSectionLinks, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
-import { DOCUMENT_KINDS, type DocumentKind, isDocumentKind } from "@/lib/kinds";
+import { DOCUMENT_CATEGORIES, documentCategory, documentCategoryFilter, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
 import { compareNamesBySurname } from "@/lib/contributors";
 import { isMeetingRole, meetingForDocument, type MeetingRole } from "@/lib/meetings";
@@ -55,6 +55,7 @@ export type DocumentListing = {
      */
     summary: string;
     kind: DocumentKind;
+    meetingRole?: string | null;
     folderPath: string;
     /**
      * "walk" for a file filed in the master folder, "link" for one the archive
@@ -98,8 +99,7 @@ export type DocumentFilters = {
 };
 
 function documentWhere(filters: DocumentFilters) {
-    const kind =
-        filters.kind && isDocumentKind(filters.kind) ? filters.kind : undefined;
+    const categoryFilter = documentCategoryFilter(filters.kind);
     const query = filters.query?.trim();
     const personId = filters.personId?.trim() || undefined;
     const role = filters.role?.trim() || undefined;
@@ -133,7 +133,7 @@ function documentWhere(filters: DocumentFilters) {
 
     return {
         ...sessionWhere(filters.session),
-        ...(kind ? { kind } : {}),
+        ...categoryFilter,
         ...contributorWhere,
         // Postgres LIKE is case-sensitive, so the mode is required here --
         // without it, searching "constitution" would miss "Constitution".
@@ -167,6 +167,7 @@ const listingSelect = {
     displayTitle: true,
     description: true,
     kind: true,
+    meetingRole: true,
     folderPath: true,
     discoveredVia: true,
     source: true,
@@ -984,36 +985,34 @@ export async function loadDocument(
 /** Distinct kinds actually present, for building filters without empty options. */
 export async function getDocumentKindsInUse(
     session: SessionFilter = SESSION_NUMBER,
-): Promise<{ kind: DocumentKind; count: number }[]> {
+): Promise<{ kind: string; count: number }[]> {
     if (demoModeEnabled()) return demoKinds(session);
     return cachedDocumentKindsInUse(session);
 }
 
 const cachedDocumentKindsInUse = unstable_cache(
     loadDocumentKindsInUse,
-    ["getDocumentKindsInUse-v1"],
+    ["getDocumentKindsInUse-v2"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
 async function loadDocumentKindsInUse(
     session: SessionFilter = SESSION_NUMBER,
-): Promise<{ kind: DocumentKind; count: number }[]> {
+): Promise<{ kind: string; count: number }[]> {
     const grouped = await prisma.document.groupBy({
-        by: ["kind"],
+        by: ["kind", "meetingRole"],
         where: sessionWhere(session),
         _count: { kind: true },
     });
 
-    return grouped
-        .filter((group) => isDocumentKind(group.kind))
-        .map((group) => ({
-            kind: group.kind as DocumentKind,
-            count: group._count.kind,
-        }))
-        .sort(
-            (a, b) =>
-                DOCUMENT_KINDS.indexOf(a.kind) - DOCUMENT_KINDS.indexOf(b.kind),
-        );
+    const counts = new Map<string, number>();
+    for (const group of grouped) {
+        if (!isDocumentKind(group.kind)) continue;
+        const category = documentCategory(group.kind, group.meetingRole);
+        counts.set(category, (counts.get(category) ?? 0) + group._count.kind);
+    }
+    return [...counts].map(([kind, count]) => ({ kind, count }))
+        .sort((a, b) => DOCUMENT_CATEGORIES.indexOf(a.kind) - DOCUMENT_CATEGORIES.indexOf(b.kind));
 }
 
 /** Version history for a document, newest first. Content excluded. */

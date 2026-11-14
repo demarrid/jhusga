@@ -18,7 +18,7 @@ import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { manualSyncEnabled } from "@/config/sync";
 import { compareNamesBySurname } from "@/lib/contributors";
 import { defaultDocumentSort, parseDocumentSort } from "@/lib/document-sort";
-import { documentKindLabel, isDocumentKind } from "@/lib/kinds";
+import { documentKindLabel, isDocumentCategory } from "@/lib/kinds";
 import { SESSION_LABEL, pageMetadata } from "@/lib/seo";
 
 import DocumentResults from "./DocumentResults";
@@ -48,7 +48,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { q, kind, archive } = await searchParams;
   const query = q?.trim();
-  const kindLabel = kind && isDocumentKind(kind) ? documentKindLabel(kind) : null;
+  const kindLabel = kind && isDocumentCategory(kind) ? documentKindLabel(kind) : null;
   const scope = archive === "1" ? "the archive" : `the ${SESSION_LABEL}`;
 
   if (query) {

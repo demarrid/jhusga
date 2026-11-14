@@ -72,8 +72,8 @@ function describeDocument(document: DocumentDetail): string {
     const when = document.datedAt ?? document.driveCreatedTime;
     const parts = [
         isSecondaryKind(document.kind)
-            ? `${documentKindLabel(document.kind)} about the SGA at Johns Hopkins`
-            : `${documentKindLabel(document.kind)} of the SGA at Johns Hopkins`,
+            ? `${documentKindLabel(document.kind, document.meetingRole)} about the SGA at Johns Hopkins`
+            : `${documentKindLabel(document.kind, document.meetingRole)} of the SGA at Johns Hopkins`,
         document.sessionNumber !== null &&
             `${sessionOrdinal(document.sessionNumber)} session`,
         when && formatDate(when),
@@ -124,9 +124,7 @@ export default async function DocumentPage({
 
             <p className={styles.metadata}>
                 {[
-                    documentKindLabel(document.kind),
-                    document.meetingRole === "agenda" && "agenda",
-                    document.meetingRole === "minutes" && "minutes",
+                    documentKindLabel(document.kind, document.meetingRole),
                     document.sessionNumber !== null &&
                     `${sessionOrdinal(document.sessionNumber)} session`,
                     document.datedAt

@@ -75,14 +75,42 @@ const KIND_LABELS: Partial<Record<DocumentKind, string>> = {
 };
 
 /** "bill.bylaws_amendment" -> "Bill / Bylaws amendment". */
-export function documentKindLabel(kind: string): string {
-    if (isDocumentKind(kind) && KIND_LABELS[kind]) return KIND_LABELS[kind];
+export function documentKindLabel(kind: string, meetingRole?: string | null): string {
+    kind = documentCategory(kind, meetingRole);
+    const label = isDocumentKind(kind) ? KIND_LABELS[kind] : undefined;
+    if (label) return label;
 
     return kind
         .split(".")
         .map((part) => part.replace(/_/g, " "))
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" / ");
+}
+
+/** Browse categories split meeting records using their archived role.
+ * Stored kinds remain stable for meeting pairing and evidence processing. */
+export const DOCUMENT_CATEGORIES = DOCUMENT_KINDS.flatMap((kind) =>
+    kind.startsWith("minutes.") ? [kind.replace("minutes.", "agenda."), kind] : [kind],
+);
+
+export function isDocumentCategory(value: string): boolean {
+    return DOCUMENT_CATEGORIES.includes(value);
+}
+
+export function documentCategory(kind: string, meetingRole?: string | null): string {
+    return kind.startsWith("minutes.") && meetingRole === "agenda"
+        ? kind.replace("minutes.", "agenda.") : kind;
+}
+
+export function documentCategoryFilter(category?: string) {
+    if (!category || !isDocumentCategory(category)) return {};
+    if (category.startsWith("agenda.")) {
+        return { kind: category.replace("agenda.", "minutes."), meetingRole: "agenda" };
+    }
+    if (category.startsWith("minutes.")) {
+        return { kind: category, NOT: { meetingRole: "agenda" } };
+    }
+    return { kind: category };
 }
 
 /**

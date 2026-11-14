@@ -51,6 +51,7 @@ const SUITES = [
     "document-find",
     "document-presentation",
     "document-sort",
+    "document-categories",
     "document-versions",
     "document-media",
     "document-media-sync",

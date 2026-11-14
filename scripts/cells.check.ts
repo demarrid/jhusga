@@ -152,5 +152,22 @@ check(
     restoreCellBreaks(struck, struckHtml),
 );
 
+const renumbered = "| Current | 10.1.**~~2~~**3. Marks reset each semester. 10.1.**~~3~~**4. Report infractions. |\n| --- | --- |";
+const renumberedHtml = `<table><tr><td>Current</td>${cell([
+    '10.1.<b><s>2</s></b>3. Marks reset each semester.',
+    '10.1.<b><s>3</s></b>4. Report infractions.',
+])}</tr></table>`;
+const renumberedResult = restoreCellBreaks(renumbered, renumberedHtml);
+check("inline struck clause numbers do not discard proposed-cell paragraph breaks",
+    renumberedResult.includes(`semester.${CELL_BREAK}10.1.**~~3~~**4.`), renumberedResult);
+check("restoring renumbered cell breaks is idempotent",
+    restoreCellBreaks(renumberedResult, renumberedHtml) === renumberedResult);
+
+const suggestedEnding = "of the complaint necessitating disciplinary marks shall be determined through a majority vote of members of the Internal Affairs committee.";
+const suggestedMd = `| 10.1.**~~6~~**7.1.1. First, the truthhood of the accusationlegitimacy ${suggestedEnding} 10.1.7.1.2. Next clause. |`;
+const suggestedHtml = `<table><tr>${cell([`10.1.67.1.1. First, the legitimacy ${suggestedEnding}`, "10.1.7.1.2. Next clause."])}</tr></table>`;
+check("suggestion differences preserve all source words while restoring a uniquely bounded clause break",
+    restoreCellBreaks(suggestedMd, suggestedHtml) === suggestedMd.replace("committee. 10.1.7.1.2.", `committee.${CELL_BREAK}10.1.7.1.2.`));
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

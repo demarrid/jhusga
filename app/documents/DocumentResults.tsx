@@ -243,7 +243,7 @@ function DocumentCard({
     // Preserve the original Drive name as hover context after normalization.
     const renamed = document.driveTitle !== document.title;
     const metadata = [
-        documentKindLabel(document.kind),
+        documentKindLabel(document.kind, document.meetingRole),
         document.discoveredVia === "link" ? "Linked from the archive" : document.folderPath,
         document.sessionNumber !== null &&
             document.sessionNumber !== SESSION_NUMBER &&

@@ -253,9 +253,28 @@ function spliceBreaks(md: string, htmlLines: string[]): string {
         if (!needle.text) continue;
 
         const found = haystack.text.indexOf(needle.text, cursor);
-        if (found === -1) return md;
-
-        const last = found + needle.text.length - 1;
+        let last = found + needle.text.length - 1;
+        if (found === -1) {
+            // Suggestions can differ between exports. Consecutive, unique
+            // clause numbers still identify a boundary without changing words.
+            const clause = /^(\d+(?:\.\d+){2,}\.?)\s/;
+            const marker = clause.exec(needle.text)?.[0];
+            const nextMarker = clause.exec(projectCell(lines[index + 1] ?? "").text)?.[0];
+            const start = marker ? haystack.text.indexOf(marker, cursor) : -1;
+            const next = start >= 0 && nextMarker ? haystack.text.indexOf(nextMarker, start + marker!.length) : -1;
+            if (index === lines.length - 1 && marker && start >= 0 &&
+                !/\b\d+(?:\.\d+){2,}\.?\s/.test(haystack.text.slice(start + marker.length))) {
+                // No trailing boundary to insert; the final unique clause
+                // confirms that preceding breaks belong to this same cell.
+                continue;
+            }
+            if (!marker || !nextMarker || start < 0 || next < 0 ||
+                haystack.text.indexOf(marker, start + marker.length) !== -1 ||
+                haystack.text.indexOf(nextMarker, next + nextMarker.length) !== -1 ||
+                /\b\d+(?:\.\d+){2,}\.?\s/.test(haystack.text.slice(start + marker.length, next))) return md;
+            last = next - 1;
+            while (last > start && haystack.text[last] === " ") last--;
+        }
         if (index < lines.length - 1) {
             insertions.push(afterMarkup(md, haystack.map[last]! + 1));
         }
@@ -329,6 +348,12 @@ function unwrapLinks(input: string): { text: string; map: number[] } {
     let index = 0;
 
     while (index < input.length) {
+        // HTML keeps struck-through words but has no Markdown delimiters.
+        // These can occur inside a renumbered clause, not just at its edges.
+        if (input.startsWith("~~", index)) {
+            index += 2;
+            continue;
+        }
         if (input[index] === "[") {
             const link = LINK.exec(input.slice(index));
             if (link) {
