@@ -49,6 +49,11 @@ async function main() {
     assert.equal(updates[0].data.reviewState, undefined, "batching cannot publish held edits");
     assert.equal(updates[0].data.sessionNumber, undefined, "linked session attribution is preserved");
 
+    rows[3].kind = "minutes.executive";
+    const executive = { ...files[3], name: "Executive #10" };
+    await refreshUnchangedFiles([executive], "walk", {}, summary);
+    assert.equal(updates.at(-1)?.data.kind, "minutes.executive", "metadata-only refresh preserves a content-derived kind");
+
     const fallthrough = [
         {...files[1], modifiedTime: "2026-10-19T12:00:00Z"},
         {...files[2], modifiedTime: null},

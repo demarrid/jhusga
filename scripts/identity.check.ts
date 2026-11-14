@@ -391,7 +391,7 @@ check("General Plan stays outside the governing documents in a bylaws folder", c
     name: "General Plan",
     folderPath: "Senate/Bylaws",
     driveFileId: "1an78T3Wl0r6Yh1hTfbyKGdXTPtA9LScD7FaTbOo0ceI",
-}) === "unknown");
+}) === "plan");
 check("voting records are a tracker", classifyDocument({ name: "114th SGA: Bill Voting Records", folderPath: "" }) === "tracker");
 check("a resolution-themed deck remains a presentation", classifyDocument({ name: "SGA Resolution", folderPath: "", mimeType: "application/vnd.google-apps.presentation" }) === "presentation");
 check("reviewed ICE document stays outside resolutions after a rename", classifyDocument({ name: "Renamed resolution", folderPath: "", driveFileId: "1LGp96ElM0w4a4qpAgnNiHWndpq6fd1hv14_mgWkXjWs" }) === "unknown");
@@ -409,7 +409,7 @@ check(
     classifyDocument({
         name: "9/25 - Meeting w/ Prof Brodsky",
         folderPath: "Senate/Committees/Internal Affairs/Shreemann's Folder",
-    }) === "unknown",
+    }) === "notes.meeting",
     classifyDocument({
         name: "9/25 - Meeting w/ Prof Brodsky",
         folderPath: "Senate/Committees/Internal Affairs/Shreemann's Folder",
@@ -485,7 +485,7 @@ check(
     classifyDocument({
         name: "Bylaws (Personal Rewrite, Condensed)",
         folderPath: "Guiding Documents",
-    }) === "unknown",
+    }) === "working.document",
 );
 check(
     "a Senate GBM without the word agenda is still Senate minutes",

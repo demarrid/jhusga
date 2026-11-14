@@ -12,7 +12,7 @@ import { bodyForDocument } from "@/lib/bodies";
 import { extractContributors, UNIVERSITY_OFFICE } from "@/lib/contributors";
 import { assessChange } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
-import { meetingFor } from "@/lib/meetings";
+import { meetingFor, documentMeetingRole } from "@/lib/meetings";
 import { resolveAffiliates } from "@/lib/names";
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
@@ -42,7 +42,7 @@ import {
 } from "@/lib/sharepoint";
 import { PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
 import { LEGISLATION_EDITIONS } from "@/config/legislation-editions";
-import { SECONDARY_KINDS, classifyDocument } from "@/lib/kinds";
+import { SECONDARY_KINDS, classifyDocument, isDocumentKind } from "@/lib/kinds";
 import { lineageKeyFor } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
 import { prisma } from "@/lib/prisma";
@@ -228,14 +228,15 @@ export async function recordMeetings(): Promise<{ keyed: number; paired: number 
 
     for (const document of documents) {
         const meeting = meetingFor(document);
+        const meetingRole = meeting.role || documentMeetingRole(document);
 
         if (
             meeting.key !== document.meetingKey ||
-            meeting.role !== document.meetingRole
+            meetingRole !== document.meetingRole
         ) {
             await prisma.document.update({
                 where: { id: document.id },
-                data: { meetingKey: meeting.key, meetingRole: meeting.role },
+                data: { meetingKey: meeting.key, meetingRole },
             });
         }
 
@@ -732,8 +733,9 @@ async function exportIngestible(file: WalkedFile): Promise<string | null> {
  * from the text by `linkedSession`, and rewriting it from the fallback here
  * would undo that. `recordSessions` keeps it current instead.
  */
-function driveMetadata(file: WalkedFile, discoveredVia: "walk" | "link") {
-    const kind = classifyDocument({
+function driveMetadata(file: WalkedFile, discoveredVia: "walk" | "link", previousKind?: string) {
+    // Metadata-only refreshes must not erase a classification based on published text.
+    const kind = previousKind && isDocumentKind(previousKind) ? previousKind : classifyDocument({
         name: file.name,
         driveFileId: file.id,
         folderPath: file.folderPath,
@@ -788,7 +790,7 @@ export async function refreshUnchangedFiles(
     for (const file of candidates) {
         const row = byFile.get(file.id);
         if (!row?.driveModifiedTime || row.driveModifiedTime.getTime() !== new Date(file.modifiedTime!).getTime()) continue;
-        const metadata = driveMetadata(file, discoveredVia);
+        const metadata = driveMetadata(file, discoveredVia, row.kind);
         const unchanged = Object.entries(metadata).every(([key, value]) => {
             if (key === "lastSyncedAt" || value === undefined) return true;
             const prior = row[key as keyof typeof row];
@@ -841,7 +843,7 @@ export async function ingestFile(
         },
     });
 
-    const metadata = driveMetadata(file, discoveredVia);
+    const metadata = driveMetadata(file, discoveredVia, existing?.kind);
     const { driveModifiedTime } = metadata;
 
     // Cheap path: Drive says the file has not been touched.
@@ -880,6 +882,11 @@ export async function ingestFile(
                 where: { id: existing.id },
                 data: {
                     ...metadata,
+                    ...(() => {
+                        const kind = classifyDocument({ name: file.name, folderPath: file.folderPath,
+                            driveFileId: file.id, mimeType: file.mimeType, content });
+                        return { kind, lineageKey: lineageKeyFor(file.name, file.id, kind) };
+                    })(),
                     // The published text is what Drive is serving again, so
                     // whatever was held has been reverted at the source.
                     ...(existing.reviewState === "held"
@@ -928,7 +935,11 @@ export async function ingestFile(
     // for a linked-in file needs the text this path has just fetched.
     const stored = { ...metadata, sessionNumber };
 
+    const publishedKind = classifyDocument({ name: file.name, folderPath: file.folderPath,
+        driveFileId: file.id, mimeType: file.mimeType, content });
     const published = {
+        kind: publishedKind,
+        lineageKey: lineageKeyFor(file.name, file.id, publishedKind),
         description: deriveDescription(content),
         content,
         contentHash,

@@ -1,3 +1,5 @@
+import { classifyArchiveRecord } from "@/lib/archive-record-kinds";
+import archiveReviewedCategories from "@/config/archive-reviewed-categories.json";
 import archiveReviewedKinds from "@/config/archive-reviewed-kinds.json";
 /**
  * Document taxonomy.
@@ -21,6 +23,7 @@ export const DOCUMENT_KINDS = [
     "bill.bylaws_constitution_amendment",
     "bill.other",
     "resolution",
+    "senate.order",
     "guiding.constitution",
     "guiding.bylaws",
     "guiding.other",
@@ -38,6 +41,26 @@ export const DOCUMENT_KINDS = [
     "presentation",
     "template",
     "newsletter.article",
+    "minutes.class_council",
+    "minutes.other",
+    "notes.meeting",
+    "report",
+    "plan",
+    "correspondence",
+    "statement",
+    "schedule",
+    "survey",
+    "application",
+    "resume",
+    "finance.record",
+    "reference",
+    "transition",
+    "event.material",
+    "media",
+    "working.document",
+    "petition",
+    "election",
+    "collection",
     "unknown",
 ] as const;
 
@@ -46,8 +69,9 @@ export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 /** Reviewed exceptions follow Drive identity across renames and future syncs. */
 const REVIEWED_DOCUMENT_KINDS: Record<string, DocumentKind> = {
     ...archiveReviewedKinds as Record<string, DocumentKind>,
+    ...Object.fromEntries(Object.entries(archiveReviewedCategories).map(([id, record]) => [id, record.kind as DocumentKind])),
     // General Plan is working notes about the bylaws.
-    "1an78T3Wl0r6Yh1hTfbyKGdXTPtA9LScD7FaTbOo0ceI": "unknown",
+    "1an78T3Wl0r6Yh1hTfbyKGdXTPtA9LScD7FaTbOo0ceI": "plan",
     "1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM": "bill.funding",
     "1LGp96ElM0w4a4qpAgnNiHWndpq6fd1hv14_mgWkXjWs": "unknown",
     "12IpFP0qlLBDgPkzxJuXGSZA8KWyDSOnLdjnvuFTRzLk": "presentation",
@@ -70,8 +94,23 @@ const KIND_LABELS: Partial<Record<DocumentKind, string>> = {
     "judicial.advisory_opinion": "Judiciary / Advisory opinion",
     "bill.bylaws_constitution_amendment": "Bill / Bylaws and constitutional amendment",
     resolution: "Resolution",
+    "senate.order": "Senate authorization order",
     presentation: "Presentation",
     template: "Template",
+    "notes.meeting": "Meeting notes",
+    "finance.record": "Financial record",
+    "event.material": "Event materials",
+    "working.document": "Working document",
+    reference: "Reference material",
+    transition: "Transition guide",
+    media: "Photos and graphics",
+    resume: "Resume / CV",
+    plan: "Plan / Proposal",
+    survey: "Survey / Feedback",
+    application: "Application / Evaluation",
+    election: "Election materials",
+    collection: "Archive collection",
+    unknown: "Uncategorized",
 };
 
 /** "bill.bylaws_amendment" -> "Bill / Bylaws amendment". */
@@ -220,12 +259,16 @@ export function classifyDocument(input: {
     const titled = `${name} ${shown}`.replace(/_/g, " ").replace(/\s+/g, " ").trim();
     const haystack = `${path}/${titled}`;
 
+    if (isPresentation(input.mimeType, titled, path) && !/\btemplate\b/.test(titled)) return "presentation";
+    const archiveRecord = classifyArchiveRecord(input);
+    if (archiveRecord) return archiveRecord;
+
     if (/attendance/.test(haystack)) return "attendance";
     if (/roster|email list|contact list|contact sheet|directory/.test(haystack)) return "directory";
 
     // A member's personal rewrite may reproduce the bylaws, but it is not an
     // adopted instrument and must not be presented or searched as one.
-    if (/\bpersonal rewrite\b/.test(titled)) return "unknown";
+    if (/\bpersonal rewrite\b/.test(titled)) return "working.document";
 
     // A bill template is not a bill. Checked before the legislation rules so
     // "SGA Bill Template" does not become one.

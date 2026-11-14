@@ -291,6 +291,11 @@ function roleFor(title: string, folderPath: string): MeetingRole | "" {
     return "";
 }
 
+/** Category roles don't require a pairable meeting key (for example CSAC agendas). */
+export function documentMeetingRole(document: { kind: string; title: string; folderPath: string }): MeetingRole | "" {
+    return document.kind.startsWith("minutes.") ? roleFor(document.title, document.folderPath) : "";
+}
+
 /** The title with everything that is a year or a session filed off. */
 function withoutYears(title: string): string {
     return title
