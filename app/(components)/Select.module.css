@@ -220,10 +220,6 @@
   opacity: 0;
 }
 
-.nativeInert {
-  pointer-events: none;
-}
-
 @keyframes open {
   from { opacity: 0; transform: translateY(-0.25rem); }
   to { opacity: 1; transform: translateY(0); }

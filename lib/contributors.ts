@@ -107,7 +107,7 @@ const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolea
         pattern: /^(?:students?\s+present|members?\s+present|senators?\s+present|permanent\s+members|committee\s+members|present|in\s+attendance|attendees?)$/i,
         role: "present",
     },
-    { pattern: /^(?:guests?|observers?|non-?committee\s+members?)$/i, role: "guest" },
+    { pattern: /^(?:(?:guests?|observers?)(?:\s+from\s+.{3,80})?|non-?committee\s+members?)$/i, role: "guest" },
     { pattern: /^(?:absent\s+)?excused$/i, role: "excused" },
     { pattern: /^(?:unexcused|absent(?:\s+unexcused)?|absentees?)$/i, role: "absent" },
     { pattern: /^late$/i, role: "late" },
@@ -1032,6 +1032,10 @@ const SPEAKER_NOISE = new Set([
     "information",
     "step",
     "next",
+    "goal",
+    "goals",
+    "contact",
+    "contacts",
 ]);
 
 /**
@@ -1047,6 +1051,10 @@ const SPEAKER_HEADING_WORDS = new Set([
     "business",
     "follow-up",
     "followup",
+    // Name keys split on hyphens, so "Follow-Ups" arrives as two words.
+    "follow",
+    "ups",
+    "potential",
     "findings",
     "purpose",
     "suggestion",
@@ -1152,6 +1160,17 @@ function harvestTitledGuest(found: Map<string, ExtractedContributor>, line: stri
     const match = line.replace(ENUMERATOR, "").trim().match(/^([^()]{3,60}?)\s*\(([^()]{3,100})\)\s*$/);
     if (!match || !UNIVERSITY_OFFICE.test(match[2]!) || !isStandalonePersonName(match[1]!)) return false;
     return recordPerson(found, match[1]!, "guest", line, match[2]);
+}
+
+/**
+ * "Lance Poston, Assistant Vice Provost for …" under a guest heading. The
+ * heading already says these are visitors, so any office will do, but the
+ * name must stand alone: "Vice Provost, Student Affairs" is not a person.
+ */
+function harvestListedGuest(found: Map<string, ExtractedContributor>, line: string): boolean {
+    const match = line.replace(ENUMERATOR, "").trim().match(/^([^,()]{3,60}?)\s*,\s*([^()]{3,150})$/);
+    if (!match || !OFFICE_WORDS.test(match[2]!) || !isStandalonePersonName(match[1]!.trim())) return false;
+    return recordPerson(found, match[1]!.trim(), "guest", line, match[2]!.replace(/\s+/g, " ").trim());
 }
 
 /** `<rises>`, `\<the script\>` — the minute-taker describing the room, not quoting it. */
@@ -1536,6 +1555,7 @@ export function extractContributors(
         }
         if (attendance) {
             const inside = !attendance.numbered || indent > attendance.indent;
+            if (inside && attendance.role === "guest" && harvestListedGuest(found, line)) continue;
             if (inside && harvestAttendanceNames(found, line, attendance.role, `${attendance.role}: ${line}`)) continue;
             attendance = null;
         }

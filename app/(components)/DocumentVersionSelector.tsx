@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useState, type ReactNode } from "react";
 import Select from "@/app/(components)/Select";
 import type { DocumentVersionOption } from "@/lib/document-versions";
 import styles from "@/app/documents/document-detail.module.css";
@@ -9,9 +8,8 @@ import styles from "@/app/documents/document-detail.module.css";
 export default function DocumentVersionSelector({ options, selectedId, initiallyComparing = false, hasPrevious, children }: {
     options: DocumentVersionOption[]; selectedId: string; initiallyComparing?: boolean; hasPrevious: boolean; children: ReactNode;
 }) {
-    const router = useRouter();
     const [comparing, setComparing] = useState(initiallyComparing && hasPrevious);
-    const [pending, startTransition] = useTransition();
+    const [pending, setPending] = useState(false);
     const latestId = options.at(-1)?.id;
     const choices = [...options].reverse().map(option => ({
         value: option.id,
@@ -31,7 +29,11 @@ export default function DocumentVersionSelector({ options, selectedId, initially
                 const url = new URL(window.location.href);
                 url.searchParams.set("version", value);
                 url.hash = "";
-                startTransition(() => router.push(`${url.pathname}${url.search}`, { scroll: false }));
+                // A version replaces the entire document and its reading aids.
+                // Use a fresh page so no previous version UI survives navigation.
+                setPending(true);
+                // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Intentionally replace the whole version page.
+                window.location.assign(`${url.pathname}${url.search}`);
             }}
         />}{" "}
         version.{" "}

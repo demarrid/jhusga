@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import styles from "./Select.module.css";
+
+const subscribeToHydration = () => () => {};
+const clientHydrated = () => true;
+const serverHydrated = () => false;
 
 export type SelectOption = { value: string; label: string; icon?: ReactNode; accessibleLabel?: string };
 
@@ -13,10 +17,10 @@ export type SelectOption = { value: string; label: string; icon?: ReactNode; acc
  * a typeface and weight that belong to no page in particular. The list here is
  * ordinary markup, so it reads like the rest of the archive.
  *
- * The real select is still underneath, laid over the trigger and invisible.
- * Until this component hydrates -- and permanently, where scripting is off --
- * that select is what a click reaches, which is what keeps the document
- * filters working as the plain GET form they are written to be.
+ * Before hydration, an invisible native select overlays the trigger so the
+ * search filters still submit as a plain GET form without JavaScript. After
+ * hydration, only the styled control remains; a hidden input carries its
+ * value for form submission without a second copy of the selected label.
  */
 export default function Select({
     name,
@@ -49,16 +53,10 @@ export default function Select({
     const listRef = useRef<HTMLUListElement>(null);
 
     const [open, setOpen] = useState(false);
-    const [scripted, setScripted] = useState(false);
+    const scripted = useSyncExternalStore(subscribeToHydration, clientHydrated, serverHydrated);
 
     const selectedIndex = options.findIndex((option) => option.value === value);
     const [activeIndex, setActiveIndex] = useState(Math.max(0, selectedIndex));
-
-    useEffect(() => setScripted(true), []);
-
-    useEffect(() => {
-        setActiveIndex(Math.max(0, selectedIndex));
-    }, [selectedIndex]);
 
     useEffect(() => {
         if (!open) return;
@@ -183,12 +181,13 @@ export default function Select({
                 </ul>
             )}
 
-            <select
+            {scripted ? (
+                name ? <input type="hidden" name={name} value={value} /> : null
+            ) : <select
                 name={name}
                 value={value}
-                tabIndex={scripted ? -1 : undefined}
-                aria-hidden={scripted || undefined}
-                className={`${styles.native} ${scripted ? styles.nativeInert : ""}`}
+                aria-label={ariaLabel}
+                className={styles.native}
                 onChange={(event) => onChange(event.target.value)}
             >
                 {options.map((option) => (
@@ -196,7 +195,7 @@ export default function Select({
                         {option.label}
                     </option>
                 ))}
-            </select>
+            </select>}
         </div>
     );
 }

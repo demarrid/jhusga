@@ -92,6 +92,21 @@ async function main() {
         isCurrentSession:true, body:"senate"}), ["jarron jackson","jackson"],
         "a speaker's first name is the senator, not a visitor's surname");
     assert.ok(!spoken.some(p => p.name === "Sienna Kim" && p.role === "guest"), "SGA offices are not visiting administrators");
+    const guests = extractContributors([
+        "**Guests from Student Health & Well-Being:**",
+        "Lance Poston, Assistant Vice Provost  for Strategic Initiatives, Administration & Operations",
+        "Cathie Axe, Sr. Executive Director, Student Disability Services",
+        "Alexandra Morrell, Associate Director for Primary Care",
+        "**Announcements**",
+        "Potential Follow-Ups",
+        "Goal: Establish clear communication channels between DIAC and university divisions.",
+        "Contact: caxe1@jh.edu",
+    ].join("\n"), "CSAC Agenda", "minutes.other");
+    assert.deepEqual(guests.map(p => [p.name, p.role, p.office]), [
+        ["Lance Poston", "guest", "Assistant Vice Provost for Strategic Initiatives, Administration & Operations"],
+        ["Cathie Axe", "guest", "Sr. Executive Director, Student Disability Services"],
+        ["Alexandra Morrell", "guest", "Associate Director for Primary Care"],
+    ], "a guest heading lists people by name and office; labels after it are not speakers");
     assert.ok(!extractContributors("martin: I am glad the dean said yes", "Senate Minutes", "minutes.senate")
         .some(p => p.office), "a remark about a dean is not an introduction");
     const officers = [
