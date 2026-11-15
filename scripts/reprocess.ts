@@ -124,6 +124,7 @@ async function main() {
         where: {
             contributions: { none: {} },
             hopkinsRelationships: { none: {} },
+            reviewedAdministrator: { is: null },
             userId: null,
             email: null,
         },

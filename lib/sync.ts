@@ -14,6 +14,7 @@ import { assessChange } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor, documentMeetingRole } from "@/lib/meetings";
 import { resolveAffiliates } from "@/lib/names";
+import { findReviewedMentions, loadReviewedRoster, REVIEWED_SOURCE } from "@/lib/reviewed-administrators";
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
 import { isDirectorySheetName } from "@/lib/directory";
@@ -543,8 +544,10 @@ export async function recordDriveAccounts(documentIds?: string[]): Promise<numbe
  * Record who a document names, replacing what the parser previously found.
  *
  * Short forms ("Sumi", "Jazz") are folded onto a regular full-name person
- * when one already exists; see lib/names.ts. Only parser-authored rows are
- * cleared: a `manual` correction outlives every later sync.
+ * when one already exists; see lib/names.ts. Staff on the reviewed roster are
+ * credited wherever the text names them; see lib/reviewed-administrators.ts.
+ * Only rows derived here are cleared: a `manual` correction outlives every
+ * later sync.
  */
 export async function recordContributors(
     documentId: string,
@@ -598,7 +601,7 @@ export async function recordContributors(
     // Resolve network-backed identities before replacing existing rows.
     // An interrupted lookup must not erase the document's current people.
     await prisma.documentContributor.deleteMany({
-        where: { documentId, source: "parsed" },
+        where: { documentId, source: { in: ["parsed", REVIEWED_SOURCE] } },
     });
 
     let linked = 0;
@@ -676,6 +679,25 @@ export async function recordContributors(
                 });
             }
         }
+    }
+
+    // After the parser, so staff it already credited keep that credit.
+    if (document) {
+        const credited = await prisma.documentContributor.findMany({
+            where: { documentId },
+            select: { hopkinsAffiliateId: true },
+        });
+        const mentions = findReviewedMentions(
+            { ...document, content },
+            await loadReviewedRoster(),
+            new Set(credited.map(row => row.hopkinsAffiliateId)),
+        );
+        for (const mention of mentions) {
+            await prisma.documentContributor.create({
+                data: { documentId, role: "mentioned", source: REVIEWED_SOURCE, ...mention },
+            });
+        }
+        linked += mentions.length;
     }
 
     return linked;

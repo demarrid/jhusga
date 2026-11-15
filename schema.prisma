@@ -213,8 +213,9 @@ model DocumentContributor {
     // See CONTRIBUTOR_ROLES in lib/contributors.ts.
     role String @default("present")
 
-    // "parsed" | "drive" | "manual". A manual row is never overwritten by a
-    // later sync, so corrections survive re-ingest.
+    // "parsed" | "drive" | "reviewed" | "manual". A manual row is never
+    // overwritten by a later sync, so corrections survive re-ingest. A
+    // reviewed row is derived from the ReviewedAdministrator roster.
     source String @default("parsed")
 
     // The line the parser read, verbatim.
@@ -674,9 +675,10 @@ model HopkinsAffiliate {
 
     createdAt            DateTime              @default(now())
     updatedAt            DateTime              @updatedAt
-    hopkinsRelationships HopkinsRelationship[]
-    contributions        DocumentContributor[]
-    aliases              HopkinsAlias[]
+    hopkinsRelationships  HopkinsRelationship[]
+    contributions         DocumentContributor[]
+    aliases               HopkinsAlias[]
+    reviewedAdministrator ReviewedAdministrator?
 
     // Only officers are ever attached to what they wrote; see ForumPost.
     forumSessions ForumSession[]
@@ -754,6 +756,44 @@ model HopkinsRelationship {
     @@index([hopkinsAffiliateId])
     @@index([hopkinsCategoryId])
     @@index([endedAt])
+}
+
+// University staff a maintainer has checked against an official source.
+// Authored by hand and never derived, so no sync or reprocess rewrites it.
+// Every document that writes one of `forms` credits the person as
+// "mentioned" with source "reviewed"; see lib/reviewed-administrators.ts.
+// Restrict, so cleaning up unreferenced people cannot take the roster with it.
+model ReviewedAdministrator {
+    id                 String           @id @default(uuid())
+    hopkinsAffiliateId String           @unique
+    hopkinsAffiliate   HopkinsAffiliate @relation(fields: [hopkinsAffiliateId], references: [id], onDelete: Restrict)
+
+    // The posts held and when, e.g. "Dean of Student Life (2018 – 2021)".
+    title String
+
+    // The official page that establishes the identity.
+    source String
+
+    forms ReviewedAdministratorForm[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+// A way the archive writes a reviewed administrator, matched case-sensitively
+// as whole words. A form someone else could have held at another time carries
+// the days it is safe in (inclusive); an undated document only matches it when
+// its whole session falls inside.
+model ReviewedAdministratorForm {
+    id              String                @id @default(uuid())
+    administratorId String
+    administrator   ReviewedAdministrator @relation(fields: [administratorId], references: [id], onDelete: Cascade)
+
+    text      String    @unique
+    validFrom DateTime? @db.Date
+    validTo   DateTime? @db.Date
+
+    @@index([administratorId])
 }
 
 // ---------------------------------------------------------------------------

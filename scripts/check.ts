@@ -68,6 +68,7 @@ const SUITES = [
     "names",
     "university-names",
     "administrator-lookup",
+    "reviewed-administrators",
     "amendment-passage",
     "amendment-clearance",
     "governing-review",

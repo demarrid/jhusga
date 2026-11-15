@@ -1207,6 +1207,39 @@ check("personal meeting notes read their speakers and the partner in the title",
     meetingNotes.some(p => p.name === "Alyse" && p.role === "mentioned") &&
     ["Maggie", "Alyse"].every(name => meetingNotes.some(p => p.name === name && p.role === "interlocutor" && p.onlyIfKnown)));
 
+const outlineNotes = extractContributors([
+    "2. Agenda Items",
+    "   1. Midterm week/exam periods",
+    "      1. Micheal",
+    "         1. Commission on undergrad education led to final week",
+    "            1. Jazz \\- physics and chem back to back allowed for rescheduling",
+    "      2. Sienna",
+    "         1. Providing completed syllabi at time of course registration",
+    "   2. Meeting accessibility",
+].join("\n"), "Exec Deans Meeting_4/27", "minutes.executive");
+check("outline notes read a speaker named on the item above their points, or before a dash",
+    ["Micheal", "Jazz", "Sienna"].every(name => outlineNotes.some(p => p.name === name && p.role === "interlocutor" && p.onlyIfKnown)) &&
+    !outlineNotes.some(p => /midterm|meeting|agenda/i.test(p.name)));
+check("a school named after a dean's title is not part of the dean's name",
+    !extractContributors("1. Introductions\n   1. Dean Krieger Chris\n   2. Dean Whiting Ed", "Exec Deans Meeting_4/27", "minutes.executive")
+        .some(p => /krieger|whiting/i.test(p.name)));
+check("a dean named in the possessive is still the dean",
+    extractContributors("- Rules of what is double counted is overseen by Dean Rowe’s office", "Meeting Minutes", "minutes.committee")
+        .some(p => p.name === "Rowe" && p.office === "Dean"));
+const reportPhrases = extractContributors([
+    "* Two main projects",
+    "  * Affirmative action report",
+    "    * Specify goal",
+    "    * grace yang",
+    "1. Cabinet Reports (4 min)",
+    "   1. Executive President Stone Meng thanked everyone who attended the Summit as they represented the JHU SGA successfully.",
+].join("\n"), "PRDC Meeting Minutes", "minutes.executive");
+check("a lowercase phrase under a report heading needs a known person, and a sentence is no reporter",
+    reportPhrases.filter(p => p.role === "reporting" && !p.onlyIfKnown).length === 0 &&
+    !reportPhrases.some(p => /successfully/i.test(p.name)));
+check("outline speaker items are limited to minutes",
+    !extractContributors("1. Jazz \\- physics and chem back to back", "Funding bill", "bill.funding").some(p => p.role === "interlocutor"));
+
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
 

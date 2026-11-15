@@ -854,8 +854,16 @@ function harvestReportItem(
         return true;
     }
 
-    if (parsePersonToken(item)) {
-        recordPerson(found, item, "reporting", line);
+    // A sentence ("Executive President Stone Meng thanked everyone…") is the
+    // report itself, not a reporter's name.
+    if (item.split(/\s+/).length > 6) return false;
+    const person = parsePersonToken(item);
+    if (person) {
+        // "grace yang" and "specify goal" are the same shape; only the
+        // archive knowing a Grace Yang tells them apart.
+        const words = person.name.split(/\s+/);
+        recordPerson(found, item, "reporting", line, undefined,
+            words.length > 1 && words.some(word => /^[a-z]/.test(word)));
         return true;
     }
     return false;
@@ -948,6 +956,24 @@ function harvestSpeaker(
 
     const text = line.replace(ENUMERATOR, "").trim();
     harvestSpeakerAttributions(found, text);
+
+    // Outline notes name the speaker in the item itself: `Jazz - physics and
+    // chem back to back`, or `2. Micheal` above the indented points he made.
+    if (minutes && inList) {
+        const dashed = /^([A-Za-z][A-Za-z'’.-]{1,}(?:\s+[A-Za-z][A-Za-z'’.-]{1,})?)\s+[-\u2013\u2014]\s+(.*[a-z].*)$/.exec(text);
+        if (dashed) {
+            recordSpeaker(found, dashed[1]!, dashed[2]!, text);
+        } else if (
+            next &&
+            LIST_ITEM.test(next.raw) &&
+            indentOf(next.raw) > indentOf(rawLine) &&
+            parsePersonToken(text) &&
+            looksLikePersonName(text)
+        ) {
+            recordSpeaker(found, text, next.line, text);
+        }
+        return;
+    }
 
     if (!minutes || inList) return;
 
@@ -1587,8 +1613,9 @@ export function extractContributors(
         const titled = /\b((?:(?:Associate|Assistant|Senior|Vice|Executive)\s+)*(?:Dean|Provost|Professor|Chancellor))\s+([A-Z][A-Za-z’'-]+(?:[ \t]+[A-Z][A-Za-z’'-]+){0,2})\b/g;
         for (const line of lines) {
             for (const match of line.matchAll(titled)) {
-                const name = match[2]!;
-                if (/\b(?:of|for|the|and|students|affairs|office|school|university)\b/i.test(name)) continue;
+                const name = match[2]!.replace(/['’]s$/, "");
+                // "Dean Krieger Chris" is the Krieger dean, not somebody called Krieger Chris.
+                if (/\b(?:of|for|the|and|students|affairs|office|school|university|krieger|whiting|ksas|wse|peabody|carey|sais|bloomberg|nursing|medicine|engineering|homewood)\b/i.test(name)) continue;
                 if ([...found.values()].some(person => nameKey(person.name) === nameKey(name))) continue;
                 const evidence = line.slice(Math.max(0,match.index!-100),match.index!+match[0].length+100);
                 recordPerson(found,name,"mentioned",evidence,match[1]);

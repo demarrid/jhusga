@@ -48,6 +48,7 @@ const mock = {
  documentSummary:{updateMany:async ()=>{summaryStale=true;return {count:1};}},
  documentContributor:{deleteMany:async()=>({count:0}),findMany:async()=>[]},
  hopkinsAffiliate:{findMany:async()=>[]},
+ reviewedAdministrator:{findMany:async()=>[]},
  documentPassage:{deleteMany:async()=>({count:0}),createMany:async()=>{indexed=true;return {count:1};}},
  documentAnnotation:{findMany:async()=>[]},
  $transaction:async (work:unknown)=>{

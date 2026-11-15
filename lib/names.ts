@@ -4,6 +4,7 @@ import { bodyForOffice, type SgaBody } from "@/lib/bodies";
 import { nameKey } from "@/lib/contributors";
 import { sessionStartDate } from "@/config/session";
 import { prisma } from "@/lib/prisma";
+import { foldReviewedAdministrator } from "@/lib/reviewed-administrators";
 
 /**
  * Resolving "Sumi" and "Jazz" onto people the archive already knows by a
@@ -518,6 +519,7 @@ export async function mergeAffiliate(
     }
 
     await rememberAlias(from.name, intoId, "merge");
+    await foldReviewedAdministrator(prisma, fromId, intoId);
 
     if (!from.email && !from.userId) {
         await prisma.hopkinsAffiliate.delete({ where: { id: fromId } });
@@ -798,6 +800,7 @@ export async function mergePeopleOneTypoApart(): Promise<PersonMerge[]> {
                 ]) {
                     await move;
                 }
+                await foldReviewedAdministrator(tx, loser.id, kept.id);
 
                 await tx.hopkinsAffiliate.delete({ where: { id: loser.id } });
 
