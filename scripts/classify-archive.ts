@@ -55,10 +55,10 @@ async function main() {
                         ...change.source, id: change.id, kind: change.before.kind, contentHash: change.contentHash,
                         title: change.title, meetingRole: change.before.meetingRole, lineageKey: change.before.lineageKey,
                     }, data: change.after });
-                    if (result.count !== 1) throw new Error(`Document changed during audit: ${change.id}`);
+                    if (result.count !== 1) console.log(`Skipped concurrently changed document: ${change.id}`);
                 }
             }, { timeout: 60_000 });
-            console.log(`Classified ${Math.min(offset + 100, changes.length)}/${changes.length}`);
+            console.log(`Processed ${Math.min(offset + 100, changes.length)}/${changes.length}`);
         }
         const remaining = await prisma.document.count({ where: { kind: "unknown" } });
         const remainingCurrent = await prisma.document.count({ where: {kind: "unknown",sessionNumber: SESSION_NUMBER} });
