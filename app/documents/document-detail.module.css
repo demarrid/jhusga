@@ -692,7 +692,7 @@
   color: #344960;
   overflow-wrap: anywhere;
   text-decoration: none;
-  opacity: 0.5;
+  opacity: 1;
   transition: opacity 0.15s ease, color 0.2s ease-in-out;
 }
 

@@ -1,3 +1,4 @@
+import { presentationSections } from "@/lib/presentation-sections";
 import type { DocumentImage } from "@/lib/document-images";
 import type { AnnotationSpan } from "@/lib/anchor";
 import { csvCellRanges, SHEET_BREAK } from "@/lib/csv";
@@ -175,8 +176,11 @@ export function renderDocument(
     content = maskImagePayloads(content);
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
-    const inline: Inline = (ranges, mode) =>
-        inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets, options.images?.filter(image => image.inline));
+    const slides = presentationSections(content);
+    const inline: Inline = (ranges, mode) => {
+        const runs = inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets, options.images?.filter(image => image.inline));
+        return slides.length ? runs.map(run => ({ ...run, text: run.text.replace(/\n/g, " ") })) : runs;
+    };
 
     const lines = toLines(content);
     // Same keys the outline links to. Stamping them here, rather than wrapping
@@ -191,13 +195,13 @@ export function renderDocument(
     for (const image of [...(options.images ?? [])].filter(image => !image.inline).sort((a, b) => a.offset - b.offset)) {
         const at = image.offset === content.length ? lines.length : lines.findIndex(line => line.start === image.offset);
         if (at < from) continue;
-        blocks.push(...parseBlocks(lines.slice(from, at), inline, anchors, minutesEntries));
+        blocks.push(...parseBlocks(lines.slice(from, at), inline, anchors, minutesEntries, slides));
         const asset = { src: image.src, alt: image.alt, width: image.width, height: image.height };
         blocks.push({ kind: "paragraph", runs: [{ text: "", image: asset,
             bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] });
         from = at;
     }
-    blocks.push(...parseBlocks(lines.slice(from), inline, anchors, minutesEntries));
+    blocks.push(...parseBlocks(lines.slice(from), inline, anchors, minutesEntries, slides));
     return blocks;
 }
 
@@ -499,12 +503,22 @@ function withoutHeadingId(line: Line): Line {
     return { ...line, text: line.text.replace(/\s+\{#[^}\n]+\}\s*$/, "") };
 }
 
-function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>, minutesEntries?: ReadonlyMap<number, string>): Block[] {
+function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>, minutesEntries?: ReadonlyMap<number, string>, slides: ReturnType<typeof presentationSections> = []): Block[] {
     const blocks: Block[] = [];
     let index = 0;
 
     while (index < lines.length) {
         const line = lines[index];
+        const slide = slides.find(heading => heading.start === line.start);
+        if (slide) {
+            blocks.push({ kind: "heading", level: 2, sectionId: anchors.get(line.start), runs: inline([{ start: slide.textStart ?? slide.start, end: slide.end }]) });
+            if (slide.textStart !== undefined && slide.textStart > slide.start) {
+                const body = lines.filter(part => part.start >= slide.start && part.start < slide.textStart!);
+                blocks.push(...parseBlocks(body, inline, new Map()));
+            }
+            while (index < lines.length && lines[index].start < slide.end) index++;
+            continue;
+        }
 
         if (isBlank(line.text)) {
             index += 1;
@@ -605,6 +619,7 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
             !startsBlock(lines[index]!.text)
         ) {
             const next = lines[index]!;
+            if (slides.some(heading => heading.start === next.start)) break;
             if (paragraph.length > 0 && anchors.has(next.start)) emitParagraph();
             if (minutesEntries?.has(next.start)) {
                 blocks.push({ kind: "heading", level: 2, sectionId: anchors.get(next.start), runs: inline([lineRange(next)]) });
@@ -1129,6 +1144,9 @@ function suggestCellBreaks(input: {
     text: string;
     offsets: number[];
 }): { text: string; offsets: number[] } {
+    // HTML-restored paragraphs are authoritative. Guessing additional breaks
+    // splits ordinary phrases such as "the role of Chair:" before "Chair:".
+    if (/<br\s*\/?>/i.test(input.text)) return input;
     // Legislative comparison cells are prose, not speaker transcripts.
     // In particular, "represented group:" and "Disabled Students:" must
     // not be split before their last word as though it were a speaker name.

@@ -1,7 +1,8 @@
+import { indexSections } from "../lib/outline";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { presentBill } from "../lib/bill-presentation";
-import { renderDocument, runsText, type Block, type InlineRun } from "../lib/render";
+import { renderDocument, runsText, blockSectionIds, type Block, type InlineRun } from "../lib/render";
 import { canonicalTitle } from "../lib/titles";
 import { extractContributors } from "../lib/contributors";
 import { maskImagePayloads, sanitizeExport, toPlainText } from "../lib/markdown";
@@ -79,3 +80,31 @@ for (const block of pdfBlocks) {
 }
 assert.deepEqual(presentBill(pdfBlocks), pdfBill, "presentation is deterministic and does not mutate parsed blocks");
 console.log("PDF bill wrapping, budget, signatures, citations and outline checks passed");
+
+// A slide PDF uses physical line wraps; complete questions must be headings,
+// and every section link must have one real destination.
+const programming = readFileSync(new URL('./fixtures/programming-presentation.txt', import.meta.url), 'utf8');
+const slideQuote = 'autonomy within LEED?';
+const slideBlocks = renderDocument(programming, [{ id: 'slide-question', startOffset: programming.indexOf(slideQuote), endOffset: programming.indexOf(slideQuote) + slideQuote.length }]);
+const slideHeadings = slideBlocks.filter(block => block.kind === 'heading');
+assert.equal(slideHeadings.length, 14);
+assert(slideHeadings.some(block => runsText(block.runs) === '1. How can Programming ensure sufficient autonomy within LEED? (i.e. prevent bullying)'));
+assert(slideHeadings.some(block => runsText(block.runs) === 'Examples of Class Programming events totally separate from the HOP and SGA'));
+assert(slideBlocks.some(block => block.kind === 'list' && block.items.some(item => runsText(item.runs) === 'Battle of the Classes')));
+assert(slideBlocks.some(block => block.kind === 'paragraph' && runsText(block.runs).includes('LEED has strong control over class programming decisions')));
+assert.equal(collect(slideBlocks).filter(run => run.annotationId === 'slide-question' && run.anchor).length, 1);
+assert(collect(slideBlocks).every(run => !run.text.includes('\n')));
+
+// Source paragraph boundaries take precedence over the speaker heuristic.
+const minutesCell = '| Discussion<br>We discussed the role of Chair: a leadership position.<br>Cole: next topic | All Present |\n| --- | --- |';
+const minutesBlocks = renderDocument(minutesCell, []);
+const minutesLayout = minutesBlocks.find(block => block.kind === 'layout');
+assert(minutesLayout?.kind === 'layout');
+assert.equal(runsText(minutesLayout.rows[0].cells[0]), 'Discussion\nWe discussed the role of Chair: a leadership position.\nCole: next topic');
+console.log('Slide headings, soft wraps, citations and source paragraph breaks passed');
+
+const slideOutline = indexSections(programming).sections;
+const slideAnchors = blockSectionIds(slideBlocks);
+assert(slideOutline.every(section => slideAnchors.has(section.id) && section.children.length === 0));
+assert(slideOutline.some(section => section.title === 'LEED’s Proposal (continued)'));
+assert(!slideOutline.some(section => section.title.includes('Thank you')));

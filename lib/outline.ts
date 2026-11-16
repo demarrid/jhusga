@@ -1,3 +1,4 @@
+import { presentationSections } from "@/lib/presentation-sections";
 /**
  * The sections a reader can jump to in a document.
  *
@@ -583,6 +584,16 @@ function truncate(sections: DocumentSection[], depth: number): DocumentSection[]
 }
 
 export function indexSections(content: string): Index {
+    const slides = presentationSections(content);
+    if (slides.length) return {
+        sections: slides.map((heading, index) => ({
+            id: `section-${heading.start}`,
+            title: heading.title + (slides.slice(0, index).some(prior => prior.title === heading.title) ? " (continued)" : ""),
+            children: [],
+        })),
+        anchors: new Map(slides.map(heading => [heading.start, `section-${heading.start}`])),
+        minutesEntries: new Map(),
+    };
     const anchors = new Map<number, string>();
     const sections: DocumentSection[] = [];
     const parents: DocumentSection[][] = [sections];
