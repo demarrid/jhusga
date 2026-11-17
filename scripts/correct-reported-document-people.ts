@@ -1,5 +1,5 @@
 /** Apply the user-approved, source-backed corrections atomically.
- * node --env-file=.env --import tsx scripts/correct-reported-document-people.ts [--apply]
+ * node --env-file=.env --import tsx scripts/correct-reported-document-people.ts [--apply] [--remove-enactment]
  */
 import { prisma } from '../lib/prisma';
 import { extractContributors, nameKey } from '../lib/contributors';
@@ -9,16 +9,41 @@ const billId = '3a1ac9c4-738c-4c58-998c-9618fdb142b6';
 const civicId = 'fa063347-8739-47a7-9ea2-39932d740617';
 const falsePersonId = '744438cc-c0bd-43aa-82df-28f321e31289';
 const participants = ['Sumire Sumi', 'Shreemann Patel', 'Honora Muratori', 'Jazzlyn Fernandez', 'Peter Tarpley', 'Jackson Morris', 'Sophia Baleeiro', 'Rain Cheng', 'Demarri Dosunmu', 'Ruth Braunstein', 'Sheri Butarazzi'];
-const billMentions = ['Jason Yu', 'Sumire Sumi', 'Jazzlyn Fernandez', 'Honora Muratori', 'Amy Xu', 'Grace Guan'];
+const enactmentOnlyNames = ['Jason Yu', 'Sumire Sumi', 'Jazzlyn Fernandez', 'Honora Muratori', 'Amy Xu', 'Grace Guan'];
+
+async function removeEnactmentMentions() {
+    const where = {
+        documentId: billId, role: 'mentioned', source: 'manual',
+        note: 'Source-backed correction approved by the user. Printed participant and enactment lists establish mentions, not authorship, signatures, or adoption.',
+        hopkinsAffiliate: { name: { in: enactmentOnlyNames } },
+    };
+    await prisma.$transaction(async tx => {
+        const rows = await tx.documentContributor.findMany({ where, include: { hopkinsAffiliate: true } });
+        for (const row of rows) {
+            if (!row.evidence?.startsWith(`${row.hopkinsAffiliate.name} — Student Body`) && !row.evidence?.startsWith(`${row.hopkinsAffiliate.name} — President of the Senate`)) throw new Error('Unexpected evidence; refusing removal');
+        }
+        console.log('Enactment-only mentions:', rows.map(row => row.hopkinsAffiliate.name));
+        if (!process.argv.includes('--apply')) return;
+        await tx.documentContributor.deleteMany({ where: { ...where, id: { in: rows.map(row => row.id) } } });
+        const saved = await tx.documentContributor.findMany({ where: { documentId: billId }, include: { hopkinsAffiliate: true } });
+        for (const [name, role] of [['Peter Tarpley', 'introducer'], ['Shreemann Patel', 'sponsor'], ['Kayla Marie Gonzalez', 'sponsor']]) {
+            if (!saved.some(row => row.hopkinsAffiliate.name === name && row.role === role)) throw new Error(`Missing credit: ${name}`);
+        }
+        if (saved.some(row => rows.some(removed => removed.id === row.id))) throw new Error('Enactment mention remains');
+        console.log(`Removed ${rows.length} enactment-only mentions. Verified introducer and sponsors.`);
+    });
+    console.log('Saved bill credits:', await prisma.documentContributor.findMany({ where: { documentId: billId }, select: { role: true, hopkinsAffiliate: { select: { name: true } } } }));
+}
 
 async function main() {
+    if (process.argv.includes('--remove-enactment')) return removeEnactmentMentions();
     const documents = await prisma.document.findMany({ where: { id: { in: [agoraId, billId, civicId] } } });
     if (documents.length !== 3) throw new Error('Missing reported documents');
     const additions: { documentId: string; name: string; role: string; evidence: string }[] = [];
     for (const document of documents) {
         const parsed = extractContributors(document.content, document.title, document.kind);
         const expected = document.id === agoraId ? participants.map(name => ({ name, role: 'mentioned' })) : document.id === billId ? [
-            { name: 'Peter Tarpley', role: 'introducer' }, ...billMentions.map(name => ({ name, role: 'mentioned' })),
+            { name: 'Peter Tarpley', role: 'introducer' },
         ] : [];
         for (const person of expected) {
             const match = parsed.find(row => row.name === person.name && row.role === person.role);
@@ -48,7 +73,7 @@ async function main() {
         for (const addition of additions) {
             const person = await tx.hopkinsAffiliate.upsert({ where: { nameKey: nameKey(addition.name) }, create: { name: addition.name, nameKey: nameKey(addition.name) }, update: {} });
             const key = { documentId: addition.documentId, hopkinsAffiliateId: person.id, role: addition.role };
-            const data = { source: 'manual', evidence: addition.evidence, note: 'Source-backed correction approved by the user. Printed participant and enactment lists establish mentions, not authorship, signatures, or adoption.' };
+            const data = { source: 'manual', evidence: addition.evidence, note: 'Source-backed correction approved by the user. Printed participant lists establish mentions, not authorship or attendance.' };
             await tx.documentContributor.upsert({ where: { documentId_hopkinsAffiliateId_role: key }, create: { ...key, ...data }, update: data });
         }
         await tx.documentContributor.deleteMany({ where: { id: { in: falseRows.map(row => row.id) }, documentId: civicId, hopkinsAffiliateId: falsePersonId, source: 'parsed' } });

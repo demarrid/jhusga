@@ -1505,19 +1505,6 @@ export function extractContributors(
             if (introduction) recordPerson(found, introduction[1]!, "mentioned", line);
         }
     }
-    // A printed enactment block names people, but does not prove signing or
-    // adoption. Preserve these names as mentions, never as authors.
-    if (kind?.startsWith("bill.") || kind?.startsWith("resolution")) {
-        let signatures = false;
-        for (let i = 0; i < lines.length; i += 1) {
-            const line = toPlainText(lines[i]!).trim();
-            if (/^Signatures of (?:Enactment|Ceremony):?$/i.test(line)) { signatures = true; continue; }
-            if (signatures && isPlausibleName(line) && looksLikePersonName(line) &&
-                line.split(/\s+/).length >= 2 && OFFICE_WORDS.test(toPlainText(lines[i + 1] ?? ""))) {
-                recordPerson(found, line, "mentioned", `${line} — ${toPlainText(lines[i + 1]!)}`);
-            }
-        }
-    }
     // Introductions such as "marrow: associate director of advising" or
     // "Boyd: I am Linda Boyd, interim Vice Provost…" supply an office even
     // when later speaker turns use only the surname. Read before any turn, so

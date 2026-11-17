@@ -18,3 +18,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   Senate minutes as the fallback when the register is blank or inconclusive.
   Committee recommendations and referral votes do not establish adoption.
   Preserve conflicting results as inconclusive rather than choosing one silently.
+
+- Do not add people solely from printed Signatures of Enactment or Ceremony
+  blocks. These are distinct from collective author/sponsor signatures.
+
+## Commit message handoff
+
+- Before handing off repository changes, update `COMMIT_MESSAGE.txt` in the
+  repository root with a ready-to-use commit summary and, when useful, a short
+  body describing the current uncommitted changes and validation.
+- Keep the message aligned with the final diff. Leave committing and pushing
+  to the user unless they explicitly request otherwise.
+- This file is a local Git commit template and should remain ignored.
