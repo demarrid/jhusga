@@ -311,7 +311,7 @@ function peelLeadingOffice(working: string): {
         const lastOfficeWord = parts[parts.length - length - 1] ?? "";
         if (looksLikeOffice(prefix) && (OFFICE_WORDS.test(lastOfficeWord)
             || /^[A-Z]{2,6}$/.test(lastOfficeWord)
-            || /\b(?:senate|affairs|programming|communications|sustainability|safety|services|organizations|elections|relations|engagement|development|diversity|inclusion|equity|finance|operations|council|caucus)$/i.test(prefix))) {
+            || /\b(?:senate|affairs|programming|communications|sustainability|safety|services|organizations|elections|relations|engagement|development|diversity|inclusion|equity|finance|operations|council|caucus|committee)$/i.test(prefix))) {
             return { name, office: tidyOffice(prefix) };
         }
     }
@@ -416,10 +416,30 @@ function splitPeople(list: string, firstNames = false): string[] {
         return list.split(/\s+/).map((part) => part.trim()).filter(Boolean);
     }
 
-    return list
-        .split(/,|;|\band\b|&|(?<!Hispanic)\/|\u2022/i)
-        .map((part) => part.trim())
-        .filter(Boolean);
+    // Delimiters inside attendance notes belong to the note, not the roll.
+    const people: string[] = [];
+    let start = 0;
+    let depth = 0;
+    const separator = /^(?:,|;|\band\b|&|\/|\u2022)/i;
+    for (let i = 0; i < list.length; i += 1) {
+        if (list[i] === "(") depth += 1;
+        if (list[i] === ")") depth = Math.max(0, depth - 1);
+        if (depth) continue;
+        const match = separator.exec(list.slice(i));
+        if (!match || (match[0].toLowerCase() === "and" && /\w/.test(list[i - 1] ?? "")) || (match[0] === "/" && /Hispanic$/i.test(list.slice(0, i)))) continue;
+        const before = list.slice(start, i).trim();
+        // A conjunction can join two offices held by the same introducer.
+        const parsed = parsePersonToken(before);
+        if (/^(?:and|&)$/i.test(match[0]) && looksLikeOffice(before) &&
+            (!parsed || !looksLikePersonName(parsed.name)) &&
+            /^\s*(?:chair|vice|president|secretary|treasurer|senator)\b/i.test(list.slice(i + match[0].length))) continue;
+        if (before) people.push(before);
+        i += match[0].length - 1;
+        start = i + 1;
+    }
+    const tail = list.slice(start).trim();
+    if (tail) people.push(tail);
+    return people;
 }
 
 function statusToRole(status: string): ContributorRole | null {
@@ -1454,7 +1474,7 @@ export function extractContributors(
     const found = new Map<string, ExtractedContributor>();
     // A senator's own "Meeting w/ Alyse" notes are not filed as minutes (see
     // isCommitteeRecordsFolder), but they are written as speaker turns.
-    const minutes = (!!kind && kind.startsWith("minutes.")) ||
+    const minutes = kind === "notes.meeting" || (!!kind && kind.startsWith("minutes.")) ||
         (kind === "unknown" && (/\btown\s+hall\b/i.test(title ?? "") || MEETING_PARTNER.test(title ?? "")));
     const lines = markdown.split(/\r?\n|\v/);
 
@@ -1465,6 +1485,37 @@ export function extractContributors(
         const partner = parsePersonToken(meetingPartner[1]!);
         if (partner && looksLikePersonName(partner.name)) {
             recordPerson(found, meetingPartner[1]!, "mentioned", title!);
+        }
+    }
+    // Participant lists can include planned attendees; use Mentioned until
+    // the actual minutes establish attendance or a speaking turn.
+    if (minutes) {
+        let participants = false;
+        for (const raw of lines) {
+            const line = toPlainText(raw).trim();
+            if (/^participants:?$/i.test(line)) { participants = true; continue; }
+            if (/^(?:agenda|minutes|date:)/i.test(line)) participants = false;
+            if (participants) {
+                const entry = /^(.+?),\s*(?:PhD,\s*)?(.+)$/.exec(line);
+                if (entry && OFFICE_WORDS.test(entry[2]!)) {
+                    recordPerson(found, entry[1]!, "mentioned", line, entry[2]!);
+                }
+            }
+            const introduction = /^([A-Z][a-z]+(?: [A-Z][A-Za-z’'-]+){1,3})\s+[–—-]\s+previously worked\b/.exec(line);
+            if (introduction) recordPerson(found, introduction[1]!, "mentioned", line);
+        }
+    }
+    // A printed enactment block names people, but does not prove signing or
+    // adoption. Preserve these names as mentions, never as authors.
+    if (kind?.startsWith("bill.") || kind?.startsWith("resolution")) {
+        let signatures = false;
+        for (let i = 0; i < lines.length; i += 1) {
+            const line = toPlainText(lines[i]!).trim();
+            if (/^Signatures of (?:Enactment|Ceremony):?$/i.test(line)) { signatures = true; continue; }
+            if (signatures && isPlausibleName(line) && looksLikePersonName(line) &&
+                line.split(/\s+/).length >= 2 && OFFICE_WORDS.test(toPlainText(lines[i + 1] ?? ""))) {
+                recordPerson(found, line, "mentioned", `${line} — ${toPlainText(lines[i + 1]!)}`);
+            }
         }
     }
     // Introductions such as "marrow: associate director of advising" or

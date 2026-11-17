@@ -1251,3 +1251,12 @@ if (!advisingIntroduction.some(p=>p.name==="Marrow" && p.role==="interlocutor" &
 const townHall = extractContributors("falk: " + "We discussed engineering facilities. ".repeat(30), "10/28 - WSE Town Hall", "unknown");
 if (!townHall.some(p=>p.name==="Falk" && p.role==="interlocutor")) throw new Error("Long town hall attribution lost");
 if (extractContributors("falk: discussed facilities", "Town Hall funding bill", "bill.funding").some(p=>p.role==="interlocutor")) throw new Error("Bill misread as town hall transcript");
+
+const compoundIntroducer = extractContributors("Introduced by: **Vice President of the Senate and Chair of Finance Committee Peter Tarpley**", "Funding Bill", "bill.funding");
+check("compound offices preserve the bill introducer", compoundIntroducer.some(p => p.name === "Peter Tarpley" && p.role === "introducer"));
+const attendanceNote = extractContributors("Present: Sophia Baleeiro, Shiran Hanono-Michli (conflict w/time change, counted as present), Julia Lee", "Minutes", "minutes.committee");
+check("attendance note delimiters never create people", attendanceNote.length === 3 && !attendanceNote.some(p => p.name === "Time Change") && attendanceNote.some(p => p.name === "Shiran Hanono-Michli" && p.note === "conflict w/time change, counted as present"));
+const agoraParticipants = extractContributors("# Participants\nExecutive Branch\nSumire Sumi, *Student Body President*\nDr. Ruth Braunstein, PhD, *Executive Director of the SNF Agora Institute*\n# Agenda\n# Minutes\nSheri Butarazzi - previously worked at school of medicine\nSophia: What initiatives are you working on?", "Agora Meeting", "notes.meeting");
+check("meeting notes include participants and speakers", ["Sumire Sumi", "Ruth Braunstein", "Sheri Butarazzi"].every(name => agoraParticipants.some(p => p.name === name && p.role === "mentioned")) && agoraParticipants.some(p => p.name === "Sophia" && p.role === "interlocutor"));
+const printedSignatures = extractContributors("Signatures of Enactment:\n_____\nJason Yu\nStudent Body President of the Johns Hopkins SGA", "Bill", "bill.funding");
+check("printed signature blocks establish mentions only", printedSignatures.some(p => p.name === "Jason Yu" && p.role === "mentioned") && !printedSignatures.some(p => p.name === "Jason Yu" && p.role === "author"));
