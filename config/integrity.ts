@@ -1,35 +1,33 @@
 /**
- * When a change to a source document is published, and when it is held back.
+ * When a published change is flagged as possibly destructive.
  *
  * The archive reads Google Docs the SGA owns. Most are shared read-only, but
- * some are open to anyone with the link, and a few of those are governing
- * documents. Nothing stops somebody from opening the constitution and deleting
- * Article IV, and until now the next sync would have published that and
- * re-anchored every citation onto it.
+ * some are open to anyone with the link. Nothing stops somebody from opening
+ * a set of minutes and deleting half of it.
  *
- * So a change that looks destructive is not published. The revision is still
- * stored -- history stays append-only -- but the site keeps serving the last
- * text a human accepted, and says on the page that it is doing so. The bias is
- * deliberate: a held change costs somebody five minutes with `npm run review`,
- * and an unheld one costs the site its only claim to being worth reading.
+ * Guiding documents are held until an adopted amendment accounts for the edit
+ * (lib/governing-review.ts), so these thresholds do not apply to them. Every
+ * other change is published, and one that crosses these thresholds is shown
+ * with a notice pointing at the version before it. Working documents are
+ * never flagged.
  */
 
 /** Kinds where the text is the rules, and losing any of it is an event. */
 const AUTHORITATIVE = /^(guiding\.|bill\.)/;
 
 export type HoldThresholds = {
-    /** Hold when this fraction of the previous lines disappeared. */
+    /** Flag when this fraction of the previous lines disappeared. */
     removedLineFraction: number;
-    /** Hold when the document shrank to less than this fraction of its size. */
+    /** Flag when the document shrank to less than this fraction of its size. */
     remainingLengthFraction: number;
-    /** Never hold a change smaller than this many lines; typo fixes are fine. */
+    /** Never flag a change smaller than this many lines; typo fixes are fine. */
     minimumRemovedLines: number;
 };
 
 /**
  * A minute set gets edited after the meeting and an agenda gets rewritten the
- * morning of, so ordinary documents are given room. A constitution is not:
- * amendments to it arrive as a bill and a new copy, not as a quiet deletion.
+ * morning of, so ordinary documents are given room. A bill is not: changes to
+ * it arrive as a new copy, not as a quiet deletion.
  */
 const ORDINARY: HoldThresholds = {
     removedLineFraction: 0.4,
@@ -47,13 +45,3 @@ export function thresholdsFor(kind: string): HoldThresholds {
     if (AUTHORITATIVE.test(kind)) return GOVERNING;
     return ORDINARY;
 }
-
-/**
- * Additions are not held.
- *
- * Vandalism that only adds text is possible, and the model screening does not
- * apply to Drive. But holding every append would hold every set of minutes
- * ever taken, and the review queue only works if it is short enough that
- * somebody reads it.
- */
-export const HOLD_PURE_ADDITIONS = false;

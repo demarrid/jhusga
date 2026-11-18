@@ -1,17 +1,18 @@
 /**
  * Checks the rules `assessChange` applies before publishing a Drive edit.
  *
- * Two rules matter here in practice. Any edit to a guiding document is held
- * until a Senate meeting record confirms it: the constitution and bylaws are
- * amended by legislation, not by a quiet Drive rewrite, and the archive has
- * no way to tell one from the other. Everything else is measured for size,
- * and only large removals are held.
+ * Any edit to a guiding document is held until a Senate meeting record
+ * confirms it: the constitution and bylaws are amended by legislation, not by
+ * a quiet Drive rewrite, and the archive has no way to tell one from the
+ * other. Everything else publishes; `largeRemoval` flags large removals so
+ * the page can point at the version before them, except in working documents.
  */
 import {
     RATIFICATION_MARKER,
     assessChange,
     heldNotice,
     isGoverning,
+    largeRemoval,
 } from "../lib/integrity";
 
 let failures = 0;
@@ -98,6 +99,22 @@ const bylawsEdit = assessChange({
 });
 check("bylaws changes are ratification-held too", !bylawsEdit.publish, bylawsEdit);
 
+const bylawsFormatted = [
+    "**BYLAWS OF THE Senate**",
+    "**3.2.2.8 Within the first month of each term, determine the member's goals.**",
+    " 4.3.3.2.3. Every member shall be permitted 3 excused committee absences.",
+].join("\n");
+const bylawsReformatted = [
+    "**BYLAWS OF THE SENATE**",
+    "3.2.2.8 Within the first month of each term, determine the member's goals.",
+    "4.3.3.2.3 Every member shall be permitted 3 excused committee absences.",
+].join("\n");
+const cosmeticEdit = assessChange({ kind: "guiding.bylaws", before: bylawsFormatted, after: bylawsReformatted });
+check("masthead case, bold, and section-number punctuation publish without a hold", cosmeticEdit.publish, cosmeticEdit);
+const numberChanged = assessChange({ kind: "guiding.bylaws", before: bylawsFormatted,
+    after: bylawsReformatted.replace("3 excused", "4 excused") });
+check("a changed number alongside formatting is still held", !numberChanged.publish, numberChanged);
+
 console.log("\nassessChange on ordinary documents");
 
 const minutesBefore = Array.from({ length: 40 }, (_, i) => `Line ${i + 1}`).join("\n");
@@ -128,15 +145,45 @@ const minutesGutted = assessChange({
     after: "Line 1\nLine 2",
 });
 check(
-    "minutes cut down to almost nothing are held for screening",
-    !minutesGutted.publish,
+    "minutes cut down to almost nothing are still published",
+    minutesGutted.publish,
     minutesGutted,
 );
+
+console.log("\nlargeRemoval");
+
+const guttedReason = largeRemoval({ kind: "minutes.senate", before: minutesBefore, after: "Line 1\nLine 2" });
 check(
-    "the screening hold is not phrased as ratification",
-    !minutesGutted.reason.endsWith(RATIFICATION_MARKER),
-    minutesGutted.reason,
+    "gutted minutes are flagged with the size of the removal",
+    guttedReason === "95% of its lines were removed (38 of 40).",
+    guttedReason,
 );
+check(
+    "a working document is never flagged",
+    largeRemoval({ kind: "working.document", before: minutesBefore, after: "Line 1\nLine 2" }) === null,
+);
+check(
+    "a guiding document is held rather than flagged",
+    largeRemoval({ kind: "guiding.bylaws", before: minutesBefore, after: "Line 1\nLine 2" }) === null,
+);
+check(
+    "a grown minute set is not flagged",
+    largeRemoval({ kind: "minutes.senate", before: minutesBefore, after: minutesAppended }) === null,
+);
+check(
+    "a first version is not flagged",
+    largeRemoval({ kind: "minutes.senate", before: "", after: minutesBefore }) === null,
+);
+for (const [kind, total, removed] of [
+    ["minutes.executive", 20, 6],
+    ["minutes.committee", 246, 24],
+] as const) {
+    const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}`);
+    check(
+        `${kind} is not flagged after ${removed} of ${total} lines are removed`,
+        largeRemoval({ kind, before: lines.join("\n"), after: lines.slice(removed).join("\n") }) === null,
+    );
+}
 
 console.log("\nheldNotice");
 
@@ -156,9 +203,9 @@ check(
     ratificationNotice,
 );
 
-const screeningNotice = heldNotice(minutesGutted.reason);
+const screeningNotice = heldNotice("44% of its lines were removed (42 of 96).");
 check(
-    "a screening hold keeps the older wording",
+    "a legacy screening hold keeps the older wording",
     /awaiting review/.test(screeningNotice),
     screeningNotice,
 );

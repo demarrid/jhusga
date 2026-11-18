@@ -28,6 +28,7 @@ import {
     sessionFromAcademicYearStart,
 } from "@/config/session";
 import { toPlainText } from "@/lib/markdown";
+import { expandCalendarYear } from "@/lib/calendar-year";
 import { meetingDate, yearlessDate } from "@/lib/meetings";
 import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 
@@ -129,9 +130,9 @@ function monthNumber(name: string): number {
     return MONTHS.indexOf(name.toLowerCase()) + 1;
 }
 
-/** 26 → 2026, 2026 → 2026. Two-digit years are the 2000s. */
+/** Expand abbreviated years consistently with historical archive dates. */
 function fullYear(year: number): number | null {
-    const value = year < 100 ? 2000 + year : year;
+    const value = expandCalendarYear(year);
     if (value < 1913 || value > 2100) return null;
     return value;
 }

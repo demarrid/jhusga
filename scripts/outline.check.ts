@@ -735,6 +735,33 @@ for (const style of [(line: string) => line, (line: string) => `**${line}**`, (l
         idsOf(sections).join("|") === `section-${content.indexOf("SECTION 1.")}|section-${content.indexOf("SECTION 2.")}`);
 }
 
+// November 17 Agora leadership meeting: a roster is not a topic outline.
+const leadershipMinutes = [
+    "*114th Student Government Association \\| The Johns Hopkins University*",
+    "# Meeting with SNF Agora Leadership", "# 11.17.2026", "8:00 AM EST", "**SNF Agora Institute**",
+    "# Participants", "## ---", "**114th Student Government Association**",
+    "Executive Branch", "Sumire Sumi, *Student Body President*",
+    "Legislative Branch", "Demarri Dosunmu, *WSE Senator*",
+    "**SNF Agora Institute**", "Dr. Ruth Braunstein, PhD, *Executive Director*",
+    "# Agenda", "## ---", "Introductions……………………8:00–8:10",
+    "Discussion……………………8:10–8:45", "* SNF Agora Institute Student Advisory Board",
+    "Date: Tuesday, November 17th, 2026\nTime: 8:00-8:50am\nLocation: SNF Agora Institute\nStudents Present:\nAdmin Present:",
+    "Minutes:\nSheri Butarazzi - previously worked at school of medicine and with academic affairs",
+    "Introductions", "- Braunstein: professor of sociology, became director in August",
+    "Braunstein’s vision", "- Work is on religion and politics, bringing moral ideas into conversations about society building",
+    "Jackson\nDemarri: Hillel does semi-regular dinners\nSophia: What specific initiatives are you working on?",
+    "- Wants to make sure that student advisory board is active",
+].join("\n\n");
+const leadershipBlocks = renderDocument(leadershipMinutes, []);
+const leadershipSections = documentSections(leadershipMinutes, { anchored: blockSectionIds(leadershipBlocks) });
+check("leadership minutes retain their parts and actual discussion topics, not participant names or metadata",
+    flat(leadershipSections).join("|") === "Participants|Agenda|Minutes|  Introductions|  Braunstein’s vision", flat(leadershipSections));
+check("leadership minutes topic links land on their original source lines",
+    idsOf(leadershipSections).every(id => blockSectionIds(leadershipBlocks).has(id)) &&
+    leadershipSections[2]?.children[0]?.id === `section-${leadershipMinutes.indexOf("Introductions\n\n-")}`);
+check("cleaning the leadership outline leaves every document word intact",
+    words(leadershipBlocks).join(" ") === (toPlainText(leadershipMinutes).match(/[A-Za-z0-9]+/g) ?? []).join(" "));
+
 if (failures > 0) {
     console.log(`\n${failures} failed`);
     process.exitCode = 1;

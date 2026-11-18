@@ -87,10 +87,11 @@ and the warning has to come down when the hole is closed or it stops meaning
 anything.
 
 Sharing permissions inform the reader. The sync applies the same publication
-rules to every file of a given kind. It archives each text revision, screens
-large removals by document kind, and holds guiding-document edits for
-verification against an adopted amendment. Review held revisions with
-`npm run review`.
+rules to every file of a given kind. It archives each text revision and holds
+guiding-document edits for verification against an adopted amendment. Other
+edits publish; a version that removes a large share of the previous text
+(thresholds by document kind, never for working documents) carries a notice
+linking to the version before it. Review held revisions with `npm run review`.
 
 ### The forum, and what it does not keep
 
@@ -238,7 +239,7 @@ They are still attributed as reporting, never as an SGA record.
 | `lib/` | The pipeline: `drive`, `sync`, `generate`, `ai`, `anchor`, `kinds`, `lineage`, `diff`, `sections`, `passages`, `search`, `integrity`. |
 | `lib/` (the paper) | `newsletter` (reads jhunewsletter.com, no database) and `coverage` (stores what it read). |
 | `lib/` (forum) | `login`, `ratelimit`, `moderate`, `resend`, `prune` -- the only modules that touch identity, and the reason each keeps so little. |
-| `config/` | Everything meant to be edited: `sga`, `search`, `office-hours`, `forum` (categories, limits), `integrity` (hold thresholds). |
+| `config/` | Everything meant to be edited: `sga`, `search`, `office-hours`, `forum` (categories, limits), `integrity` (large-removal thresholds). |
 | `server/` | Internal data modules and server actions the pages read: `documents`, `sections`, `archive`, `search`, `community`, `auth`, `forum`. |
 | `app/(components)/` | `SourceChip`, `DocumentViewer`, `DocumentDiff`, `CitedProse`, `NaturalLanguageSearch`, `SignIn`, `NewPostForm`, `ReplyForm`, `ModerationControls`. |
 | `app/api/documents/` | Public document pagination endpoint. Keep internal modules in `server/`: Vercel treats root `api/` files as functions, which can shadow this route. |

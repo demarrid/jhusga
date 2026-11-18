@@ -5,8 +5,9 @@ import { amendmentPassage, titleKey } from "@/lib/amendment-passage";
 import { checkAmendmentClearance } from "@/lib/amendment-clearance";
 import { governingLineageKey } from "@/lib/lineage";
 import { deriveDescription } from "@/lib/markdown";
+import { isCosmeticChange } from "@/lib/cosmetic-changes";
 
-const REVIEW_VERSION = "amendment-clearance-v2";
+const REVIEW_VERSION = "amendment-clearance-v4";
 const GOVERNING_KINDS = ["guiding.constitution", "guiding.bylaws"];
 const BILL_KINDS = ["bill.constitution_amendment", "bill.bylaws_amendment", "bill.bylaws_constitution_amendment"];
 
@@ -91,6 +92,13 @@ function candidateBills(document: Held, sources: Source[]) {
 }
 
 async function assess(document: Held, sources: Source[], deadline: number, asOf: Date) {
+    if (!document.heldRevision || document.heldRevision.documentId !== document.id) {
+        return { clear: false, reason: "Held revision does not belong to this document.", audit: [], match: null };
+    }
+    if (isCosmeticChange(document.content, document.heldRevision.content)) {
+        return { clear: true, reason: "Only cosmetic formatting changed; the wording and provision numbers are unchanged.",
+            audit: [], match: { clear: true, method: "cosmetic", evidence: [] } };
+    }
     if (sources.some(source => source.reviewState === "held" &&
         (source.kind === "minutes.senate" || /bill voting records?/i.test(source.title)))) {
         return { clear: false, reason: "A Senate passage source has an unreviewed revision; its result needs verification first.", audit: [], match: null };

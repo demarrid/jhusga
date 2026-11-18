@@ -1,5 +1,6 @@
-import { HOLD_PURE_ADDITIONS, thresholdsFor } from "@/config/integrity";
-import { diffLines } from "@/lib/diff";
+import { thresholdsFor } from "@/config/integrity";
+import { diffLines, type DiffResult } from "@/lib/diff";
+import { isCosmeticChange } from "@/lib/cosmetic-changes";
 
 /**
  * Deciding whether a change to a source document can be published unread.
@@ -12,10 +13,10 @@ import { diffLines } from "@/lib/diff";
  * marked orphaned -- the machinery for handling amendments would have processed
  * the vandalism perfectly.
  *
- * The distinction this module draws is not vandalism versus amendment, which
- * cannot be made from the text. It is "small enough to be routine" versus
- * "large enough that somebody should look". The second case is held: stored,
- * not published, and shown on the page as awaiting review.
+ * Only guiding documents are held: stored, not published, and shown on the
+ * page as awaiting verification. Everything else publishes. A change large
+ * enough that it might be vandalism is not held, but the page points the
+ * reader at the version before it (see `largeRemoval`).
  *
  * Pure text in, verdict out. lib/sync.ts acts on it.
  */
@@ -46,7 +47,6 @@ export function assessChange(input: {
     if (input.before === input.after) return PUBLISH;
 
     const diff = diffLines(input.before, input.after);
-    const beforeLines = input.before.split("\n").length;
 
     const verdict = {
         publish: true,
@@ -59,6 +59,7 @@ export function assessChange(input: {
     // post-sync amendment review, which checks archived passage evidence and
     // replays authorized changes against the published text.
     if (isGoverning(input.kind)) {
+        if (isCosmeticChange(input.before, input.after)) return verdict;
         return {
             ...verdict,
             publish: false,
@@ -69,34 +70,43 @@ export function assessChange(input: {
         };
     }
 
-    if (diff.removed === 0 && !HOLD_PURE_ADDITIONS) {
-        return verdict;
-    }
+    return verdict;
+}
+
+/**
+ * Why a published version looks destructive next to the one before it, or
+ * null when it does not.
+ *
+ * Guiding documents are held instead, and working documents are drafts that
+ * are expected to be gutted and rewritten, so neither is measured.
+ */
+export function largeRemoval(input: {
+    kind: string;
+    before: string;
+    after: string;
+    diff?: DiffResult;
+}): string | null {
+    if (isGoverning(input.kind) || input.kind.startsWith("working.")) return null;
+    if (!input.before.trim() || input.before === input.after) return null;
+
+    const diff = input.diff ?? diffLines(input.before, input.after);
+    if (diff.removed === 0) return null;
 
     const thresholds = thresholdsFor(input.kind);
-    if (diff.removed < thresholds.minimumRemovedLines) {
-        return verdict;
-    }
+    if (diff.removed < thresholds.minimumRemovedLines) return null;
 
+    const beforeLines = input.before.split("\n").length;
     const removedFraction = diff.removed / Math.max(beforeLines, 1);
     if (removedFraction >= thresholds.removedLineFraction) {
-        return {
-            ...verdict,
-            publish: false,
-            reason: `${percent(removedFraction)} of its lines were removed (${diff.removed} of ${beforeLines}).`,
-        };
+        return `${percent(removedFraction)} of its lines were removed (${diff.removed} of ${beforeLines}).`;
     }
 
     const remainingFraction = input.after.length / Math.max(input.before.length, 1);
     if (remainingFraction < thresholds.remainingLengthFraction) {
-        return {
-            ...verdict,
-            publish: false,
-            reason: `It shrank to ${percent(remainingFraction)} of its previous length.`,
-        };
+        return `It shrank to ${percent(remainingFraction)} of its previous length.`;
     }
 
-    return verdict;
+    return null;
 }
 
 function percent(fraction: number): string {
@@ -123,8 +133,8 @@ export const RATIFICATION_MARKER = " — ratified.";
 /**
  * How to describe a held document to a reader, as opposed to a reviewer.
  *
- * Governing changes await source-backed amendment verification. Other
- * changes retain the ordinary size-screening notice.
+ * Governing changes await source-backed amendment verification. Anything
+ * else still held was held by size screening, which the next sync releases.
  */
 export function heldNotice(reason: string): string {
     if (reason.endsWith(RATIFICATION_MARKER)) {

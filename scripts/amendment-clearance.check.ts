@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { verifyAmendmentMatch, type AmendmentBill } from "../lib/amendment-clearance";
+import { amendmentReviewMessage, verifyAmendmentMatch, type AmendmentBill } from "../lib/amendment-clearance";
 
 const target = {kind:"guiding.bylaws",title:"Bylaws of the Senate"};
 const old = "4.1 Senators shall attend four meetings.";
@@ -44,4 +44,18 @@ const conflict = verifyAmendmentMatch({target,before:old,after:next,bills:[bill,
 assert.equal(conflict.clear,false);
 assert.equal(verifyAmendmentMatch({target,before:old,after:next,bills:[{...bill,content:""}]},
  [{billId:"act",instruction:bill.content}]).clear,false,"fabricated instruction is not evidence");
-console.log("Amendment clearance checks passed");
+const longBody = "Unchanged governing provision.\n".repeat(15_000);
+const started = performance.now();
+assert.equal(check(bill.content, longBody + old, longBody + next).clear, true,
+    "long documents can clear when passed instructions account for every change");
+assert.equal(check(bill.content, longBody + old, longBody + next + " Unapproved rule.").clear, false,
+    "increasing size cannot excuse an unexplained change");
+const oversized = check(bill.content, "x".repeat(500_001), "y".repeat(500_000));
+assert.equal(oversized.clear, false);
+assert.equal(oversized.reason, "This document is too long to verify automatically. Its changes still need review.");
+assert.equal(check("x".repeat(180_001)).reason,
+    "An amendment bill is too long to verify automatically. Its changes still need review.");
+assert.equal(amendmentReviewMessage("The revision exceeds the automatic comparison budget."), oversized.reason);
+assert.equal(amendmentReviewMessage("An amendment bill exceeds the automatic comparison budget."), check("x".repeat(180_001)).reason);
+assert.equal(amendmentReviewMessage("Unrelated review result."), "Unrelated review result.");
+console.log(`Amendment clearance checks passed; large-document checks took ${Math.round(performance.now() - started)} ms`);

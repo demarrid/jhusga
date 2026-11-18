@@ -1,4 +1,5 @@
 import { oldestAgenda } from "@/lib/meeting-agenda";
+import { amendmentReviewMessage } from "@/lib/amendment-clearance";
 import type { DocumentSection } from "@/lib/outline";
 import { loadDocumentImages } from "@/lib/document-media";
 import { sanitizeExport } from "@/lib/markdown";
@@ -977,7 +978,7 @@ export async function loadDocument(
         driveLastEditorName: document.driveLastEditorName,
         heldNotice:
             document.reviewState === "held"
-                ? heldNotice(document.heldReason) + (amendmentReview ? " Latest check: " + amendmentReview.reason : "")
+                ? heldNotice(document.heldReason) + (amendmentReview ? " Latest check: " + amendmentReviewMessage(amendmentReview.reason) : "")
                 : null,
         anyoneCanEdit: document.anyoneCanEdit,
     };

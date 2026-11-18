@@ -11,7 +11,7 @@ import { matchAccount } from "@/lib/accounts";
 import { findQuote } from "@/lib/anchor";
 import { bodyForDocument } from "@/lib/bodies";
 import { extractContributors, UNIVERSITY_OFFICE } from "@/lib/contributors";
-import { assessChange } from "@/lib/integrity";
+import { assessChange, isGoverning } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor, documentMeetingRole } from "@/lib/meetings";
 import { resolveAffiliates } from "@/lib/names";
@@ -878,7 +878,10 @@ export async function ingestFile(
 
     const missingVotingTabs = file.id === PREFERRED_VOTING_RECORD_FILE
         && existing && !existing.content?.includes("\f");
-    if (mtimeUnchanged && !options.force && !missingVotingTabs) {
+    // Size screening no longer holds anything, so a revision it held is
+    // re-read and published even though Drive has not touched the file.
+    const screeningHold = existing?.reviewState === "held" && !isGoverning(existing.kind);
+    if (mtimeUnchanged && !options.force && !missingVotingTabs && !screeningHold) {
         await prisma.document.update({
             where: { id: existing.id },
             data: metadata,

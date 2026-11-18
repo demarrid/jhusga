@@ -16,6 +16,7 @@ import DoubleStickyHolder from "@/app/(components)/DoubleStickyHolder";
 import RelatedDocuments from "@/app/(components)/RelatedDocuments";
 import { sessionOrdinal } from "@/config/session";
 import { documentReturnPath } from "@/lib/document-navigation";
+import { largeRemoval } from "@/lib/integrity";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
 import { DOCUMENT_DATE_LABELS, formatDate } from "@/lib/dates";
@@ -103,6 +104,10 @@ export default async function DocumentPage({
         ? await getDocumentVersionContent(document, previousOption.id) : null;
     const comparison = previous !== null ? diffLines(previous, document.content) : null;
     const latestHref = `/documents/${documentId}?${new URLSearchParams({ version: view.latest.id, ...(returnTo ? { returnTo } : {}) })}`;
+    const removal = previous !== null && comparison
+        ? largeRemoval({ kind: document.kind, before: previous, after: document.content, diff: comparison }) : null;
+    const previousHref = previousOption
+        ? `/documents/${documentId}?${new URLSearchParams({ version: previousOption.id, ...(returnTo ? { returnTo } : {}) })}` : null;
 
     const authoredSections = documentSections(document.content, {
         titles: [document.title, document.driveTitle],
@@ -221,14 +226,25 @@ export default async function DocumentPage({
             )}
 
             {/*
-              * A change large enough to want a human is not published until it
-              * gets one, and a reader is told which text they are looking at
-              * rather than being quietly served the older one. See
-              * lib/integrity.ts.
+              * A guiding-document edit is not published until an adopted
+              * amendment accounts for it, and a reader is told which text they
+              * are looking at rather than being quietly served the older one.
+              * See lib/integrity.ts.
               */}
             {document.heldNotice && (
                 <p className={styles.notice}>
                     {document.heldNotice}
+                </p>
+            )}
+
+            {/*
+              * Any other change publishes, however large. One that might be
+              * vandalism points the reader at the text it replaced.
+              */}
+            {removal && previousHref && (
+                <p className={styles.notice}>
+                    {`This version of the source file removed much of the one before it — ${removal} `}
+                    <Link href={previousHref}>Read the version before this change.</Link>
                 </p>
             )}
 

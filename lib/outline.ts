@@ -100,6 +100,7 @@ function capitalisedShare(words: string[]): number {
  */
 function isBanner(plain: string, meetingsAreSections: boolean): boolean {
     if (/^(agenda|minutes)$/i.test(plain)) return true;
+    if (/^(?:\d+(?:st|nd|rd|th)\s+)?student government association\s*\|\s*(?:the\s+)?johns hopkins university$/i.test(plain)) return true;
     if (
         /^(the\s+)?(\d+(st|nd|rd|th)\s+)?(jhu\s+|johns hopkins\s+)?(student government(\s+association)?|sga)$/i.test(
             plain,
@@ -120,7 +121,7 @@ function isDatedMeetingHeading(plain: string): boolean {
 function isMeetingTitle(plain: string): boolean {
     return (
         plain.length < 120 &&
-        (/\b(senate|sga|committee|executive)\b/i.test(plain) || /^meeting\s+#?\d+[a-z]?\b/i.test(plain)) &&
+        (/\b(senate|sga|committee|executive)\b/i.test(plain) || /^meeting\s+(?:with\b|#?\d+[a-z]?\b)/i.test(plain)) &&
         /\bmeeting\b/i.test(plain) &&
         !/\b(call to order|reports|reading|business|adjourn)/i.test(plain)
     );
@@ -382,7 +383,7 @@ function headingShare(plain: string): number {
 function isBareName(plain: string): boolean {
     const word = plain.replace(/:\s*$/, "");
     if (!/^\p{Lu}\p{Ll}{1,14}$/u.test(word)) return false;
-    return !/^(attendance|adjournment|preamble|reports|minutes|agenda|closing|opening|business|announcements|legislation|quorum)$/i.test(
+    return !/^(attendance|adjournment|introductions|preamble|reports|minutes|agenda|closing|opening|business|announcements|legislation|quorum)$/i.test(
         word,
     );
 }
@@ -516,7 +517,7 @@ function groupRepeats(
 const ROLL_CALL_WORDS = new Set([
     "present", "absent", "absentees", "absences", "excused", "execused", "unexcused", "tardy",
     "tardies", "late", "quorum", "partial", "partially", "not", "members", "senators",
-    "and", "or",
+    "and", "or", "students", "admin", "administrators", "staff", "guests",
 ]);
 const ROLL_CALL_CORE =
     /\b(present|absent|absentees|absences|excused|unexcused|tardy|tardies|late|quorum)\b/i;
@@ -555,7 +556,7 @@ function dropRollCall(sections: DocumentSection[]): DocumentSection[] {
         }));
 }
 
-const ROLL_CALL_HEADING = /^(attendance|roll\s*call|roll)$/i;
+const ROLL_CALL_HEADING = /^(attendance|participants|roll\s*call|roll)$/i;
 
 function comparable(title: string): string {
     return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -725,6 +726,10 @@ export function indexSections(content: string): Index {
     // Recognize the complete opening block before accepting any of its lines
     // as sections; PDF running headers can otherwise close `front` too early.
     const headingText = (text: string) => clean(text.replace(/^\s*#{1,6}\s+/, ""));
+    // Leadership meeting templates contain a roster, a schedule, and then
+    // notes. Keep their dividers so the roster cannot absorb the discussion.
+    const participantMinutes = ["Participants", "Agenda", "Minutes"].every(label =>
+        lines.some(line => headingText(line.text).replace(/:\s*$/, "").toLowerCase() === label.toLowerCase()));
     const firstProvision = lines.findIndex(line => /^section\s+(?:\d+|[ivxlcdm]+)[.\s:–—-]/i.test(headingText(line.text)));
     const opening = lines.slice(0, Math.max(0, firstProvision)).map(line => headingText(line.text)).join("\n");
     const legislativeTitleEnd = firstProvision >= 0 &&
@@ -802,6 +807,13 @@ export function indexSections(content: string): Index {
         if (text.startsWith("\f")) {
             const name = clean(text.slice(1));
             if (name) place(2, 0, false, false, "heading", name, line.start);
+            continue;
+        }
+
+        const divider = headingText(text).replace(/:\s*$/, "");
+        if (participantMinutes && /^(participants|agenda|minutes)$/i.test(divider)) {
+            markdownTitle = divider;
+            place(1, 0, false, true, "heading", divider, at);
             continue;
         }
 
@@ -1013,6 +1025,12 @@ export function indexSections(content: string): Index {
         const introducesList = !!next && !!outlineMark(next.text) &&
             (lineIndex === 0 || !lines[lineIndex - 1].text.trim()) &&
             isLabel(plain) && !isNoise(plain) && !isSpeaker(plain);
+        if (participantMinutes && /^minutes$/i.test(markdownTitle) &&
+            wrapped === null && introducesList && !isBareName(plain) &&
+            plain.split(/\s+/).length <= 8 && headingShare(plain) >= 0.5) {
+            place(minorLevel(), 0, false, false, "heading", plain, at);
+            continue;
+        }
         const opened = frames.length > 0 || introducesList;
         if (!signing && wrapped === null && isBreakLine(plain)) {
             place(minorLevel(), 0, false, false, "heading", plain, at);

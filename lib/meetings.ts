@@ -22,6 +22,7 @@
  */
 
 import { isCommitteeRecordsFolder, isSecondaryKind } from "@/lib/kinds";
+import { expandCalendarYear } from "@/lib/calendar-year";
 
 export const MEETING_ROLES = ["agenda", "minutes"] as const;
 
@@ -306,7 +307,7 @@ function withoutYears(title: string): string {
 
 function isoDate(year: number, month: number, day: number): string | null {
     if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    const full = year < 100 ? 2000 + year : year;
+    const full = expandCalendarYear(year);
     return `${full}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 

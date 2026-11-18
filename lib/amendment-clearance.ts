@@ -39,7 +39,19 @@ export type AmendmentInput = {
 export type InstructionProposal = { billId: string; instruction: string };
 type Edit = { bill: AmendmentBill; instruction: string; before: string; after: string; index: number };
 
-const MAX_SOURCE_CHARS = 180_000;
+// Full-document matching is deterministic text processing, not an AI prompt.
+// Allow long governing documents while bounding separately parsed bill text.
+const MAX_REVISION_CHARS = 1_000_000;
+const MAX_BILL_CHARS = 180_000;
+const REVISION_SIZE_REASON = "This document is too long to verify automatically. Its changes still need review.";
+const BILL_SIZE_REASON = "An amendment bill is too long to verify automatically. Its changes still need review.";
+
+/** Older stored review results should use the same reader-facing wording. */
+export function amendmentReviewMessage(reason: string): string {
+    if (reason === "The revision exceeds the automatic comparison budget.") return REVISION_SIZE_REASON;
+    if (reason === "An amendment bill exceeds the automatic comparison budget.") return BILL_SIZE_REASON;
+    return reason;
+}
 const MAX_BILLS = 12;
 const MIN_ANCHOR_LENGTH = 8;
 
@@ -227,14 +239,14 @@ export function verifyAmendmentMatch(
     const target = instrument(input.target.kind);
     if (!target) return held("Only Constitution and Bylaws revisions can use amendment clearance.");
     if (!input.before.trim() || !input.after.trim()) return held("A complete previous and proposed text is required.");
-    if (input.before.length + input.after.length > MAX_SOURCE_CHARS) return held("The revision exceeds the automatic comparison budget.");
+    if (input.before.length + input.after.length > MAX_REVISION_CHARS) return held(REVISION_SIZE_REASON);
     const before = normalizeAmendmentText(input.before);
     const after = normalizeAmendmentText(input.after);
     if (before === after) return held("No substantive amendment was found; formatting-only changes remain available for review.");
     const bills = input.bills.filter(passed);
     if (!bills.length) return held("No amendment bill has unambiguous, cited Senate passage evidence.");
     if (bills.length > MAX_BILLS) return held("Too many candidate bills; narrow the amendment evidence before clearance.");
-    if (bills.some(bill => bill.content.length > MAX_SOURCE_CHARS)) return held("An amendment bill exceeds the automatic comparison budget.");
+    if (bills.some(bill => bill.content.length > MAX_BILL_CHARS)) return held(BILL_SIZE_REASON);
     for (const bill of bills) {
         const timingLines = bill.content.split("\n").filter(line => !line.trim().startsWith("|") &&
             /(?:this (?:act|bill)|these amendments?).*(?:take effect|effective|into effect|contingent|subject to|conditional)/i.test(line));
