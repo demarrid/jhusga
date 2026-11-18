@@ -1,4 +1,5 @@
 import { reconcileMeetingDates, passageDateFitsDocument } from "@/lib/meeting-dates";
+import { hasUnverifiedMeetingDate, HOMEPAGE_MINUTES_SUBSTITUTE } from "@/config/document-corrections";
 import { unstable_cache } from "next/cache";
 import { ARCHIVE_CACHE_TAG, ARCHIVE_CACHE_SECONDS } from "@/lib/archive-cache";
 import { billVoteDecision, readBillVotingRecords, PREFERRED_VOTING_RECORD_FILE } from "@/lib/bill-votes";
@@ -52,7 +53,7 @@ import { prisma } from "@/lib/prisma";
 // cache key on every request. Explicit dates remain useful for archive previews.
 const cachedRecentActivity = unstable_cache(
     () => loadRecentActivity(new Date()),
-    ["recent-activity-v4"],
+    ["recent-activity-v5"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
@@ -70,7 +71,7 @@ type CreditSession = { id: string; sessionNumber: number | null };
 
 async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; sessions: CreditSession[] }> {
 
-    const minutes = await prisma.document.findMany({
+    const minutes = (await prisma.document.findMany({
         where: {
             meetingRole: "minutes",
             kind: { startsWith: "minutes." },
@@ -95,7 +96,7 @@ async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; s
             driveOwnerEmail: true,
             summary: { select: { content: true, status: true } },
         },
-    });
+    })).filter(document => !hasUnverifiedMeetingDate(document.driveFileId));
 
     const reconciled = reconcileMeetingDates(minutes);
     for (const document of minutes) {
@@ -204,7 +205,7 @@ async function loadRecentActivity(now: Date): Promise<{ lanes: ActivityLane[]; s
 
     const held = chooseMeetings(
         minutes.flatMap((document) => {
-            if (!countsAsOccurredMeeting(document)) return [];
+            if (!countsAsOccurredMeeting(document) && document.driveFileId !== HOMEPAGE_MINUTES_SUBSTITUTE) return [];
             const entry = latestMinutesEntry(document, now);
             const when = entry?.when ?? activityDate(document);
             if (!when || !hasOccurred(when, now)) return [];

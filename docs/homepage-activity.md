@@ -1,5 +1,13 @@
 # Homepage evidence
 
+The file `MINUTES 13 2026` (Drive `1ZnG1_4EuxXb0-_CowTbrfaOUJ4wBjCxQv3nJsVZhJFs`)
+was verified on November 18, 2026 as an exact copy of `MINUTES 12 2026`.
+Its reviewed date remains unverified and it is excluded from homepage and
+passage evidence until distinct meeting content is verified. Changing only the
+filename, header, or modification time does not clear the correction.
+At the user's request, Demarri's November 17 minutes are eligible for the
+homepage. This exception does not make personal notes Senate passage evidence.
+
 Minutes credits use stored Google revision snapshots. Missing history permissions
 allow a resolved owner fallback; other documents use their own named introducer,
 author, sponsor, or collective sign-off without revision-history or AI calls.

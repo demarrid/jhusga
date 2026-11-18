@@ -28,7 +28,12 @@ authentication; automatic cross-origin redirects drop the bearer header.
   after 75 seconds and the run resumes from the last checkpoint.
 - A run with no live lease and no checkpoint for two minutes has lost its
   hand-off. The next button press or cron resumes it; the button nudges it once
-  while polling. A run stalled for three hours is abandoned and a new one starts.
+  while polling. A run stalled for three hours is abandoned and a new one starts,
+  except at the summary step: its considered IDs and attempt budget survive until
+  the next trigger resumes it. Daily crons must not reset this queue every day.
+- Hand-offs retry transient network errors, HTTP 429, and server failures once,
+  with a five-second timeout per attempt. A final failure is saved on the run
+  and thrown, leaving the checkpoint resumable and the failure observable.
 - A file that is started by three slices in a row without finishing is passed
   over so the rest can land; the run still succeeds and names it in `error`.
   Any other step that does the same fails the run.

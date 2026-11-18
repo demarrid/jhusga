@@ -181,6 +181,8 @@ async function main() {
     assert.ok(!isStalled({ ...quiet, heartbeatAt: new Date(at - 30_000) }, at), "a recent checkpoint is not stalled");
     assert.ok(!isAbandoned(quiet, at));
     assert.ok(isAbandoned({ ...quiet, heartbeatAt: new Date(at - 4 * 60 * 60_000) }, at));
+    assert.ok(!isAbandoned({ ...quiet, step: "model", heartbeatAt: new Date(at - 24 * 60 * 60_000) }, at),
+        "the next daily cron must resume summary progress instead of restarting the queue");
 
     console.log("all sync run checks passed");
 }

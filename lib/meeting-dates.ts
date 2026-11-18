@@ -1,7 +1,8 @@
 import { documentDate } from "@/lib/identity";
+import { hasUnverifiedMeetingDate } from "@/config/document-corrections";
 import { meetingFor, meetingLog, type MeetingInput } from "@/lib/meetings";
 
-type DatedMeeting = MeetingInput & { id: string; content: string; datedAt?: Date | null };
+type DatedMeeting = MeetingInput & { id: string; driveFileId?: string; content: string; datedAt?: Date | null };
 const DAY = 86_400_000;
 function localDay(date: Date): Date {
     const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
@@ -16,6 +17,7 @@ function localDay(date: Date): Date {
 export function reconcileMeetingDates(documents: DatedMeeting[]): Map<string, { date: Date; evidenceId: string; statedDate: Date }> {
     const result = new Map<string, { date: Date; evidenceId: string; statedDate: Date }>();
     const rows = documents.flatMap(document => {
+        if (hasUnverifiedMeetingDate(document.driveFileId)) return [];
         if (!document.kind?.startsWith("minutes.") || meetingLog(document)) return [];
         const meeting = meetingFor(document);
         const stated = documentDate(document) ?? document.datedAt;
@@ -31,6 +33,8 @@ export function reconcileMeetingDates(documents: DatedMeeting[]): Map<string, { 
             other.stated.getTime() === row.stated.getTime() &&
             Math.abs(other.created.getTime() - other.stated.getTime()) <= DAY);
         if (!peer) continue;
+        // A copied record is not evidence of another meeting having occurred.
+        if (row.document.content.replace(/\s+/g, " ").trim() === peer.document.content.replace(/\s+/g, " ").trim()) continue;
         const date = new Date(row.stated.getTime() + weeks * 7 * DAY);
         result.set(row.document.id, { date, evidenceId: peer.document.id, statedDate: row.stated });
     }

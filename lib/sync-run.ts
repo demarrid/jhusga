@@ -458,13 +458,13 @@ export async function startSyncRun(
     return earlier.id;
 }
 
-export type ActiveRun = { id: string; startedAt: Date; heartbeatAt: Date; leaseUntil: Date | null };
+export type ActiveRun = { id: string; startedAt: Date; heartbeatAt: Date; leaseUntil: Date | null; step?: string };
 
 export async function activeSyncRun(): Promise<ActiveRun | null> {
     return prisma.syncRun.findFirst({
         where: { status: "running" },
         orderBy: { startedAt: "asc" },
-        select: { id: true, startedAt: true, heartbeatAt: true, leaseUntil: true },
+        select: { id: true, startedAt: true, heartbeatAt: true, leaseUntil: true, step: true },
     });
 }
 
@@ -475,6 +475,11 @@ export function isStalled(run: ActiveRun, now = Date.now()): boolean {
 }
 
 export function isAbandoned(run: ActiveRun, now = Date.now()): boolean {
+    // Daily crons are always more than three hours apart. Discarding a summary
+    // checkpoint on every cron continually restarts the front of the queue.
+    // Its considered IDs and call cap are safe to resume; stuck work is still
+    // bounded by runSyncSlice's attempt limit.
+    if (run.step === "model") return false;
     return isStalled(run, now) && now - run.heartbeatAt.getTime() > SYNC_ABANDON_AFTER_MS;
 }
 
@@ -510,7 +515,7 @@ export async function runSyncSlice(
 
     const claimed = await prisma.syncRun.updateMany({
         where: { id: runId, status: "running", OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date(startedAt) } }] },
-        data: { leaseUntil, slices: { increment: 1 }, heartbeatAt: new Date() },
+        data: { leaseUntil, slices: { increment: 1 }, heartbeatAt: new Date(), error: null },
     });
     if (claimed.count === 0) return "busy";
 
@@ -614,7 +619,7 @@ export async function runSyncSlice(
 /** Follow only the site's apex/www redirect, preserving the cron credential. */
 export async function requestSyncContinuation(runId: string, origin: string, secret: string): Promise<Response> {
     let url = new URL("/api/sync/continue", origin);
-    const signal = AbortSignal.timeout(10_000);
+    const signal = AbortSignal.timeout(5_000);
     for (let redirects = 0; redirects <= 2; redirects += 1) {
         const response = await fetch(url, {
             method: "POST",
@@ -639,6 +644,30 @@ export async function requestSyncContinuation(runId: string, origin: string, sec
     throw new Error("Too many sync hand-off redirects");
 }
 
+/** Keep a lost hand-off resumable, but never report it as a successful dispatch. */
+export async function dispatchSyncContinuation(runId: string, origin: string, secret: string): Promise<void> {
+    let failure = "";
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            const response = await requestSyncContinuation(runId, origin, secret);
+            await response.arrayBuffer();
+            if (response.ok) return;
+            failure = `HTTP ${response.status}`;
+            // Authentication/configuration errors need repair, not another request.
+            if (response.status < 500 && response.status !== 429) break;
+        } catch (cause) {
+            failure = cause instanceof Error ? cause.message : String(cause);
+            if (/redirect/i.test(failure)) break;
+        }
+    }
+    const message = `Sync hand-off failed: ${failure}`;
+    await prisma.syncRun.updateMany({
+        where: { id: runId, status: "running", leaseUntil: null },
+        data: { error: message },
+    });
+    throw new Error(`${message} (run ${runId}); resume from the saved checkpoint`);
+}
+
 /**
  * Work one slice, then hand the run to a fresh invocation if there is more.
  *
@@ -657,12 +686,7 @@ export async function continueSyncRun(runId: string, origin: string): Promise<Sl
         return continueSyncRun(runId, origin);
     }
 
-    try {
-        const response = await requestSyncContinuation(runId, origin, secret);
-        if (!response.ok) console.error(`Sync hand-off for ${runId} was refused: ${response.status}`);
-    } catch (cause) {
-        console.error(`Sync hand-off for ${runId} failed:`, cause instanceof Error ? cause.message : String(cause));
-    }
+    await dispatchSyncContinuation(runId, origin, secret);
     return outcome;
 }
 

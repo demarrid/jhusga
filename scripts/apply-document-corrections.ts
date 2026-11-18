@@ -19,7 +19,7 @@ async function main() {
             datedAt: documentDate(document),
         } });
         // A summary repeating the source's incorrect date should be regenerated.
-        if (correction.datedOn && document.datedAt?.getTime() !== documentDate(document)?.getTime()) await prisma.documentSummary.updateMany({
+        if (correction.datedOn !== undefined && document.datedAt?.getTime() !== documentDate(document)?.getTime()) await prisma.documentSummary.updateMany({
             where: { documentId: document.id }, data: { status: "pending" },
         });
         if (kind.startsWith("bill.")) await recordContributors(document.id, document.content);

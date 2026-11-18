@@ -3,6 +3,7 @@ import { saveDocumentMedia } from "@/lib/document-media";
 import { recordDocumentVersion } from "@/lib/document-version-history";
 import { type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
+import { hasUnverifiedMeetingDate } from "@/config/document-corrections";
 import { createHash } from "node:crypto";
 
 import { SESSION_NUMBER } from "@/config/sga";
@@ -334,7 +335,7 @@ export async function recordDates(): Promise<number> {
 
     for (const document of documents) {
         const final = LEGISLATION_EDITIONS.find(edition => edition.finalFileId === document.driveFileId && findQuote(document.content, edition.passageQuote));
-        const datedAt = final ? new Date(`${final.passedOn}T12:00:00Z`) : reconciled.get(document.id)?.date ?? documentDate(document) ?? (document.kind.startsWith("minutes.") ? document.datedAt : null);
+        const datedAt = hasUnverifiedMeetingDate(document.driveFileId) ? null : final ? new Date(`${final.passedOn}T12:00:00Z`) : reconciled.get(document.id)?.date ?? documentDate(document) ?? (document.kind.startsWith("minutes.") ? document.datedAt : null);
         if (datedAt !== null) dated += 1;
 
         if (datedAt?.getTime() === document.datedAt?.getTime()) continue;

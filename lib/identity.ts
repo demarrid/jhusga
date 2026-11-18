@@ -468,6 +468,7 @@ export function documentDate(input: {
     sessionNumber?: number | null;
 }): Date | null {
     const corrected = input.driveFileId ? DOCUMENT_CORRECTIONS[input.driveFileId]?.datedOn : undefined;
+    if (corrected === null) return null;
     if (corrected) return new Date(`${corrected}T12:00:00Z`);
     const clause = dateFromClauses(header(input.title, input.content));
     if (clause) return clause;

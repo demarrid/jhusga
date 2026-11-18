@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { modelStep, requestSyncContinuation, type Slice } from '../lib/sync-run';
+import { dispatchSyncContinuation, modelStep, requestSyncContinuation, type Slice } from '../lib/sync-run';
 import { summarizeDocument } from '../lib/summarize';
 import { emptySyncSummary } from '../lib/sync';
 
@@ -8,12 +8,17 @@ async function main() {
     Date.now = () => now;
     let requests = 0;
     let checkpoints = 0;
+    const handoffErrors: string[] = [];
     type Summary = { id: string; status: string; promptHash: string; model: string; content: string };
     const documents = ['one', 'two'].map(id => ({
         id, title: id, kind: 'unknown', content: 'A substantive record. '.repeat(40),
         contentHash: id, summary: null as Summary | null,
     }));
     Object.assign(globalThis, { prisma: {
+        syncRun: { updateMany: async ({ data }: { data: { error: string } }) => {
+            handoffErrors.push(data.error);
+            return { count: 1 };
+        } },
         document: {
             findMany: async ({ where }: { where: { id?: { notIn: string[] } } }) =>
                 documents.filter(doc => !where.id?.notIn.includes(doc.id)),
@@ -78,6 +83,27 @@ async function main() {
     };
     await assert.rejects(requestSyncContinuation('run', 'https://jhusga.org', 'fixture'), /unexpected redirect/);
     assert.equal(unsafeCalls, 1, 'credentials must never be sent to an unrelated host');
+    let dispatches = 0;
+    globalThis.fetch = async () => {
+        dispatches++;
+        return new Response(null, { status: dispatches === 1 ? 503 : 202 });
+    };
+    await dispatchSyncContinuation('run', 'https://www.jhusga.org', 'fixture');
+    assert.equal(dispatches, 2, 'retry a transient hand-off failure within the time margin');
+    assert.equal(handoffErrors.length, 0);
+    dispatches = 0;
+    globalThis.fetch = async () => {
+        dispatches++;
+        return new Response(null, { status: 401 });
+    };
+    await assert.rejects(dispatchSyncContinuation('run', 'https://www.jhusga.org', 'fixture'), /HTTP 401/);
+    assert.equal(dispatches, 1, 'do not retry invalid credentials');
+    assert.match(handoffErrors.at(-1)!, /HTTP 401/, 'persist the reason instead of silently leaving a running job');
+    dispatches = 0;
+    globalThis.fetch = async () => { dispatches++; throw new Error('network unavailable'); };
+    await assert.rejects(dispatchSyncContinuation('run', 'https://www.jhusga.org', 'fixture'), /network unavailable/);
+    assert.equal(dispatches, 2, 'network retries are bounded');
+    assert.match(handoffErrors.at(-1)!, /network unavailable/);
     console.log('all summary continuation checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

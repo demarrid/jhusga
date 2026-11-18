@@ -52,7 +52,8 @@ async function main() {
 
     const base = {folderPath:"General Body Meetings/Minutes",kind:"minutes.senate",sessionNumber:114,content:"October 13, 2026\nMINUTES"};
     const original = {...base,id:"original",title:"MINUTES 8 2026",driveCreatedTime:new Date("2026-10-13T23:00:00Z"),datedAt:new Date("2026-10-13T12:00:00Z")};
-    const copied = {...base,id:"copied",title:"MINUTES 10 2026",driveCreatedTime:new Date("2026-10-27T22:58:00Z"),datedAt:original.datedAt};
+    const copied = {...base,id:"copied",title:"MINUTES 10 2026",content:base.content + "\nDiscussed new student services business.",driveCreatedTime:new Date("2026-10-27T22:58:00Z"),datedAt:original.datedAt};
+    assert.equal(reconcileMeetingDates([original,{...copied,content:original.content}]).size,0,"identical minutes do not establish a later meeting");
     assert.equal(reconcileMeetingDates([original,copied]).get("copied")?.date.toISOString().slice(0,10),"2026-10-27");
     assert.equal(reconcileMeetingDates([copied]).size,0,"creation date alone is insufficient");
     assert.equal(reconcileMeetingDates([original,{...copied,sessionNumber:113}]).size,0,"sessions do not corroborate each other");
