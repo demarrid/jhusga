@@ -1,6 +1,5 @@
 import { oldestAgenda } from "@/lib/meeting-agenda";
-import { documentSections, type DocumentSection } from "@/lib/outline";
-import { blockSectionIds } from "@/lib/render";
+import type { DocumentSection } from "@/lib/outline";
 import { loadDocumentImages } from "@/lib/document-media";
 import { sanitizeExport } from "@/lib/markdown";
 import { unstable_cache } from "next/cache";
@@ -19,7 +18,7 @@ import {
     type DocumentSort,
 } from "@/lib/document-sort";
 import { heldNotice } from "@/lib/integrity";
-import { agendaMappingKey, agendaMappingHash, agendaSectionLinks, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
+import { agendaMappingKey, agendaMappingHash, agendaSectionLinks, agendaOutlineWithLinks, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
 import { DOCUMENT_CATEGORIES, documentCategory, documentCategoryFilter, type DocumentKind, isDocumentKind } from "@/lib/kinds";
 import { extractDocumentLinks } from "@/lib/links";
 import { compareNamesBySurname } from "@/lib/contributors";
@@ -878,7 +877,6 @@ export async function loadDocument(
     }
     const agendaUnresolvedLinks = new Map<string, UnresolvedLink>();
     for (const link of agendaLinks) {
-        if (!agendaMatches.some(match => match.linkedUrls?.includes(link.url))) continue;
         const target = agendaTargets.find(row => row.driveFileId === link.fileId);
         if (target && target.id !== document.id && !matchedCounterparts.some(row => row.id === target.id)) {
             if (!agendaReferences.has(target.id)) agendaReferences.set(target.id, toRelated(target, link.text));
@@ -913,8 +911,11 @@ export async function loadDocument(
         agendaReferences: [...agendaReferences.values()],
         agendaUnresolvedLinks: [...agendaUnresolvedLinks.values()],
         agendaMatches,
-        agendaOutline: selectedAgenda ? { id: selectedAgenda.id, sections: documentSections(selectedAgenda.content, {
-            anchored: blockSectionIds(renderDocument(selectedAgenda.content, [])),
+        agendaOutline: selectedAgenda ? { id: selectedAgenda.id, sections: agendaOutlineWithLinks(selectedAgenda.content, link => {
+            const target = agendaTargets.find(row => row.driveFileId === link.fileId);
+            if (target?.id === document.id || matchedCounterparts.some(row => row.id === target?.id)) return undefined;
+            return { title: link.text || (target ? toRelated(target).title : "Document"),
+                href: target ? `/documents/${target.id}` : link.url };
         }) } : undefined,
         references: [...directReferences.values()],
         referencedBy: document.referencesIn.map((edge) => toRelated(edge.fromDocument)),

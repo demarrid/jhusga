@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { meetingForDocument } from "@/lib/meetings";
 import { relevantDocuments, uniqueUnresolvedLinks } from "@/lib/relevant-documents";
-import { agendaItems, agendaMappingHash, agendaSectionLinks, validateAgendaMatches } from "@/lib/agenda-mapping";
+import { agendaItems, agendaMappingHash, agendaSectionLinks, agendaOutlineWithLinks, validateAgendaMatches } from "@/lib/agenda-mapping";
 import { extractDocumentLinks } from "@/lib/links";
 import { meetingOutline } from "@/lib/meeting-outline";
 
@@ -140,3 +140,23 @@ assert.deepEqual(oldestAgenda([]), []);
 assert.equal(oldestAgenda(dates.map(row => ({ ...row, driveCreatedTime: null })))[0].id, "copy");
 assert.equal(oldestAgenda(dates.map(row => ({ ...row, driveCreatedTime: new Date("2026-09-28") })))[0].id, "copy");
 console.log("Complete agenda and oldest-source selection checks passed.");
+
+// Real agenda hyperlinks do not depend on a generated minutes mapping, and
+// repeated readings of one bill each retain their authored link.
+const linkedAgenda = `1. **First Reading**\n   1. **[Cafe funding bill](${url})**\n2. **Second Reading**\n   1. **[Cafe funding bill](${url})**\n   2. **[External report](https://docs.google.com/document/d/abcdefghijklmnop1234/edit)**`;
+const linkedSections = agendaOutlineWithLinks(linkedAgenda, link => ({
+    title: link.text, href: link.url === url ? "/documents/cafe" : link.url,
+}));
+const withoutMapping = meetingOutline([], [], [{ ...doc("cafe"), title: "Cafe funding bill" }], [], { id: "agenda", sections: linkedSections });
+const linkedRows = flattenOutline(withoutMapping);
+assert.equal(linkedRows.filter(row => row.documentLinks?.some(link => link.href === "/documents/cafe")).length, 2);
+assert.ok(linkedRows.find(row => row.title === "External report")?.documentLinks?.[0].href.startsWith("https://docs.google.com/"));
+assert.ok(!linkedRows.some(row => row.id === "linked-documents"));
+assert.ok(linkedRows.every(row => row.href?.startsWith("/documents/agenda?version=latest#")));
+const linkedItem = agendaItems(linkedAgenda).find(row => row.title === "Cafe funding bill")!;
+const withMapping = meetingOutline([], [{ agendaId: "agenda", sectionId: linkedItem.id, title: linkedItem.title,
+    quote: "a sufficiently long passage", startOffset: 0, minutesHref: "#minutes-0", ancestors: [{ id: linkedSections[0].id, title: linkedSections[0].title }] }], [], [], { id: "agenda", sections: linkedSections });
+const mappedItem = flattenOutline(withMapping).find(row => row.href === "#minutes-0" && row.title === linkedItem.title);
+assert.equal(mappedItem?.documentLinks?.[0].href, "/documents/cafe");
+assert.equal(mappedItem?.documentLinks?.length, 1);
+console.log("Agenda document links survive absent and partial minutes mappings.");

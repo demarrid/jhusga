@@ -97,8 +97,12 @@ export function meetingOutline(sections: DocumentSection[], matches: AgendaMatch
         ...documents.filter(document => !used.has(document.id)).map(document => ({ title: document.anchorText || document.title, href: `/documents/${document.id}` })),
         ...unresolved.filter(link => !usedUrls.has(link.url)).map(link => ({ title: link.text || "Document", href: link.url })),
     ];
-    if (remaining.length) result.push({ id: "linked-documents", title: "Documents", group: true, documentLinks: remaining, children: [] });
-    if (!agenda) return result;
+    const withRemaining = (rows: DocumentSection[]): DocumentSection[] => {
+        const placed = new Set(flatten(rows).flatMap(row => (row.documentLinks ?? []).map(link => link.href)));
+        const links = remaining.filter(link => !placed.has(link.href));
+        return links.length ? [...rows, { id: "linked-documents", title: "Documents", group: true, documentLinks: links, children: [] }] : rows;
+    };
+    if (!agenda) return withRemaining(result);
     // Unmatched scheduled sections link to the agenda, never to invented proceedings.
     const consumed = new Set<DocumentSection>();
     const complete = (rows: DocumentSection[]): DocumentSection[] => rows.map(item => {
@@ -109,6 +113,7 @@ export function meetingOutline(sections: DocumentSection[], matches: AgendaMatch
         if (matched) consumed.add(matched);
         const children = complete(item.children);
         return { ...item, ...(matched ?? {}),
+            documentLinks: [...new Map([...(item.documentLinks ?? []), ...(matched?.documentLinks ?? [])].map(link => [link.href, link])).values()],
             id: matched?.id ?? "agenda-source-" + agenda.id + "-" + item.id,
             href: matched ? matched.href ?? "#" + matched.id
                 : "/documents/" + agenda.id + "?version=latest#" + item.id,
@@ -120,5 +125,5 @@ export function meetingOutline(sections: DocumentSection[], matches: AgendaMatch
         .filter(row => !consumed.has(row))
         .map(row => ({ ...row, children: unconsumed(row.children) }));
     // Reused nodes appear only under their agenda parent; keep minutes-only sections.
-    return [...unconsumed(completed), ...unconsumed(result)];
+    return withRemaining([...unconsumed(completed), ...unconsumed(result)]);
 }

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { findQuote, normalizeForMatch } from "@/lib/anchor";
 import { documentSections, sectionAnchors, type DocumentSection } from "@/lib/outline";
-import { extractDocumentLinks } from "@/lib/links";
+import { extractDocumentLinks, type DocumentLink } from "@/lib/links";
 import { blockSectionIds, renderDocument } from "@/lib/render";
 import { toPlainText } from "@/lib/markdown";
 
@@ -35,6 +35,19 @@ export function agendaSectionLinks(content: string, sectionId: string) {
     const index = anchors.findIndex(([, id]) => id === sectionId);
     if (index < 0) return [];
     return extractDocumentLinks(content.slice(anchors[index][0], anchors[index + 1]?.[0]));
+}
+
+/** Authored agenda links remain available without generated minutes matches. */
+export function agendaOutlineWithLinks(content: string, resolve: (link: DocumentLink) => { title: string; href: string } | undefined): DocumentSection[] {
+    const visit = (rows: DocumentSection[]): DocumentSection[] => rows.map(row => ({
+        ...row,
+        documentLinks: agendaSectionLinks(content, row.id).flatMap(link => {
+            const resolved = resolve(link);
+            return resolved ? [resolved] : [];
+        }),
+        children: visit(row.children),
+    }));
+    return visit(documentSections(content, { anchored: blockSectionIds(renderDocument(content, [])) }));
 }
 
 export function agendaMappingKey(minutesId: string, agendaId: string): string {

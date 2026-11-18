@@ -692,7 +692,7 @@
   color: #344960;
   overflow-wrap: anywhere;
   text-decoration: none;
-  opacity: 0.55;
+  opacity: 0.5;
   transition: opacity 0.15s ease, color 0.2s ease-in-out;
 }
 
@@ -706,11 +706,6 @@
 .sidebar .outline a:hover,
 .sidebar .outline a:focus-visible {
   color: #035cb5;
-}
-
-.sidebar .outline a:hover,
-.sidebar .outline a:focus-visible {
-  opacity: 1;
 }
 
 .sidebar .outline a.sectionDocumentLink {
