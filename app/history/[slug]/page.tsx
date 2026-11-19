@@ -166,8 +166,8 @@ export default async function HistoryTopicPage({ params, searchParams }: PagePro
                             })}
                         </div>
 
-                        <aside className={styles.method} aria-labelledby="history-method-heading">
-                            <h2 id="history-method-heading">How this timeline was made</h2>
+                        <details className={styles.method}>
+                            <summary>How this timeline was made</summary>
                             <ul>
                                 <li>
                                     Every document in the archive that mentions the subject was read on its own,
@@ -189,7 +189,7 @@ export default async function HistoryTopicPage({ params, searchParams }: PagePro
                                     development outside the SGA that its records tie to its work.
                                 </li>
                             </ul>
-                        </aside>
+                        </details>
                     </section>
                 </>
             )}

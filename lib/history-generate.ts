@@ -287,9 +287,9 @@ Reply with a single JSON object and nothing else:
 
 function mergeUserPrompt(findings: PlacedFinding[]): string {
     return findings
-        .map((finding) =>
+        .map((finding, index) =>
             JSON.stringify({
-                id: finding.key,
+                id: `f${index + 1}`,
                 date: finding.date ? finding.date.toISOString().slice(0, 10) : null,
                 datePrecision: finding.precision,
                 document: `${finding.document.displayTitle || finding.document.title} (${documentKindLabel(finding.document.kind)})`,
@@ -306,21 +306,36 @@ async function mergeChunk(
     topic: HistoryTopicDefinition,
     findings: PlacedFinding[],
 ): Promise<{ events: MergedEvent[]; model: string }> {
-    const generated = await generateJson<{ events?: unknown[] }>({
-        system: mergeSystemPrompt(topic),
-        user: mergeUserPrompt(findings),
-        maxTokens: 16_000,
-    });
+    let feedback = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const generated = await generateJson<{ events?: unknown[] }>({
+            system: mergeSystemPrompt(topic),
+            user: mergeUserPrompt(findings) + feedback,
+            maxTokens: 16_000,
+        });
+        try {
+            return { events: validateMergedEvents(topic, findings, generated.value), model: generated.model };
+        } catch (error) {
+            if (attempt === 2) throw error;
+            feedback = `\n\nYour previous response failed validation: ${error instanceof Error ? error.message : String(error)}. ` +
+                "Return a corrected complete response. Copy only the supplied f-number IDs; each ID may appear once across all events. " +
+                "Every event needs a title and prose with [n] citations numbered from 1 within that event's findings list. " +
+                "Do not use the global f-number as the citation number.\nPrevious response:\n" + JSON.stringify(generated.value);
+        }
+    }
+    throw new Error("Merge attempts exhausted");
+}
 
-    const byKey = new Map(findings.map((finding) => [finding.key, finding]));
+function validateMergedEvents(topic: HistoryTopicDefinition, findings: PlacedFinding[], response: { events?: unknown[] }): MergedEvent[] {
+    const byKey = new Map(findings.map((finding, index) => [`f${index + 1}`, finding]));
     const used = new Set<string>();
     const threadIds = topic.threads.map((thread) => thread.id);
     const events: MergedEvent[] = [];
-    if (!generated.value || !Array.isArray(generated.value.events)) {
+    if (!response || !Array.isArray(response.events)) {
         throw new Error("Merge response must contain an events array");
     }
 
-    for (const raw of generated.value.events) {
+    for (const raw of response.events) {
         if (!raw || typeof raw !== "object") throw new Error("Invalid merged event");
         const value = raw as Record<string, unknown>;
         const keys = value.findings;
@@ -335,7 +350,7 @@ async function mergeChunk(
         if (!title || !content || !citations.length || citations.some((index) => index < 1 || index > members.length)) {
             throw new Error("Merged event needs a title, prose, and valid citation markers");
         }
-        for (const member of members) used.add(member.key);
+        for (const key of keys) used.add(key);
 
         const thread = typeof value.thread === "string" && threadIds.includes(value.thread) ? value.thread : members[0]!.thread;
         events.push({
@@ -349,7 +364,7 @@ async function mergeChunk(
         });
     }
 
-    return { events, model: generated.model };
+    return events;
 }
 
 function chunkKey(year: string, index: number, count: number): string {
@@ -357,7 +372,7 @@ function chunkKey(year: string, index: number, count: number): string {
 }
 
 function batchHash(topicHash: string, findings: PlacedFinding[], records: BillVoteRecord[]): string {
-    return createHash("sha256").update(topicHash).update(JSON.stringify([findings, records])).digest("hex");
+    return createHash("sha256").update("merge-v2").update(topicHash).update(JSON.stringify([findings, records])).digest("hex");
 }
 
 async function votingRecords(): Promise<BillVoteRecord[]> {

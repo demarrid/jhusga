@@ -42,7 +42,7 @@ export type HistoryTopicDefinition = {
 export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
     {
         slug: "sexual-violence",
-        title: "Sexual violence",
+        title: "Sexual Violence",
         description:
             "What the SGA has done about sexual violence on campus: legislation, funding, " +
             "programming, statements, and its work with the university on policy and support, " +

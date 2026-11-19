@@ -53,6 +53,9 @@ Changing `AI_MODEL` alone does not invalidate caches; use `--force` for that.
 - Failed or malformed extraction results are retryable and do not publish.
   Unknown or repeated merge member IDs and invalid citation markers fail the
   merge instead of silently shifting citations onto different evidence.
+  Merge calls use short batch-local source IDs. Invalid responses receive
+  validation feedback and up to two correction attempts before the run fails;
+  these attempts incur additional model usage without re-extracting documents.
 - All merges finish before a transaction replaces events, writes annotations
   and citations, removes obsolete batches, and updates the generation timestamp.
   Any merge failure leaves the published events intact. A database write failure

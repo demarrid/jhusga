@@ -80,8 +80,9 @@ globalThis.fetch = async (_url, init) => {
     }] };
     else {
         if (mode === "quota") return new Response(JSON.stringify({ error: { code: "insufficient_quota" } }), { status: 429 });
-        response = { events: [{ findings: mode === "bad-members" ? ["unknown", "doc:0"] : ["doc:0"],
-            title: "Title IX discussion", content: `The Senate discussed Title IX. [${mode === "bad-citation" ? 2 : 1}]`,
+        response = { events: [{ findings: mode === "bad-members" ? ["unknown", "f1"] : ["f1"],
+            title: "Title IX discussion", content: `The Senate discussed Title IX. [${mode === "bad-citation" ||
+                (mode === "repair-citation" && !body.messages[1].content.includes("Previous response:")) ? 2 : 1}]`,
             thread: "policy", kind: "discussion", involvement: "sga", weight: 1 }] };
     }
     return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(response) } }] }));
@@ -129,6 +130,12 @@ async function main() {
         assert.equal(writes, beforeWrites, "no event mutations before all merges succeed");
         assert.equal(status.status, "stale");
     }
+    mode = "repair-citation";
+    const beforeRepair = requests;
+    const repaired = await generateHistoryTopic("sexual-violence", { force: true });
+    assert.equal(repaired.mergeFailures, 0);
+    assert.equal(requests, beforeRepair + 3, "invalid merge receives feedback and retries without re-extraction");
+    assert.equal(status.status, "fresh");
     mode = "valid";
     failCitation = true;
     const saved = structuredClone(events);

@@ -426,25 +426,62 @@
 .method {
   max-width: 78rem;
   margin: clamp(3rem, 6vw, 5rem) auto 0;
-  padding: 1.75rem clamp(1.25rem, 3vw, 2.25rem);
-  border-left: 3px solid #68ace5;
-  background: #eaf3fb;
-  color: #263c55;
-  font-size: 0.9rem;
+  border-bottom: 1px solid #d8dfe6;
+  color: #5f6d7c;
+  font-size: 0.85rem;
   line-height: 1.65;
+  interpolate-size: allow-keywords;
 }
 
-.method h2 {
-  margin: 0 0 0.75rem;
-  color: #002d72;
-  font-family: var(--font-source-serif-4), Georgia, serif;
-  font-size: 1.35rem;
-  font-weight: 570;
+.method summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 0;
+  cursor: pointer;
+  font-weight: 400;
+  list-style: none;
+}
+
+.method summary::-webkit-details-marker {
+  display: none;
+}
+
+.method summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.2rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 280ms ease;
+}
+
+.method[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.method::details-content {
+  height: 0;
+  overflow: hidden;
+  transition: height 280ms ease, content-visibility 280ms allow-discrete;
+}
+
+.method[open]::details-content {
+  height: auto;
+}
+
+.method summary:focus-visible {
+  outline: 2px solid #607286;
+  outline-offset: 4px;
 }
 
 .method ul {
   margin: 0;
-  padding-left: 1.1rem;
+  padding: 0 0 0.85rem 1.1rem;
 }
 
 .method li + li {
@@ -526,7 +563,9 @@
   }
 
   .topicCard,
-  .topicArrow {
+  .topicArrow,
+  .method summary::after,
+  .method::details-content {
     transition: none;
   }
 }
