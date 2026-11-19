@@ -1,5 +1,12 @@
 import site from "@/demo-data/site.json";
 import { FORUM_CATEGORIES } from "@/config/forum";
+import {
+    HISTORY_TOPICS,
+    type HistoryDatePrecision,
+    type HistoryEventKind,
+    type HistoryOutcome,
+    type HistoryTopicDefinition,
+} from "@/config/history";
 import { SESSION_NUMBER } from "@/config/session";
 import { isComparableKind, isDocumentKind, type DocumentKind } from "@/lib/kinds";
 import { renderDocument } from "@/lib/render";
@@ -9,6 +16,7 @@ import { byRecentlyUpdatedFirst, listedDate } from "@/lib/dates";
 import { compareNamesBySurname } from "@/lib/contributors";
 import { documentFindRank } from "@/lib/document-find";
 import { parseTimeframe } from "@/lib/when";
+import type { HistoryTimeline, HistoryTopicSummary } from "@/server/history";
 
 type RawDocument = (typeof site.documents)[number];
 
@@ -434,4 +442,104 @@ export function demoSearchAnswer(question: string) {
         generatedAt: new Date("2026-09-09T15:15:00.000Z"),
         error: null,
     };
+}
+
+type DemoHistoryTemplate = {
+    thread: string;
+    kind: HistoryEventKind;
+    title: string;
+    content: string;
+    weight: 1 | 2 | 3;
+};
+
+const DEMO_HISTORY_TEMPLATES: DemoHistoryTemplate[] = [
+    { thread: "policy", kind: "legislation", weight: 3, title: "Resolution on Title IX hearing procedures", content: "The Senate debated a resolution asking the university to publish its hearing procedures [1]. Senators cited the minutes of an earlier discussion [2]." },
+    { thread: "support", kind: "funding", weight: 2, title: "Funding for a survivor support peer group", content: "A funding bill allocated money to a student-run support group [1]." },
+    { thread: "prevention", kind: "programming", weight: 1, title: "Consent education workshop series", content: "The SGA co-sponsored a workshop series with a student group [1]." },
+    { thread: "accountability", kind: "report", weight: 2, title: "Report on campus climate survey results", content: "A committee presented survey results to the Senate [1] and recommended follow-up [2]." },
+    { thread: "advocacy", kind: "statement", weight: 2, title: "Statement on reporting transparency", content: "The executive board issued a statement calling for clearer reporting [1]." },
+    { thread: "policy", kind: "discussion", weight: 1, title: "Senate discussion of the misconduct policy review", content: "Senators discussed the university's policy review during open forum [1]." },
+    { thread: "prevention", kind: "funding", weight: 1, title: "Bystander intervention training for student groups", content: "The Senate funded training for student organization leaders [1]." },
+    { thread: "accountability", kind: "legislation", weight: 2, title: "Bill to publish annual misconduct data", content: "A bill asked for an annual public summary of reports and outcomes [1]." },
+    { thread: "support", kind: "policy", weight: 2, title: "Expanded confidential advocate hours", content: "The university expanded advocate hours after SGA requests [1]." },
+    { thread: "advocacy", kind: "programming", weight: 1, title: "Take Back the Night co-sponsorship", content: "The SGA co-sponsored the annual march [1]." },
+];
+
+const DEMO_HISTORY_OUTCOMES: HistoryOutcome[] = ["passed", "not_passed", "inconclusive", "unrecorded"];
+
+/**
+ * A deterministic sexual-violence-shaped timeline over thirty years, dense
+ * enough to exercise clustering, spans, context events, coarse dates, every
+ * outcome, and an undated event. Its citations point at the demo documents.
+ */
+export function demoHistoryTimeline(topic: HistoryTopicDefinition): HistoryTimeline {
+    const sources = site.documents
+        .filter((document) => document.summaryQuotes.length > 0 && !document.kind.startsWith("guiding."))
+        .concat(site.documents.filter((document) => document.id === "demo-constitution"));
+    const precisions: HistoryDatePrecision[] = ["day", "day", "day", "month", "day", "year", "day", "session"];
+
+    const events = Array.from({ length: 46 }, (_, index) => {
+        const template = DEMO_HISTORY_TEMPLATES[(index * 7) % DEMO_HISTORY_TEMPLATES.length]!;
+        const precision = precisions[index % precisions.length]!;
+        const year = 1996 + Math.floor((index * 30) / 46);
+        const month = (index * 5) % 12;
+        const day = 1 + ((index * 11) % 27);
+        const occurredAt = new Date(Date.UTC(year, precision === "year" ? 6 : precision === "session" ? 11 : month, precision === "day" ? day : precision === "month" ? 15 : 1, 12));
+        const citations = [0, 1].slice(0, template.content.includes("[2]") ? 2 : 1).map((offset) => {
+            const document = sources[(index + offset) % sources.length]!;
+            const annotationId = `${document.id}-citation-1`;
+            return {
+                id: `demo-history-${index}-citation-${offset + 1}`,
+                documentId: document.id,
+                documentTitle: document.title,
+                quote: document.summaryQuotes[0]!,
+                href: `/documents/${document.id}?version=latest#annotation-${annotationId}`,
+                orphaned: false,
+            };
+        });
+        return {
+            id: `demo-history-${index}`,
+            occurredAt,
+            endedAt: index % 9 === 4 ? new Date(occurredAt.getTime() + 75 * 86_400_000) : null,
+            datePrecision: precision,
+            title: template.title,
+            content: template.content,
+            thread: topic.threads.some((thread) => thread.id === template.thread) ? template.thread : topic.threads[0]!.id,
+            kind: template.kind,
+            involvement: index % 11 === 6 ? "context" as const : "sga" as const,
+            outcome: template.kind === "legislation" ? DEMO_HISTORY_OUTCOMES[index % DEMO_HISTORY_OUTCOMES.length]! : "" as const,
+            weight: template.weight,
+            citations,
+        };
+    }).sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime());
+    const undated = { ...events[1]!, id: "demo-history-undated", occurredAt: null, endedAt: null, datePrecision: "approximate" as const, title: "Undated support resource listing" };
+
+    return {
+        topic,
+        status: "fresh",
+        generatedAt: new Date("2026-09-09T15:15:00.000Z"),
+        events: [...events, undated],
+        documentCount: sources.length,
+    };
+}
+
+export function demoHistoryTopics(): HistoryTopicSummary[] {
+    return HISTORY_TOPICS.map((topic) => {
+        const { events, generatedAt, status } = demoHistoryTimeline(topic);
+        const years = events.flatMap((event) => (event.occurredAt ? [event.occurredAt.getUTCFullYear()] : []));
+        const first = Math.min(...years);
+        const last = Math.max(...years);
+        return {
+            topic,
+            status,
+            generatedAt,
+            eventCount: events.length,
+            firstAt: new Date(Date.UTC(first, 0, 1)),
+            lastAt: new Date(Date.UTC(last, 11, 31)),
+            perYear: Array.from({ length: last - first + 1 }, (_, index) => ({
+                year: first + index,
+                count: years.filter((year) => year === first + index).length,
+            })),
+        };
+    });
 }

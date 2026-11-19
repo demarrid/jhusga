@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { HISTORY_TOPICS } from "@/config/history";
 import { getDocuments } from "@/server/documents";
 import { getPosts } from "@/server/forum";
 import { prisma } from "@/lib/prisma";
@@ -34,6 +35,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         { url: "/", changeFrequency: "weekly", priority: 1 },
         { url: "/about", changeFrequency: "monthly", priority: 0.8 },
         { url: "/documents", changeFrequency: "daily", priority: 0.9 },
+        { url: "/history", changeFrequency: "monthly", priority: 0.7 },
+        ...HISTORY_TOPICS.map((topic) => ({
+            url: `/history/${topic.slug}`,
+            changeFrequency: "monthly" as const,
+            priority: 0.6,
+        })),
         { url: "/contact", changeFrequency: "monthly", priority: 0.7 },
         { url: "/discussion", changeFrequency: "daily", priority: 0.7 },
         { url: "/discussion/rules", changeFrequency: "yearly", priority: 0.3 },

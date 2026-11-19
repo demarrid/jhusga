@@ -154,6 +154,8 @@ model Document {
     referencesOut DocumentReference[] @relation("ReferenceFrom")
     referencesIn  DocumentReference[] @relation("ReferenceTo")
 
+    historyFindings HistoryFinding[]
+
     @@index([kind])
     @@index([driveModifiedTime])
     @@index([datedAt])
@@ -351,6 +353,7 @@ model DocumentAnnotation {
     citations        Citation[]
     summaryCitations DocumentSummaryCitation[]
     answerCitations  SearchAnswerCitation[]
+    historyCitations HistoryEventCitation[]
 
     @@index([documentId])
     @@index([orphanedAt])
@@ -563,6 +566,125 @@ model DocumentSummaryCitation {
 
     @@unique([summaryId, annotationId])
     @@index([summaryId, ordinal])
+}
+
+// ---------------------------------------------------------------------------
+// History timelines
+//
+// A topic's timeline is computed offline by lib/history.ts and only read by
+// the site. Topics themselves are defined in config/history.ts; the row here
+// holds what the last run produced and when.
+// ---------------------------------------------------------------------------
+
+model HistoryTopic {
+    id String @id @default(uuid())
+
+    // The key in config/history.ts, and the URL segment under /history.
+    slug String @unique
+
+    // "fresh" | "stale" | "failed" | "empty", as GeneratedSection.
+    status String @default("empty")
+
+    model       String    @default("")
+    error       String?
+    generatedAt DateTime?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    findings HistoryFinding[]
+    events   HistoryEvent[]
+}
+
+// What one document says about one topic, read from that document alone.
+//
+// The expensive half of a timeline, and the reason it is cached per document:
+// a re-run only pays for documents whose text changed or that are new. Every
+// quote in `findings` was found verbatim in the document before it was stored.
+model HistoryFinding {
+    id String @id @default(uuid())
+
+    topicId String
+    topic   HistoryTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+    documentId String
+    document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+    // Prompt version, topic definition, and the document's contentHash.
+    promptHash String
+
+    // "found" | "none" | "failed"
+    status String @default("none")
+
+    // HistoryFindingItem[] -- see lib/history.ts.
+    findings Json @default("[]")
+
+    model     String   @default("")
+    error     String?
+    checkedAt DateTime @default(now())
+
+    @@unique([topicId, documentId])
+    @@index([documentId])
+}
+
+// One point (or span) on a timeline.
+//
+// Rebuilt per academic-year batch: `batchKey` names the year and `batchHash`
+// fingerprints the findings it was merged from, so an unchanged year keeps its
+// events instead of being merged (and billed) again.
+model HistoryEvent {
+    id String @id @default(uuid())
+
+    topicId String
+    topic   HistoryTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+    batchKey  String
+    batchHash String
+
+    // Null when nothing in the record dates it; listed separately, never placed.
+    occurredAt DateTime?
+    // Set when the sources run over more than one day, e.g. first reading to vote.
+    endedAt    DateTime?
+    // "day" | "month" | "year" | "session" | "approximate"
+    datePrecision String @default("day")
+
+    title   String
+    // Cited prose; [n] is the 1-based ordinal into `citations`.
+    content String @default("")
+
+    // A thread id from the topic's definition in config/history.ts.
+    thread String
+    // "legislation" | "funding" | "programming" | "statement" | "discussion" | "policy" | "report"
+    kind   String
+    // "sga" when the SGA acted, "context" for a development the record ties to its work.
+    involvement String @default("sga")
+    // "" | "passed" | "not_passed" | "inconclusive" | "unrecorded". Decided in
+    // code from voting records and Senate minutes, never by the model.
+    outcome String @default("")
+    // 1-3. Higher weights keep their labels as the timeline zooms out.
+    weight  Int    @default(1)
+
+    createdAt DateTime @default(now())
+
+    citations HistoryEventCitation[]
+
+    @@index([topicId, occurredAt])
+    @@index([topicId, batchKey])
+}
+
+model HistoryEventCitation {
+    id String @id @default(uuid())
+
+    eventId String
+    event   HistoryEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+    annotationId String
+    annotation   DocumentAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+    ordinal Int @default(0)
+
+    @@unique([eventId, annotationId])
+    @@index([annotationId])
 }
 
 // One row per sync attempt, so a silently failing cron is visible.
