@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 
 import { historyTopic, type HistoryTopicDefinition } from "@/config/history";
 import { generateJson, isAiQuotaExhausted } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { isBillVotingRecord, readBillVotingRecords, type BillVoteRecord } from "@/lib/bill-votes";
-import { assignCitationOrdinals, remapCitedContent } from "@/lib/cite";
+import { assignCitationOrdinals, citedIndexes, remapCitedContent } from "@/lib/cite";
 import { formatDate } from "@/lib/dates";
 import {
     academicYearKey,
@@ -41,7 +42,7 @@ import { prisma } from "@/lib/prisma";
  */
 
 /** Bumped when either prompt changes, so cached findings and events are redone. */
-const PROMPT_VERSION = "history-v1";
+const PROMPT_VERSION = "history-v2";
 
 const EXTRACT_CONCURRENCY = 6;
 /** Findings per merge call; a busier year is split in date order. */
@@ -124,12 +125,12 @@ async function candidateDocuments(topic: HistoryTopicDefinition, patterns: Topic
 function topicFingerprint(topic: HistoryTopicDefinition): string {
     return createHash("sha256")
         .update(PROMPT_VERSION)
-        .update(JSON.stringify([topic.scope, topic.threads.map((thread) => [thread.id, thread.description])]))
+        .update(JSON.stringify(topic))
         .digest("hex");
 }
 
 function findingHash(topicHash: string, document: CandidateDocument): string {
-    return createHash("sha256").update(topicHash).update(document.contentHash).digest("hex");
+    return createHash("sha256").update(topicHash).update(JSON.stringify(document)).digest("hex");
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +209,7 @@ async function extractDocument(
         });
         raw = generated.value;
         model = generated.model;
+        if (!raw || !Array.isArray(raw.findings)) throw new Error("Extraction response must contain a findings array");
     } catch (cause) {
         return { status: "failed", findings: [], model, error: cause instanceof Error ? cause.message : String(cause), rejected: 0 };
     }
@@ -223,6 +225,7 @@ async function extractDocument(
         }
         findings.push(parsed);
     }
+    if (rejected) return { status: "failed", findings: [], model, rejected, error: `${rejected} invalid or unanchored finding(s)` };
     return { status: findings.length > 0 ? "found" : "none", findings, model, rejected };
 }
 
@@ -313,22 +316,32 @@ async function mergeChunk(
     const used = new Set<string>();
     const threadIds = topic.threads.map((thread) => thread.id);
     const events: MergedEvent[] = [];
+    if (!generated.value || !Array.isArray(generated.value.events)) {
+        throw new Error("Merge response must contain an events array");
+    }
 
-    for (const raw of Array.isArray(generated.value.events) ? generated.value.events : []) {
-        if (!raw || typeof raw !== "object") continue;
+    for (const raw of generated.value.events) {
+        if (!raw || typeof raw !== "object") throw new Error("Invalid merged event");
         const value = raw as Record<string, unknown>;
-        const members = (Array.isArray(value.findings) ? value.findings : [])
-            .filter((key): key is string => typeof key === "string" && byKey.has(key) && !used.has(key))
-            .map((key) => byKey.get(key)!);
+        const keys = value.findings;
+        if (!Array.isArray(keys) || !keys.length || new Set(keys).size !== keys.length ||
+            keys.some((key) => typeof key !== "string" || !byKey.has(key) || used.has(key))) {
+            throw new Error("Merged event contains missing, unknown, or repeated finding IDs");
+        }
+        const members = keys.map((key: string) => byKey.get(key)!);
         const title = typeof value.title === "string" ? value.title.trim().replace(/\.$/, "") : "";
-        if (members.length === 0 || !title) continue;
+        const content = typeof value.content === "string" ? value.content.trim() : "";
+        const citations = citedIndexes(content);
+        if (!title || !content || !citations.length || citations.some((index) => index < 1 || index > members.length)) {
+            throw new Error("Merged event needs a title, prose, and valid citation markers");
+        }
         for (const member of members) used.add(member.key);
 
         const thread = typeof value.thread === "string" && threadIds.includes(value.thread) ? value.thread : members[0]!.thread;
         events.push({
             findings: members,
             title,
-            content: typeof value.content === "string" ? value.content.trim() : "",
+            content,
             thread,
             kind: eventKind(value.kind, members[0]!.kind),
             involvement: value.involvement === "context" ? "context" : "sga",
@@ -343,12 +356,8 @@ function chunkKey(year: string, index: number, count: number): string {
     return count === 1 ? year : `${year}#${index + 1}`;
 }
 
-function batchHash(findings: PlacedFinding[]): string {
-    const hash = createHash("sha256").update(PROMPT_VERSION);
-    for (const finding of findings) {
-        hash.update(`\u0000${finding.key}:${finding.document.contentHash}:${finding.summary}:${finding.date?.toISOString() ?? ""}`);
-    }
-    return hash.digest("hex");
+function batchHash(topicHash: string, findings: PlacedFinding[], records: BillVoteRecord[]): string {
+    return createHash("sha256").update(topicHash).update(JSON.stringify([findings, records])).digest("hex");
 }
 
 async function votingRecords(): Promise<BillVoteRecord[]> {
@@ -360,6 +369,7 @@ async function votingRecords(): Promise<BillVoteRecord[]> {
 }
 
 async function writeBatch(
+    tx: Prisma.TransactionClient,
     topicId: string,
     key: string,
     hash: string,
@@ -367,68 +377,63 @@ async function writeBatch(
     records: BillVoteRecord[],
 ): Promise<number> {
     let written = 0;
-    await prisma.$transaction(
-        async (tx) => {
-            await tx.historyEvent.deleteMany({ where: { topicId, batchKey: key } });
+    await tx.historyEvent.deleteMany({ where: { topicId, batchKey: key } });
 
-            for (const event of events) {
-                const { kept, remap } = assignCitationOrdinals(event.findings, (finding) =>
-                    findQuote(finding.document.content, finding.quote) ? `${finding.document.id}\0${finding.quote}` : null,
-                );
-                if (kept.length === 0) continue;
+    for (const event of events) {
+        const { kept, remap } = assignCitationOrdinals(event.findings, (finding) =>
+            findQuote(finding.document.content, finding.quote) ? `${finding.document.id}\0${finding.quote}` : null,
+        );
+        if (kept.length === 0) continue;
 
-                const span = eventSpan(event.findings);
-                const outcome = legislationOutcome(
-                    event.kind,
-                    event.findings.map((finding) => ({
-                        kind: finding.document.kind,
-                        driveFileId: finding.document.driveFileId,
-                        title: finding.document.title,
-                        displayTitle: finding.document.displayTitle,
-                        outcomeClaim: finding.outcomeClaim,
-                    })),
-                    records,
-                );
+        const span = eventSpan(event.findings);
+        const outcome = legislationOutcome(
+            event.kind,
+            event.findings.map((finding) => ({
+                kind: finding.document.kind,
+                driveFileId: finding.document.driveFileId,
+                title: finding.document.title,
+                displayTitle: finding.document.displayTitle,
+                outcomeClaim: finding.outcomeClaim,
+            })),
+            records,
+        );
 
-                const row = await tx.historyEvent.create({
+        const row = await tx.historyEvent.create({
+            data: {
+                topicId,
+                batchKey: key,
+                batchHash: hash,
+                occurredAt: span.occurredAt,
+                endedAt: span.endedAt,
+                datePrecision: span.precision,
+                title: event.title,
+                content: remapCitedContent(event.content, remap),
+                thread: event.thread,
+                kind: event.kind,
+                involvement: event.involvement,
+                outcome,
+                weight: event.weight,
+            },
+        });
+
+        for (const [ordinal, finding] of kept.entries()) {
+            const anchor = findQuote(finding.document.content, finding.quote);
+            const annotation =
+                (await tx.documentAnnotation.findFirst({
+                    where: { documentId: finding.document.id, content: finding.quote },
+                })) ??
+                (await tx.documentAnnotation.create({
                     data: {
-                        topicId,
-                        batchKey: key,
-                        batchHash: hash,
-                        occurredAt: span.occurredAt,
-                        endedAt: span.endedAt,
-                        datePrecision: span.precision,
-                        title: event.title,
-                        content: remapCitedContent(event.content, remap),
-                        thread: event.thread,
-                        kind: event.kind,
-                        involvement: event.involvement,
-                        outcome,
-                        weight: event.weight,
+                        documentId: finding.document.id,
+                        content: finding.quote,
+                        startOffset: anchor?.startOffset ?? null,
+                        endOffset: anchor?.endOffset ?? null,
                     },
-                });
-
-                for (const [ordinal, finding] of kept.entries()) {
-                    const anchor = findQuote(finding.document.content, finding.quote);
-                    const annotation =
-                        (await tx.documentAnnotation.findFirst({
-                            where: { documentId: finding.document.id, content: finding.quote },
-                        })) ??
-                        (await tx.documentAnnotation.create({
-                            data: {
-                                documentId: finding.document.id,
-                                content: finding.quote,
-                                startOffset: anchor?.startOffset ?? null,
-                                endOffset: anchor?.endOffset ?? null,
-                            },
-                        }));
-                    await tx.historyEventCitation.create({ data: { eventId: row.id, annotationId: annotation.id, ordinal } });
-                }
-                written += 1;
-            }
-        },
-        { timeout: 120_000 },
-    );
+                }));
+            await tx.historyEventCitation.create({ data: { eventId: row.id, annotationId: annotation.id, ordinal } });
+        }
+        written += 1;
+    }
     return written;
 }
 
@@ -467,6 +472,7 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
     }
 
     const topicRow = await prisma.historyTopic.upsert({ where: { slug }, create: { slug }, update: {} });
+    result.events = await prisma.historyEvent.count({ where: { topicId: topicRow.id } });
     const cached = new Map(
         (await prisma.historyFinding.findMany({ where: { topicId: topicRow.id } })).map((row) => [row.documentId, row]),
     );
@@ -517,8 +523,23 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
         return true;
     });
 
-    if (quotaError) {
-        await prisma.historyTopic.update({ where: { id: topicRow.id }, data: { status: "failed", error: quotaError } });
+    const incomplete = pending.length > result.extracted;
+    const extractionError = [
+        quotaError,
+        ...(result.extractFailures ? [`${result.extractFailures} document(s) failed extraction`] : []),
+        ...(incomplete ? [`${pending.length - result.extracted} document(s) not yet extracted`] : []),
+    ].filter(Boolean).join("\n");
+    // A sample can establish an initial timeline, but must never replace a
+    // published timeline with an incomplete subset. Failed extraction never
+    // publishes, even on the first run. Successful caches remain resumable.
+    if (extractionError || options.extractOnly) {
+        await prisma.historyTopic.update({
+            where: { id: topicRow.id },
+            data: { status: result.events ? "stale" : extractionError ? "failed" : "empty", error: extractionError || null },
+        });
+    }
+    if (quotaError || result.extractFailures || (incomplete && result.events > 0)) {
+        log("Kept the published timeline; rerun without --limit to finish extraction.");
         return result;
     }
     if (options.extractOnly) return result;
@@ -552,14 +573,16 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
     const liveKeys = new Set<string>();
     const records = await votingRecords();
     const failures: string[] = [];
+    const staged: { key: string; hash: string; events: MergedEvent[] }[] = [];
 
+    mergeYears:
     for (const [year, findings] of [...byYear.entries()].sort(([a], [b]) => a.localeCompare(b))) {
         findings.sort((a, b) => (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0) || a.key.localeCompare(b.key));
         const count = Math.ceil(findings.length / MERGE_CHUNK);
         for (let index = 0; index < count; index += 1) {
             const chunk = findings.slice(index * MERGE_CHUNK, (index + 1) * MERGE_CHUNK);
             const key = chunkKey(year, index, count);
-            const hash = batchHash(chunk);
+            const hash = batchHash(topicHash, chunk, records);
             liveKeys.add(key);
 
             if (!options.force && existingHash.get(key) === hash) {
@@ -569,39 +592,45 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
             try {
                 const { events, model } = await mergeChunk(topic, chunk);
                 lastModel = model;
-                const written = await writeBatch(topicRow.id, key, hash, events, records);
-                result.batchesMerged += 1;
-                log(`merged ${key}: ${chunk.length} findings into ${written} events`);
+                staged.push({ key, hash, events });
+                log(`prepared ${key}: ${chunk.length} findings into ${events.length} events`);
             } catch (cause) {
                 const message = cause instanceof Error ? cause.message : String(cause);
                 result.mergeFailures += 1;
                 failures.push(`${key}: ${message}`);
                 log(`merge failed ${key}: ${message.slice(0, 200)}`);
-                if (isAiQuotaExhausted(message)) break;
+                if (isAiQuotaExhausted(message)) break mergeYears;
             }
         }
     }
 
-    // Years whose findings have all gone (a document deleted or re-read as
-    // off-topic) take their events with them.
-    await prisma.historyEvent.deleteMany({ where: { topicId: topicRow.id, batchKey: { notIn: [...liveKeys] } } });
+    if (failures.length) {
+        await prisma.historyTopic.update({
+            where: { id: topicRow.id },
+            data: { status: result.events ? "stale" : "failed", error: failures.join("\n") },
+        });
+        return result;
+    }
 
-    result.events = await prisma.historyEvent.count({ where: { topicId: topicRow.id } });
-    const incomplete = pending.length > toExtract.length;
-    const error = [
-        ...failures,
-        ...(result.extractFailures ? [`${result.extractFailures} document(s) failed extraction`] : []),
-        ...(incomplete ? [`${pending.length - toExtract.length} document(s) not yet extracted`] : []),
-    ].join("\n");
-
-    await prisma.historyTopic.update({
-        where: { id: topicRow.id },
-        data: {
-            status: result.events === 0 ? "empty" : error ? "stale" : "fresh",
-            model: lastModel || topicRow.model,
-            error: error || null,
-            generatedAt: new Date(),
-        },
-    });
+    // No model calls in the transaction. Publish replacements, removals, and
+    // status together, so a failed merge or citation write cannot erase history.
+    result.events = await prisma.$transaction(async (tx) => {
+        for (const batch of staged) {
+            await writeBatch(tx, topicRow.id, batch.key, batch.hash, batch.events, records);
+        }
+        await tx.historyEvent.deleteMany({ where: { topicId: topicRow.id, batchKey: { notIn: [...liveKeys] } } });
+        const count = await tx.historyEvent.count({ where: { topicId: topicRow.id } });
+        await tx.historyTopic.update({
+            where: { id: topicRow.id },
+            data: {
+                status: extractionError ? "stale" : count === 0 ? "empty" : "fresh",
+                model: lastModel || topicRow.model,
+                error: extractionError || null,
+                generatedAt: new Date(),
+            },
+        });
+        return count;
+    }, { timeout: 120_000 });
+    result.batchesMerged = staged.length;
     return result;
 }

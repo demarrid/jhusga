@@ -73,6 +73,7 @@ const SUITES = [
     "amendment-clearance",
     "governing-review",
     "history",
+    "history-generation",
     "newsletter",
     "office",
     "passages",

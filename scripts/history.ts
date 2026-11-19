@@ -1,6 +1,5 @@
 import path from "node:path";
-
-process.loadEnvFile(path.join(process.cwd(), ".env"));
+import { parseHistoryArgs } from "../lib/history-cli";
 
 /**
  * Compute history timelines.
@@ -13,29 +12,22 @@ process.loadEnvFile(path.join(process.cwd(), ".env"));
  * Flags: --dry-run, --force, --extract-only, --limit N.
  */
 async function main() {
+    const { options, slugs } = parseHistoryArgs(process.argv.slice(2));
     const { HISTORY_TOPICS } = await import("../config/history");
-    const { generateHistoryTopic } = await import("../lib/history-generate");
-
-    const args = process.argv.slice(2);
-    const flag = (name: string) => args.includes(`--${name}`);
-    const limitAt = args.indexOf("--limit");
-    const limit = limitAt === -1 ? undefined : Number(args[limitAt + 1]);
-    if (limit !== undefined && !(Number.isInteger(limit) && limit >= 0)) {
-        throw new Error("--limit takes a whole number");
-    }
-
-    const slugs = args.filter((arg, index) => !arg.startsWith("--") && index !== limitAt + 1);
     const topics = slugs.length > 0 ? slugs : HISTORY_TOPICS.map((topic) => topic.slug);
+    for (const slug of topics) {
+        if (!HISTORY_TOPICS.some((topic) => topic.slug === slug)) throw new Error(`Unknown history topic "${slug}"`);
+    }
+    process.loadEnvFile(path.join(process.cwd(), ".env"));
+    const { generateHistoryTopic } = await import("../lib/history-generate");
 
     for (const slug of topics) {
         const result = await generateHistoryTopic(slug, {
-            force: flag("force"),
-            dryRun: flag("dry-run"),
-            extractOnly: flag("extract-only"),
-            limit,
+            ...options,
             log: (line) => console.log(line),
         });
         console.log("history:", result);
+        if (result.extractFailures || result.mergeFailures) process.exitCode = 1;
     }
 }
 
@@ -46,5 +38,5 @@ main()
     })
     .finally(async () => {
         const { prisma } = await import("../lib/prisma");
-        await prisma.$disconnect();
+        if (process.env.DATABASE_URL) await prisma.$disconnect();
     });
