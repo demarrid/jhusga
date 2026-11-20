@@ -179,6 +179,12 @@ assert.deepEqual(eventSpan([{ date: null, precision: "approximate" }]), {
 assert.equal(academicYearKey(noon("2019-05-31")), "2018-2019");
 assert.equal(academicYearKey(noon("2019-06-01")), "2019-2020");
 assert.equal(academicYearKey(null), "undated");
+assert.deepEqual(resolveFindingDate(null, {
+    id: "2c260844-f5e7-4de2-b8fe-505abdd9c23b", datedAt: null, driveCreatedTime: null, sessionNumber: null,
+}), { date: noon("1989-07-01"), precision: "year" }, "reviewed contextual dating places the undated Council report without inventing a month or day");
+assert.deepEqual(resolveFindingDate("1990-02-01", {
+    id: "2c260844-f5e7-4de2-b8fe-505abdd9c23b", datedAt: null, driveCreatedTime: null, sessionNumber: null,
+}), { date: noon("1990-02-01"), precision: "day" }, "a stated event date takes precedence over the report's contextual estimate");
 assert.equal(academicYearLabel("2018-2019"), "2018–19");
 assert.equal(academicYearLabel("undated"), "Undated");
 

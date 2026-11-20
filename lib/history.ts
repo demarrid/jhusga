@@ -6,6 +6,7 @@ import {
     type HistoryTopicDefinition,
 } from "@/config/history";
 import { sessionStartDate } from "@/config/session";
+import { HISTORY_DOCUMENT_DATES } from "@/config/history-dates";
 import { billVoteDecision, type BillVoteRecord } from "@/lib/bill-votes";
 import { ARCHIVE_DATE_PRECISION, formatDate, formatDateShort, formatMonthYear } from "@/lib/dates";
 import { splitIntoPassages } from "@/lib/passages";
@@ -261,6 +262,8 @@ function documentDate(document: DatableDocument): ResolvedDate {
         const start = sessionStartDate(document.sessionNumber);
         return { date: utcNoon(start.getUTCFullYear(), 12, 1), precision: "session" };
     }
+    const reviewed = HISTORY_DOCUMENT_DATES[document.id];
+    if (reviewed) return { date: utcNoon(reviewed.year, 7, 1), precision: "year" };
     if (document.driveCreatedTime) return { date: document.driveCreatedTime, precision: "approximate" };
     return { date: null, precision: "approximate" };
 }

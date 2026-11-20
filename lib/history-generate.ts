@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 
 import { historyTopic, type HistoryTopicDefinition } from "@/config/history";
+import { HISTORY_DOCUMENT_DATES } from "@/config/history-dates";
 import { generateJson, isAiQuotaExhausted } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { isBillVotingRecord, readBillVotingRecords, type BillVoteRecord } from "@/lib/bill-votes";
@@ -401,6 +402,11 @@ async function writeBatch(
         if (kept.length === 0) continue;
 
         const span = eventSpan(event.findings);
+        const dateNotes = [...new Set(event.findings.flatMap((finding) => {
+            const reviewed = HISTORY_DOCUMENT_DATES[finding.document.id];
+            return reviewed && !finding.statedDate && span.precision === "year" &&
+                span.occurredAt?.getUTCFullYear() === reviewed.year ? [reviewed.note] : [];
+        }))];
         const outcome = legislationOutcome(
             event.kind,
             event.findings.map((finding) => ({
@@ -422,7 +428,7 @@ async function writeBatch(
                 endedAt: span.endedAt,
                 datePrecision: span.precision,
                 title: event.title,
-                content: remapCitedContent(event.content, remap),
+                content: [remapCitedContent(event.content, remap), ...dateNotes].join("\n\n"),
                 thread: event.thread,
                 kind: event.kind,
                 involvement: event.involvement,
