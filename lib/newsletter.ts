@@ -300,10 +300,12 @@ export function searchUrl(input: {
         a: "1",
         s: input.phrase,
         ti: "",
-        ts_month: String(from.month),
+        // The newspaper expects the form's two-digit month values. Sending
+        // January as "1" silently drops early-year results; days stay unpadded.
+        ts_month: String(from.month).padStart(2, "0"),
         ts_day: String(from.day),
         ts_year: String(from.year),
-        te_month: String(to.month),
+        te_month: String(to.month).padStart(2, "0"),
         te_day: String(to.day),
         te_year: String(to.year),
         au: "",

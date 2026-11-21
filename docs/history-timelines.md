@@ -51,6 +51,12 @@ Changing `AI_MODEL` alone does not invalidate caches; use `--force` for that.
 - `--force` re-extracts and re-merges, including successful caches, and incurs
   model usage. It is not normally needed for archive or topic changes.
 - Failed or malformed extraction results are retryable and do not publish.
+  A response with invalid or unanchored quotes gets one correction attempt
+  listing each rejected quote; a quote that appears more than once must be
+  lengthened until it is unique. A document that still fails blocks publication.
+- To withdraw a finding that fails privacy review, remove it from that
+  document's `HistoryFinding.findings` and rerun; only affected batches
+  re-merge. A changed document or `--force` re-extracts it, so review again.
   Unknown or repeated merge member IDs and invalid citation markers fail the
   merge instead of silently shifting citations onto different evidence.
   Merge calls use short batch-local source IDs. Invalid responses receive

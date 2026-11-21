@@ -74,11 +74,15 @@ globalThis.fetch = async (_url, init) => {
     const body = JSON.parse(init?.body as string);
     const extraction = body.messages[0].content.includes("You read one document");
     let response: unknown;
-    if (extraction) response = mode === "bad-extraction" ? {} : { findings: [{
-        summary: "The Senate discussed Title IX.", quote: document.content,
-        date: null, thread: "policy", kind: "discussion", involvement: "sga", weight: 1,
-    }] };
-    else {
+    if (extraction) {
+        const corrected = body.messages[1].content.includes("failed validation");
+        const quote = mode === "repeated-quote" && !corrected ? "e"
+            : mode === "missing-quote" ? "Not in the document." : document.content;
+        response = mode === "bad-extraction" ? {} : { findings: [{
+            summary: "The Senate discussed Title IX.", quote,
+            date: null, thread: "policy", kind: "discussion", involvement: "sga", weight: 1,
+        }] };
+    } else {
         if (mode === "quota") return new Response(JSON.stringify({ error: { code: "insufficient_quota" } }), { status: 429 });
         response = { events: [{ findings: mode === "bad-members" ? ["unknown", "f1"] : ["f1"],
             title: "Title IX discussion", content: `The Senate discussed Title IX. [${mode === "bad-citation" ||
@@ -136,6 +140,18 @@ async function main() {
     assert.equal(repaired.mergeFailures, 0);
     assert.equal(requests, beforeRepair + 3, "invalid merge receives feedback and retries without re-extraction");
     assert.equal(status.status, "fresh");
+    mode = "repeated-quote";
+    const beforeQuote = requests;
+    const lengthened = await generateHistoryTopic("sexual-violence", { force: true });
+    assert.equal(lengthened.extractFailures, 0);
+    assert.equal(requests, beforeQuote + 3, "an ambiguous quote receives one correction before merging");
+    mode = "missing-quote";
+    const beforeMissing = requests;
+    const unpublished = structuredClone(events);
+    const missing = await generateHistoryTopic("sexual-violence", { force: true });
+    assert.equal(missing.extractFailures, 1);
+    assert.equal(requests, beforeMissing + 2, "a quote still unanchored after correction fails without merging");
+    assert.deepEqual(events, unpublished);
     mode = "valid";
     failCitation = true;
     const saved = structuredClone(events);

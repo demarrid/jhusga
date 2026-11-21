@@ -134,15 +134,17 @@ def process(file):
     ocr.save(out,result);return result
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--workers',type=int,default=4);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--workers',type=int,default=4)
+    parser.add_argument('--manifest',default='past-matches.json');parser.add_argument('--prefix',default='native')
+    args=parser.parse_args()
     for name in ['native','page-images']:(BASE/name).mkdir(exist_ok=True)
-    files=json.loads((BASE/'past-matches.json').read_text());results=[]
+    files=json.loads((BASE/args.manifest).read_text());results=[]
     with futures.ProcessPoolExecutor(max_workers=args.workers) as pool:
         for result in pool.map(process,files):
             results.append(result)
             if len(results)%25==0:print(f'{len(results)}/{len(files)} extracted',flush=True)
     tasks=[t for r in results for t in r.get('visionTasks',[])]
-    ocr.save(BASE/'native-vision-tasks.json',tasks);ocr.save(BASE/'native-run-report.json',[{k:r.get(k) for k in ['id','name','status','error','quality']} for r in results])
+    ocr.save(BASE/(args.prefix+'-vision-tasks.json'),tasks);ocr.save(BASE/(args.prefix+'-run-report.json'),[{k:r.get(k) for k in ['id','name','status','error','quality']} for r in results])
     print(json.dumps({'files':len(results),'statuses':{s:sum(r['status']==s for r in results) for s in set(r['status'] for r in results)},'visionPages':len(tasks)}))
 if __name__=='__main__':main()
 

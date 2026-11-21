@@ -6,7 +6,8 @@ function dates(line:string):ArchiveDateEvidence[]{
  const out:ArchiveDateEvidence[]=[];const add=(y:number,m:number,d:number,p:'day'|'month'|'year')=>{const date=valid(y,m,d);if(date)out.push({date,precision:p,evidence:line});};
  const clean=line.replace(/\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\b/gi, m => months.find(x => x.toLowerCase().startsWith(m.replace('.','').slice(0,3).toLowerCase())) || m).replace(/[*#{}\u200b]/g,' ').replace(/(\d)(st|nd|rd|th)\b/gi,'$1').replace(/\s+/g,' ').trim();
  for(const m of clean.matchAll(/\b(18\d{2}|19\d{2}|20\d{2})-(\d{1,2})-(\d{1,2})\b/g))add(+m[1],+m[2],+m[3],'day');
- for(const m of clean.matchAll(/\b(\d{1,2})[\/_-](\d{1,2})[\/_-](\d{2}|\d{4})\b/g)){add(expandCalendarYear(+m[3]),+m[1],+m[2],'day');}
+ // One consistent separator, so ranges such as 10/5-10/9 are not read as 10/5/2010.
+ for(const m of clean.matchAll(/\b(\d{1,2})([\/_-])(\d{1,2})\2(\d{2}|\d{4})\b(?![\/_-]\d)/g)){add(expandCalendarYear(+m[4]),+m[1],+m[3],'day');}
  const mon='('+months.join('|')+')';
  for(const m of clean.matchAll(new RegExp('\\b'+mon+'\\s+(\\d{1,2}),?\\s+((?:18|19|20)\\d{2})\\b','gi')))add(+m[3],months.findIndex(x=>x.toLowerCase()===m[1].toLowerCase())+1,+m[2],'day');
  for(const m of clean.matchAll(new RegExp('\\b(\\d{1,2})(?:\\s+day)?\\s+(?:of\\s+)?'+mon+'(?:\\s+in\\s+(?:the\\s+)?year)?[,]?\\s+((?:18|19|20)\\d{2})\\b','gi')))add(+m[3],months.findIndex(x=>x.toLowerCase()===m[2].toLowerCase())+1,+m[1],'day');
@@ -16,6 +17,8 @@ function dates(line:string):ArchiveDateEvidence[]{
 export function archiveDateCandidates(title:string,content:string):ArchiveDateEvidence[]{
  // Session identifiers such as SGA-B-1819.05 are never calendar dates.
  title=title.replace(/\b(?:SGA[-_. ]*)?[BR][-. ]+\d{2,4}(?:[-.]\d{2,4})?(?:[.-]\d+)*\b/gi,'');
+ // Screenshot filenames record when the capture was taken, not when the document was written.
+ title=title.replace(/\bScreen\s*Shot\s+\d{4}-\d{2}-\d{2}\s+at\s+[\d.]+\s*[AP]M\b/gi,'');
  content=content.replace(/[*\u200b]/g,'').replace(/\bthis\s+day\s+(\d{1,2}(?:st|nd|rd|th)?)\s+of\b/gi,'this $1 day of');
  const titleDates=dates(title);const lines=content.split('\n').map(s=>s.trim()).filter(Boolean);
  const candidates=[...titleDates];

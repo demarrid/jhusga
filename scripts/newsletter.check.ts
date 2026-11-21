@@ -343,7 +343,7 @@ const url = searchUrl({ phrase: "student government", range: yearRange(2015), pa
 check(
     "a search is fenced to one calendar year",
     url.includes("ts_year=2015") && url.includes("te_year=2015") &&
-    url.includes("ts_month=1") && url.includes("te_month=12") && url.includes("te_day=31"),
+    url.includes("ts_month=01") && url.includes("te_month=12") && url.includes("te_day=31"),
     url,
 );
 check(
@@ -352,6 +352,12 @@ check(
     url,
 );
 check("the page and page size are asked for", url.includes("page=3") && url.includes("per_page=200"));
+check(
+    "months use the newspaper form's padded values but days stay unpadded",
+    new URL(url).searchParams.get("ts_month") === "01" &&
+    new URL(url).searchParams.get("ts_day") === "1",
+    url,
+);
 
 const recent = recentNewsletterSearchWindow(new Date("2026-03-02T15:00:00Z"));
 check(
@@ -368,9 +374,9 @@ const recentUrl = searchUrl({ phrase: "sga", page: 1, range: recent });
 check(
     "a routine search is fenced to that range",
     recentUrl.includes("ts_year=2026") &&
-    recentUrl.includes("ts_month=2") &&
+    recentUrl.includes("ts_month=02") &&
     recentUrl.includes("ts_day=27") &&
-    recentUrl.includes("te_month=3") &&
+    recentUrl.includes("te_month=03") &&
     recentUrl.includes("te_day=2"),
     recentUrl,
 );

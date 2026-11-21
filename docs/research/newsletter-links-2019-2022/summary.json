@@ -1,0 +1,59 @@
+{
+  "years": [
+    2019,
+    2020,
+    2021,
+    2022
+  ],
+  "candidateArticles": 591,
+  "scanned": 591,
+  "matchingArticles": 284,
+  "articlesWithLinks": 106,
+  "linkOccurrences": 240,
+  "uniqueExactUrls": 205,
+  "errors": [],
+  "researchDate": "2026-11-20",
+  "uniqueTargets": 196,
+  "heldTargets": 2,
+  "unmatchedTargets": 194,
+  "byYear": [
+    {
+      "year": 2019,
+      "candidates": 201,
+      "matchingArticles": 84,
+      "articlesWithLinks": 19,
+      "uniqueTargets": 38
+    },
+    {
+      "year": 2020,
+      "candidates": 181,
+      "matchingArticles": 84,
+      "articlesWithLinks": 39,
+      "uniqueTargets": 67
+    },
+    {
+      "year": 2021,
+      "candidates": 125,
+      "matchingArticles": 67,
+      "articlesWithLinks": 24,
+      "uniqueTargets": 54
+    },
+    {
+      "year": 2022,
+      "candidates": 84,
+      "matchingArticles": 49,
+      "articlesWithLinks": 24,
+      "uniqueTargets": 50
+    }
+  ],
+  "byType": {
+    "SharePoint file": 14,
+    "Google Doc": 119,
+    "Google Drive file": 15,
+    "Linked attachment": 31,
+    "Google Form": 6,
+    "Google Slides": 9,
+    "Google Sheet": 2
+  },
+  "scope": "Public News-Letter search candidates for sga, student council, and student government, 2019–2022 inclusive; all archived newspaper URLs in this period checked against candidate list."
+}

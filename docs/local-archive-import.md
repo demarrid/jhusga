@@ -61,3 +61,23 @@ node_modules/.bin/tsc --noEmit
 Historical Documents (`154WPl9-3wRYzhjqep7eOEP6BUS9L30_1`) and the photograph collection are excluded from automated walks and linked imports. The original inventory IDs are recorded in `config/manual-archive-ids.json`; linked new files are checked through their parent folders. Manual imports require an explicit chat request. Trainer feedback remains excluded.
 
 Imported `discoveredVia: archive` documents expose only current corrected text, including requests carrying old version IDs. Internal revisions remain stored but are not offered by the viewer. Summaries remain source-cited; unreadable sources cannot receive invented summaries.
+
+## Adding a new folder (2019-2022 Dump, November 21, 2026)
+
+The owner explicitly requested **2019-2022 Dump** (`1LfD5DSVxxmUDftwstL__1Ifcwt1Hbcb9`; local `C:\Real\College\2026-2027\SGA\2019-2022 Dump`). It is now manual-only like the other archive roots: the folder and its file IDs are in `config/manual-archive-ids.json` and `lib/manual-archive.ts`. Use the same steps for any future folder the owner names, with a new prefix:
+
+```sh
+node_modules/.bin/tsx scripts/archive-inventory.ts <folderId> .archive-local/<prefix>-inventory.json
+python3 scripts/archive-new-folder-match.py .archive-local/<prefix>-inventory.json "<local dir>" <prefix>
+python3 scripts/archive-native.py --manifest <prefix>-matches.json --prefix <prefix>
+python3 scripts/archive-vision.py --tasks .archive-local/<prefix>-vision-tasks.json --workers 6
+node_modules/.bin/tsx scripts/archive-publish.ts --manifest <prefix>-matches.json --prefix <prefix>          # dry run
+node_modules/.bin/tsx scripts/archive-publish.ts --manifest <prefix>-matches.json --prefix <prefix> --apply
+node_modules/.bin/tsx scripts/archive-date-all.ts --only .archive-local/<prefix>-publication-report.json --apply
+node_modules/.bin/tsx scripts/archive-summarize-batch.ts .archive-local/<prefix>-publication-report.json
+node_modules/.bin/tsx scripts/archive-verify-batch.ts <prefix>
+```
+
+Local copies are used only when their MD5 matches Drive, so no media downloads are needed. Manifest mode skips the photograph chains, writes `<prefix>-*` reports instead of the full-archive ones, and skips files whose text is identical to an existing site document (`<prefix>-duplicates.json`). Differing versions of an existing document are still published. Session numbers come from legislative codes (`SGA-B-1819`, `19.20`, `2122`, `2223`). Folder year ranges are used only when they name a single academic year. `--only` keeps the date pass from revisiting reviewed dates elsewhere. Reviewed categories and titles for this batch are in `scripts/archive-new-folder-kinds.ts`.
+
+Results: 132 files; 116 published, 16 skipped as identical to existing documents; 53 scanned pages read through vision; 54 dated; 5 left undated because their "considered" clauses give two different dates; all 116 summarized. The FY23 DOSL allocation is left undated because it says "March 28, 2021" while describing fiscal year 2022–2023. Its "Account Number" lines, like those in the FY21 and FY22 allocations, are SGA's university cost centers, not personal financial data.

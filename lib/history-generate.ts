@@ -200,34 +200,47 @@ async function extractDocument(
     document: CandidateDocument,
 ): Promise<{ status: "found" | "none" | "failed"; findings: HistoryFindingItem[]; model: string; error?: string; rejected: number }> {
     const excerpt = topicExcerpt(document.content, patterns);
-    let raw: { findings?: unknown[] };
-    let model = "";
-    try {
-        const generated = await generateJson<{ findings?: unknown[] }>({
-            system: extractionSystemPrompt(topic),
-            user: extractionUserPrompt(document, excerpt),
-            maxTokens: 6_000,
-        });
-        raw = generated.value;
-        model = generated.model;
-        if (!raw || !Array.isArray(raw.findings)) throw new Error("Extraction response must contain a findings array");
-    } catch (cause) {
-        return { status: "failed", findings: [], model, error: cause instanceof Error ? cause.message : String(cause), rejected: 0 };
-    }
-
     const threadIds = topic.threads.map((thread) => thread.id);
-    const findings: HistoryFindingItem[] = [];
+    let model = "";
+    let feedback = "";
     let rejected = 0;
-    for (const item of Array.isArray(raw.findings) ? raw.findings : []) {
-        const parsed = parseFindingItem(item, threadIds);
-        if (!parsed || !findQuote(document.content, parsed.quote)) {
-            rejected += 1;
-            continue;
+    // One correction attempt: a quote that repeats in the document (an agenda
+    // line asked of two members) cannot be anchored until it is lengthened.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        let raw: { findings?: unknown[] };
+        try {
+            const generated = await generateJson<{ findings?: unknown[] }>({
+                system: extractionSystemPrompt(topic),
+                user: extractionUserPrompt(document, excerpt) + feedback,
+                maxTokens: 6_000,
+            });
+            raw = generated.value;
+            model = generated.model;
+            if (!raw || !Array.isArray(raw.findings)) throw new Error("Extraction response must contain a findings array");
+        } catch (cause) {
+            return { status: "failed", findings: [], model, error: cause instanceof Error ? cause.message : String(cause), rejected: 0 };
         }
-        findings.push(parsed);
+
+        const findings: HistoryFindingItem[] = [];
+        const problems: string[] = [];
+        for (const item of raw.findings!) {
+            const parsed = parseFindingItem(item, threadIds);
+            if (!parsed) {
+                problems.push(`${JSON.stringify(item)}: missing or invalid fields`);
+            } else if (!findQuote(document.content, parsed.quote)) {
+                problems.push(document.content.includes(parsed.quote)
+                    ? `${JSON.stringify(parsed.quote)}: appears more than once; extend it with adjacent text so it occurs exactly once`
+                    : `${JSON.stringify(parsed.quote)}: not found verbatim in the document`);
+            } else {
+                findings.push(parsed);
+            }
+        }
+        rejected = problems.length;
+        if (!rejected) return { status: findings.length > 0 ? "found" : "none", findings, model, rejected };
+        feedback = "\n\nYour previous response had findings that failed validation:\n- " + problems.join("\n- ") +
+            "\nReturn a corrected complete response. Every quote must be copied exactly from the document and occur in it exactly once.";
     }
-    if (rejected) return { status: "failed", findings: [], model, rejected, error: `${rejected} invalid or unanchored finding(s)` };
-    return { status: findings.length > 0 ? "found" : "none", findings, model, rejected };
+    return { status: "failed", findings: [], model, rejected, error: `${rejected} invalid or unanchored finding(s)` };
 }
 
 async function pool<T>(items: T[], size: number, work: (item: T) => Promise<boolean>): Promise<void> {

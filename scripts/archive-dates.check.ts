@@ -8,6 +8,9 @@ assert.equal(c('Report','We discussed the meeting of November 12, 2019.').length
 assert.equal(c('Meeting 2/30/2019','').length,1); // only the stated year survives an invalid day
 console.log('Archive date evidence checks passed');
 
+assert.equal(c('2020 Voter Engagement Ambassador Program','Timeline\n10/5-10/9: Plan to Vote Week').every(x=>!x.date.startsWith('2010')),true);
+assert.equal(c('Screen Shot 2021-09-29 at 6.46.49 PM','Kevin LaMonica\nSeptember 21 at 9:07 PM').length,0);
+assert.equal(c('Senate Meeting 8 - 10-04-22','')[0].date.slice(0,10),'2022-10-04');
 assert.equal(c('SGA-B-1819.05 - FIJI the PUSH Funding Act','').length,0);
 assert.equal(c('SGA-R-1920.02 - Policy','').length,0);
 assert.equal(c('SGA-B-2021.02 - Example','').length,0);

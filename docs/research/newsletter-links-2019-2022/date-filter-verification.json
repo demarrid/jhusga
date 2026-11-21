@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-20",
+  "queryTerm": "sga",
+  "year": 2021,
+  "unadjusted": {
+    "startMonth": "1",
+    "startDay": "1",
+    "reportedResults": 33,
+    "articleResults": 23,
+    "earliestReturnedArticleMonth": "2021-04"
+  },
+  "corrected": {
+    "startMonth": "01",
+    "startDay": "1",
+    "reportedResults": 61,
+    "articleResults": 44,
+    "earliestReturnedArticleMonth": "2021-01"
+  },
+  "candidateCountsAllTerms": {
+    "unadjusted": 370,
+    "corrected": 591
+  },
+  "note": "Reported results include multimedia. The corrected URL uses the two-digit month values in the live search form; days remain unpadded."
+}
