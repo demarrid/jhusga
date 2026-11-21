@@ -36,3 +36,12 @@ export const CONFIRMED_BILL_PASSAGE = [{
     legislationFileId: "1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM",
     passedOn: "2026-10-20",
 }] as const;
+
+/** User-confirmed on 2026-11-21. S-B.114.09.01.26-4, the Clarifying
+ * Legislative Roles and Processes Act, passed. The 114th Bill Voting Records
+ * summary says Passed and second reading says Adopted on 2026-09-08, then
+ * Tabled on 2026-09-15. That later cell is not the Senate's result. History
+ * treats this file as passed. Other surfaces still follow billVoteDecision. */
+export const CONFIRMED_HISTORY_PASSAGE = [{
+    legislationFileId: "1bTvh4LaIvFiHSudl3pKimPpEYjbloTs2Y5NP-S0dCiI",
+}] as const;

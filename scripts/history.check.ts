@@ -259,5 +259,26 @@ assert.equal(
     "unrecorded",
     "a bill's own text, committees, and reporting never establish adoption",
 );
+const clerpa = readBillVotingRecords(
+    sheet(
+        "9/8/2026,4,Clarifying Legislative Roles and Processess Act (CLeRPA),Adopted\n" +
+            "9/15/2026,4,Clarifying Legislative Roles and Processess Act (CLeRPA),Tabled",
+    ),
+);
+const clerpaBill = {
+    ...bill("S-B.114.09.01.26-4 | Clarifying Legislative Roles and Processess Act (CLeRPA)"),
+    kind: "bill.bylaws_amendment",
+    driveFileId: "1bTvh4LaIvFiHSudl3pKimPpEYjbloTs2Y5NP-S0dCiI",
+};
+assert.equal(
+    legislationOutcome("legislation", [{ ...clerpaBill, driveFileId: "other-copy" }], clerpa),
+    "not_passed",
+    "a later tabled row is the register result",
+);
+assert.equal(
+    legislationOutcome("legislation", [clerpaBill], clerpa),
+    "passed",
+    "reviewed confirmation of S-B.114.09.01.26-4 overrides the later tabled row",
+);
 
 console.log("all history checks passed");

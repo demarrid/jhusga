@@ -24,6 +24,8 @@ Run one history generator at a time; concurrent publication is not coordinated.
    this privacy protection; code does not independently detect identities.
    Verify passage against Bill Voting Records, with Senate minutes as fallback.
    Conflicting results must remain inconclusive. Committee votes are not adoption.
+   A file listed in `CONFIRMED_HISTORY_PASSAGE` is passed; that review overrides
+   a conflicting later row in the register.
 5. After review, run `npm run history -- sexual-violence` and review again.
    Successful extraction caches from the sample are reused.
 

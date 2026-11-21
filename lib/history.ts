@@ -7,6 +7,7 @@ import {
 } from "@/config/history";
 import { sessionStartDate } from "@/config/session";
 import { HISTORY_DOCUMENT_DATES } from "@/config/history-dates";
+import { CONFIRMED_HISTORY_PASSAGE } from "@/config/passage-evidence";
 import { billVoteDecision, type BillVoteRecord } from "@/lib/bill-votes";
 import { ARCHIVE_DATE_PRECISION, formatDate, formatDateShort, formatMonthYear } from "@/lib/dates";
 import { splitIntoPassages } from "@/lib/passages";
@@ -382,7 +383,9 @@ function isLegislationDocument(kind: string): boolean {
  * the register is silent. A committee's recommendation, a reading, the bill's
  * own text, and newspaper reporting never establish adoption. Results that
  * disagree -- within the register, within the minutes, or between the two --
- * stay inconclusive rather than one being chosen silently.
+ * stay inconclusive rather than one being chosen silently. A file listed in
+ * CONFIRMED_HISTORY_PASSAGE is passed; that review overrides a conflicting
+ * later row in the register.
  */
 export function legislationOutcome(
     kind: HistoryEventKind,
@@ -394,8 +397,13 @@ export function legislationOutcome(
     const results = new Set<"passed" | "not_passed">();
     let ambiguous = false;
 
+    const confirmed = new Set(CONFIRMED_HISTORY_PASSAGE.map((item) => item.legislationFileId));
     for (const source of sources) {
         if (!isLegislationDocument(source.kind)) continue;
+        if (confirmed.has(source.driveFileId)) {
+            results.add("passed");
+            continue;
+        }
         const decision = billVoteDecision(source, votingRecords);
         if (decision.status === "ambiguous") ambiguous = true;
         if (decision.status === "passed" || decision.status === "not_passed") results.add(decision.status);
