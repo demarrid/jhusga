@@ -397,7 +397,7 @@ export function legislationOutcome(
     const results = new Set<"passed" | "not_passed">();
     let ambiguous = false;
 
-    const confirmed = new Set(CONFIRMED_HISTORY_PASSAGE.map((item) => item.legislationFileId));
+    const confirmed = new Set<string>(CONFIRMED_HISTORY_PASSAGE.map((item) => item.legislationFileId));
     for (const source of sources) {
         if (!isLegislationDocument(source.kind)) continue;
         if (confirmed.has(source.driveFileId)) {
