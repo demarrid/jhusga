@@ -75,3 +75,7 @@ Failed saves use instance-local exponential backoff: 60 seconds, 120 seconds,
 Warnings contain only a fixed error category and retry delay; no raw database
 error, query text, connection details or visitor data. Separate instances can
 each emit a warning. A successful save resets the backoff.
+
+Diagnostics also include an allowlisted error type and bounded Prisma/SQLSTATE
+codes, including codes nested under driver-adapter causes. Raw error messages,
+metadata, SQL and connection strings are still excluded.

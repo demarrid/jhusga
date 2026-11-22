@@ -1,4 +1,4 @@
-import { MetricRetry, metricFailure } from "./telemetry-retry";
+import { MetricRetry, metricFailure, metricDiagnostics } from "./telemetry-retry";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
@@ -53,7 +53,7 @@ export async function flushMetrics(): Promise<boolean> {
             return true;
         } catch (error) {
             const retryMs = retry.failed();
-            console.warn("Aggregate metrics save failed", { category: metricFailure(error), retrySeconds: retryMs / 1000 });
+            console.warn("Aggregate metrics save failed", { category: metricFailure(error), ...metricDiagnostics(error), retrySeconds: retryMs / 1000 });
             return false;
         }
     })();

@@ -1,4 +1,4 @@
-import { MetricRetry, metricFailure } from "../lib/telemetry-retry";
+import { MetricRetry, metricFailure, metricDiagnostics } from "../lib/telemetry-retry";
 import { POST } from "../app/api/metrics/reach/route";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -8,6 +8,14 @@ import { audience, routeGroup, requestKind } from "../lib/telemetry-policy";
 import { measureDatabase } from "../lib/telemetry";
 
 async function main() {
+    const wrapped = { name: "PrismaClientKnownRequestError", code: "P2010",
+        meta: { driverAdapterError: { cause: { originalCode: "42P01", message: "secret SQL" } } } };
+    assert.equal(metricFailure(wrapped), "schema-missing");
+    assert.deepEqual(metricDiagnostics(wrapped), { type: "PrismaClientKnownRequestError", codes: ["P2010", "42P01"] });
+    assert.deepEqual(metricDiagnostics({ name: "secret-name", code: "secret-credential", message: "secret SQL" }), { type: "other", codes: [] });
+    const cycle = { cause: {} }; cycle.cause = cycle;
+    assert.deepEqual(metricDiagnostics(cycle).codes, []);
+    assert.equal(metricFailure(new Error("unsupported startup parameter: secret")), "unsupported-connection-option");
     const retry = new MetricRetry();
     assert.equal(retry.failed(0), 60_000);
     assert.equal(retry.ready(59_999), false);
