@@ -22,7 +22,7 @@ export default function Footer() {
           <ScrollTopLink href="/documents">Documents</ScrollTopLink>
           <ScrollTopLink href="/contact">Contact</ScrollTopLink>
           <ScrollTopLink href="/discussion">Discussion</ScrollTopLink>
-          <ScrollTopLink href="/privacy">Privacy and metrics</ScrollTopLink>
+          <ScrollTopLink href="/history">History</ScrollTopLink>
         </nav>
       </div>
 
@@ -59,6 +59,7 @@ export default function Footer() {
 
       <div className={styles.finePrint}>
         <p>Student representation, legislation, and public records.</p>
+        <ScrollTopLink href="/privacy">Privacy and metrics</ScrollTopLink>
       </div>
     </footer>
   );

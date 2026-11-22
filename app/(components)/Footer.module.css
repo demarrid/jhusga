@@ -101,14 +101,27 @@
   letter-spacing: 0.025em;
 }
 
+.finePrint a {
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  margin-left: auto;
+  text-align: right;
+}
+
 .finePrint p {
   margin: 0;
 }
 
 @media (max-width: 720px) {
-  .topline,
-  .finePrint {
+  .topline {
     flex-direction: column;
+  }
+
+  .finePrint {
+    gap: 1rem;
+    align-items: baseline;
   }
 
   .navigation {
