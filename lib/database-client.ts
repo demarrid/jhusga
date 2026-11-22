@@ -3,11 +3,13 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
 import { demoModeEnabled } from "./data-mode";
+import { metricFailure } from "./telemetry-retry";
 
 // One pool per JS runtime, shared by instrumented application queries and raw
 // telemetry writes. Vercel instances still each need their own bounded pool.
 export const DATABASE_POOL_MAX = 2;
 export const DATABASE_IDLE_MS = 1000;
+export const CONNECTION_LIMIT_RETRY_MS = [100, 300, 900];
 type Database = { pool: Pool; client: PrismaClient };
 const state = globalThis as unknown as { sgaDatabase?: Database };
 
@@ -25,6 +27,19 @@ export function database() {
     const client = new PrismaClient({ adapter: new PrismaPg(pool, { disposeExternalPool: true }) });
     state.sgaDatabase = { pool, client };
     return state.sgaDatabase;
+}
+
+/**
+ * Retry while the server refuses new connections (53300 / P2037). The refusal
+ * happens before any statement runs, so a retry cannot repeat a write.
+ */
+export async function retryConnectionLimit<T>(run: () => Promise<T>, delays = CONNECTION_LIMIT_RETRY_MS): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+        try { return await run(); } catch (error) {
+            if (attempt >= delays.length || metricFailure(error) !== "connection-limit") throw error;
+            await new Promise(resolve => setTimeout(resolve, delays[attempt] * (0.5 + Math.random())));
+        }
+    }
 }
 
 /** CLI/test shutdown only. Never disconnect at the end of a web request. */

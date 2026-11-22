@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { database } from "@/lib/database-client";
+import { database, retryConnectionLimit } from "@/lib/database-client";
 import { measureDatabase } from "@/lib/telemetry";
 
 /**
@@ -32,7 +32,7 @@ function createPrismaClient() {
     // Keep the existing TransactionClient-compatible public type.
     return database().client.$extends({
         query: { $allOperations({ args, query }) {
-            return measureDatabase(() => query(args));
+            return measureDatabase(() => retryConnectionLimit(() => query(args)));
         } },
     }) as unknown as PrismaClient;
 }

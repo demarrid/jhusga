@@ -47,7 +47,9 @@ export async function flushMetrics(): Promise<boolean> {
         if (!pending) return true;
         try {
             const { persistMetrics } = await import("./telemetry-store");
-            await persistMetrics(pending.id, pending.rows);
+            const { retryConnectionLimit } = await import("./database-client");
+            const batch = pending;
+            await retryConnectionLimit(() => persistMetrics(batch.id, batch.rows));
             pending = undefined;
             retry.succeeded();
             return true;
