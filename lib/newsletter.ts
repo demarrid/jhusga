@@ -270,9 +270,8 @@ export function yearRange(year: number): SearchRange {
 }
 
 /** The inclusive range a routine run searches: today and the few days before. */
-export function recentNewsletterSearchWindow(now = new Date()): SearchRange {
-    const start = new Date(now);
-    start.setUTCDate(start.getUTCDate() - NEWSLETTER_RECENT_DAYS);
+export function recentNewsletterSearchWindow(now = new Date(), checkedThrough?: Date): SearchRange {
+    const start = checkedThrough ?? new Date(now.getTime() - NEWSLETTER_RECENT_DAYS * 86_400_000);
     return { from: utcCalendarDay(start), to: utcCalendarDay(now) };
 }
 
@@ -630,8 +629,15 @@ let lastRequestAt = 0;
  * loop, the article fetch and a retry after a 503 all queue behind the same
  * clock, and adding a caller cannot accidentally make the crawl faster.
  */
-async function waitForTurn(): Promise<void> {
+export class NewsletterBudgetReached extends Error {
+    constructor() {
+        super("News-Letter request budget reached");
+    }
+}
+
+async function waitForTurn(deadline: number): Promise<void> {
     const wait = lastRequestAt + NEWSLETTER_REQUEST_DELAY_MS - Date.now();
+    if (Date.now() + Math.max(0, wait) >= deadline) throw new NewsletterBudgetReached();
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     lastRequestAt = Date.now();
 }
@@ -645,29 +651,39 @@ async function waitForTurn(): Promise<void> {
  * run -- so the status is returned rather than thrown on, and the caller
  * decides.
  */
-async function newsletterFetch(url: string, attempt = 0): Promise<Response> {
-    await waitForTurn();
+async function newsletterFetch(url: string, deadline: number, attempt = 0): Promise<Response> {
+    await waitForTurn(deadline);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new NewsletterBudgetReached();
 
     const response = await fetch(url, {
         headers: { "User-Agent": NEWSLETTER_USER_AGENT },
         cache: "no-store",
+        signal: AbortSignal.timeout(Math.min(15_000, remaining)),
     });
 
     const retriable = response.status === 429 || response.status >= 500;
     if (retriable && attempt < NEWSLETTER_MAX_RETRIES) {
         const backoffMs = NEWSLETTER_RETRY_BASE_MS * 2 ** attempt;
+        await response.body?.cancel();
+        if (Date.now() + backoffMs >= deadline) throw new NewsletterBudgetReached();
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        return newsletterFetch(url, attempt + 1);
+        return newsletterFetch(url, deadline, attempt + 1);
     }
 
     return response;
 }
 
 /** The HTML of a page, or null when the site will not serve it. */
-export async function fetchPage(url: string): Promise<string | null> {
-    const response = await newsletterFetch(url);
-    if (!response.ok) return null;
-    return response.text();
+export async function fetchPage(url: string, deadline = Infinity): Promise<string | null> {
+    try {
+        const response = await newsletterFetch(url, deadline);
+        if (!response.ok) return null;
+        return await response.text();
+    } catch (cause) {
+        if (Date.now() >= deadline) throw new NewsletterBudgetReached();
+        throw cause;
+    }
 }
 
 /**
@@ -683,6 +699,7 @@ export async function searchWindow(
     range: SearchRange,
     options: {
         maxPages: number;
+        deadline?: number;
         /** `reported` is the engine's own hit count, which may be its cap. */
         onPage?: (page: number, found: number, reported: number | null) => void;
     },
@@ -690,14 +707,18 @@ export async function searchWindow(
     const found = new Map<string, SearchResult>();
 
     for (let page = 1; page <= options.maxPages; page += 1) {
-        const html = await fetchPage(searchUrl({ phrase, page, range }));
-        if (html === null) break;
+        const html = await fetchPage(searchUrl({ phrase, page, range }), options.deadline);
+        if (html === null) throw new Error("News-Letter search failed; checkpoint not advanced");
 
         const results = parseSearchResults(html);
         options.onPage?.(page, results.length, parseResultCount(html));
         if (results.length === 0) break;
 
         for (const result of results) found.set(result.fileId, result);
+        // Avoid spending a crawl-delay interval on a known empty next page.
+        const reported = parseResultCount(html);
+        if (reported !== null && found.size >= reported) break;
+        if (page === options.maxPages) throw new Error("News-Letter search pagination incomplete; checkpoint not advanced");
     }
 
     return [...found.values()];
@@ -708,6 +729,7 @@ export async function searchYear(
     year: number,
     options: {
         maxPages: number;
+        deadline?: number;
         /** `reported` is the engine's own hit count, which may be its cap. */
         onPage?: (page: number, found: number, reported: number | null) => void;
     },
@@ -716,8 +738,8 @@ export async function searchYear(
 }
 
 /** One article, parsed, or null when the page is gone or unreadable. */
-export async function fetchArticle(url: string): Promise<NewsletterArticle | null> {
-    const html = await fetchPage(url);
+export async function fetchArticle(url: string, deadline = Infinity): Promise<NewsletterArticle | null> {
+    const html = await fetchPage(url, deadline);
     if (html === null) return null;
     return parseArticle(html, url);
 }

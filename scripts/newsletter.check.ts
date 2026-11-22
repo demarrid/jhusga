@@ -361,10 +361,10 @@ check(
 
 const recent = recentNewsletterSearchWindow(new Date("2026-03-02T15:00:00Z"));
 check(
-    "a routine run searches today and the three days before, across a month end",
+    "a routine run searches today and yesterday on the first check",
     JSON.stringify(recent) ===
     JSON.stringify({
-        from: { year: 2026, month: 2, day: 27 },
+        from: { year: 2026, month: 3, day: 1 },
         to: { year: 2026, month: 3, day: 2 },
     }),
     recent,
@@ -374,8 +374,8 @@ const recentUrl = searchUrl({ phrase: "sga", page: 1, range: recent });
 check(
     "a routine search is fenced to that range",
     recentUrl.includes("ts_year=2026") &&
-    recentUrl.includes("ts_month=02") &&
-    recentUrl.includes("ts_day=27") &&
+    recentUrl.includes("ts_month=03") &&
+    recentUrl.includes("ts_day=1") &&
     recentUrl.includes("te_month=03") &&
     recentUrl.includes("te_day=2"),
     recentUrl,
@@ -383,7 +383,7 @@ check(
 check(
     "routine ingest searches fewer phrases than backfill",
     NEWSLETTER_ROUTINE_SEARCH_PHRASES.join() === "sga,student government" &&
-    NEWSLETTER_RECENT_DAYS === 3,
+    NEWSLETTER_RECENT_DAYS === 1,
     [NEWSLETTER_ROUTINE_SEARCH_PHRASES.join(), NEWSLETTER_RECENT_DAYS],
 );
 check(

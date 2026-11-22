@@ -6,7 +6,7 @@ import {
     type HistoryTopicDefinition,
 } from "@/config/history";
 import { sessionStartDate } from "@/config/session";
-import { HISTORY_DOCUMENT_DATES } from "@/config/history-dates";
+import { HISTORY_DOCUMENT_DATES, reviewedFindingDate } from "@/config/history-dates";
 import { CONFIRMED_HISTORY_PASSAGE } from "@/config/passage-evidence";
 import { billVoteDecision, type BillVoteRecord } from "@/lib/bill-votes";
 import { ARCHIVE_DATE_PRECISION, formatDate, formatDateShort, formatMonthYear } from "@/lib/dates";
@@ -209,7 +209,9 @@ const FUTURE_SLACK_MS = 366 * 24 * 60 * 60 * 1000;
  * to; then the middle of the document's session; then Drive's created time,
  * which a copied template can put months out.
  */
-export function resolveFindingDate(statedDate: string | null, document: DatableDocument): ResolvedDate {
+export function resolveFindingDate(statedDate: string | null, document: DatableDocument, quote = ""): ResolvedDate {
+    const reviewed = reviewedFindingDate(document.id, quote);
+    if (reviewed) return { date: new Date(reviewed.date), precision: reviewed.precision };
     const own = documentDate(document);
 
     const stated = statedDate ? parseStatedDate(statedDate) : null;

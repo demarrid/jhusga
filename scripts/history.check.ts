@@ -282,3 +282,16 @@ assert.equal(
 );
 
 console.log("all history checks passed");
+
+// Reviewed dates stay specific to quoted projects, even when extraction guesses
+// a spreadsheet member-heading date. Unrelated rows retain normal resolution.
+const workLog = { id: '203da8e0-2ec3-443b-880c-fc9cbe26c220', datedAt: null, driveCreatedTime: null, sessionNumber: null };
+for (const quote of ['jumpstarted collaboration with CHEW', 'foundations for an anonymous blog', 'reached out to SARU', 'interactive resources flowchart']) {
+    const dated = resolveFindingDate('2020-09-29', workLog, quote);
+    assert.equal(dated.precision, 'month');
+    assert.equal(dated.date?.toISOString(), '2021-04-15T12:00:00.000Z');
+}
+assert.equal(resolveFindingDate(null, workLog, 'FSL OIE Investigation Team - attending meetings').precision, 'session');
+assert.equal(resolveFindingDate(null, workLog, 'Unrelated project').date, null);
+assert.equal(resolveFindingDate(null, workLog, 'Requested that a special forum be held to discuss the drugging allegations').date?.toISOString(), '2020-11-15T12:00:00.000Z');
+assert.equal(resolveFindingDate(null, { ...workLog, id: '243b8b92-fdd0-40f8-9531-8b4c2fa84a31' }, 'Sexual Assault Resources/OIE Reform').date?.toISOString(), '2019-10-29T12:00:00.000Z');

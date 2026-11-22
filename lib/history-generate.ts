@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 
 import { historyTopic, type HistoryTopicDefinition } from "@/config/history";
-import { HISTORY_DOCUMENT_DATES } from "@/config/history-dates";
+import { HISTORY_DOCUMENT_DATES, reviewedFindingDate } from "@/config/history-dates";
 import { generateJson, isAiQuotaExhausted } from "@/lib/ai";
 import { findQuote } from "@/lib/anchor";
 import { isBillVotingRecord, readBillVotingRecords, type BillVoteRecord } from "@/lib/bill-votes";
@@ -416,6 +416,8 @@ async function writeBatch(
 
         const span = eventSpan(event.findings);
         const dateNotes = [...new Set(event.findings.flatMap((finding) => {
+            const reviewedFinding = reviewedFindingDate(finding.document.id, finding.quote);
+            if (reviewedFinding) return [reviewedFinding.note];
             const reviewed = HISTORY_DOCUMENT_DATES[finding.document.id];
             return reviewed && !finding.statedDate && span.precision === "year" &&
                 span.occurredAt?.getUTCFullYear() === reviewed.year ? [reviewed.note] : [];
@@ -585,7 +587,7 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
         const row = cached.get(document.id);
         if (!row || row.status !== "found" || row.promptHash !== findingHash(topicHash, document)) continue;
         (row.findings as HistoryFindingItem[]).forEach((finding, index) => {
-            const { date, precision } = resolveFindingDate(finding.statedDate, document);
+            const { date, precision } = resolveFindingDate(finding.statedDate, document, finding.quote);
             placed.push({ ...finding, key: `${document.id}:${index}`, document, date, precision });
         });
     }

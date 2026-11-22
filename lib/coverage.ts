@@ -46,6 +46,7 @@ import {
     articleBody,
     articleMarkdown,
     fetchArticle,
+    NewsletterBudgetReached,
     matchedPhrases,
     recentNewsletterSearchWindow,
     searchWindow,
@@ -144,7 +145,7 @@ type CoverageSearchPass =
  * so the next run's resume point is a year rather than a guess. A routine run
  * fences to the last few days, because that is where anything new is.
  */
-function searchPasses(options: CoverageOptions): CoverageSearchPass[] {
+function searchPasses(options: CoverageOptions, now: Date, checkedThrough?: Date): CoverageSearchPass[] {
     if (options.years?.length) {
         return [{ mode: "years", years: options.years }];
     }
@@ -159,7 +160,7 @@ function searchPasses(options: CoverageOptions): CoverageSearchPass[] {
         return [{ mode: "years", years }];
     }
 
-    return [{ mode: "recent", window: recentNewsletterSearchWindow() }];
+    return [{ mode: "recent", window: recentNewsletterSearchWindow(now, checkedThrough) }];
 }
 
 function phrasesToSearch(options: CoverageOptions): readonly string[] {
@@ -368,6 +369,15 @@ export async function ingestNewsletterCoverage(
     const limit = options.limit ?? MAX_ARTICLES_PER_RUN;
     const deadline = Date.now() + (options.runBudgetMs ?? NEWSLETTER_RUN_BUDGET_MS);
 
+    const startedAt = new Date();
+    const routine = !options.backfill && !options.years?.length && !options.refetch;
+    // Persist the initial boundary too, so an unsuccessful first run can resume.
+    const checkpoint = routine ? await prisma.newsletterCheckpoint.upsert({
+        where: { id: "daily" },
+        create: { id: "daily", checkedThrough: new Date(startedAt.getTime() - 86_400_000) },
+        update: {},
+    }) : null;
+
     const held = new Set(
         (
             await prisma.document.findMany({
@@ -416,7 +426,7 @@ export async function ingestNewsletterCoverage(
             }
 
             fetched += 1;
-            const article = await fetchArticle(result.url);
+            const article = await fetchArticle(result.url, deadline);
 
             if (!article) {
                 summary.articlesUnreadable += 1;
@@ -431,67 +441,83 @@ export async function ingestNewsletterCoverage(
                 continue;
             }
 
-            options.onEvent?.(await storeArticle(article, summary));
+            const event = await storeArticle(article, summary);
+            options.onEvent?.(event);
         }
 
         return false;
     };
 
-    for (const pass of searchPasses(options)) {
-        if (pass.mode === "recent") {
-            const candidates = new Map<string, SearchResult>();
-            const logYear = pass.window.to.year;
+    try {
+        for (const pass of searchPasses(options, startedAt, checkpoint?.checkedThrough)) {
+            if (pass.mode === "recent") {
+                const candidates = new Map<string, SearchResult>();
+                const logYear = pass.window.to.year;
 
-            for (const phrase of phrases) {
-                const results = await searchWindow(phrase, pass.window, {
-                    maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
-                    onPage: (page, found, reported) => {
-                        summary.searchesRun += 1;
-                        if (
-                            reported === NEWSLETTER_SEARCH_RESULT_CAP &&
-                            !summary.truncatedYears.includes(logYear)
-                        ) {
-                            summary.truncatedYears.push(logYear);
-                        }
-                        options.onSearch?.(phrase, logYear, page, found);
-                    },
-                });
+                for (const phrase of phrases) {
+                    const results = await searchWindow(phrase, pass.window, {
+                        deadline,
+                        maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
+                        onPage: (page, found, reported) => {
+                            summary.searchesRun += 1;
+                            if (
+                                reported === NEWSLETTER_SEARCH_RESULT_CAP &&
+                                !summary.truncatedYears.includes(logYear)
+                            ) {
+                                summary.truncatedYears.push(logYear);
+                            }
+                            options.onSearch?.(phrase, logYear, page, found);
+                        },
+                    });
 
-                for (const result of results) {
-                    if (!listedOnInWindow(result.listedOn, pass.window)) continue;
-                    candidates.set(result.fileId, result);
+                    for (const result of results) {
+                        if (!listedOnInWindow(result.listedOn, pass.window)) continue;
+                        candidates.set(result.fileId, result);
+                    }
                 }
+
+                if (await workCandidates(candidates)) return summary;
+                continue;
             }
 
-            if (await workCandidates(candidates)) return summary;
-            continue;
-        }
+            for (const year of pass.years) {
+                const candidates = new Map<string, SearchResult>();
 
-        for (const year of pass.years) {
-            const candidates = new Map<string, SearchResult>();
+                for (const phrase of phrases) {
+                    const results = await searchYear(phrase, year, {
+                        deadline,
+                        maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
+                        onPage: (page, found, reported) => {
+                            summary.searchesRun += 1;
+                            if (
+                                reported === NEWSLETTER_SEARCH_RESULT_CAP &&
+                                !summary.truncatedYears.includes(year)
+                            ) {
+                                summary.truncatedYears.push(year);
+                            }
+                            options.onSearch?.(phrase, year, page, found);
+                        },
+                    });
 
-            for (const phrase of phrases) {
-                const results = await searchYear(phrase, year, {
-                    maxPages: MAX_SEARCH_PAGES_PER_WINDOW,
-                    onPage: (page, found, reported) => {
-                        summary.searchesRun += 1;
-                        if (
-                            reported === NEWSLETTER_SEARCH_RESULT_CAP &&
-                            !summary.truncatedYears.includes(year)
-                        ) {
-                            summary.truncatedYears.push(year);
-                        }
-                        options.onSearch?.(phrase, year, page, found);
-                    },
-                });
+                    for (const result of results) candidates.set(result.fileId, result);
+                }
 
-                for (const result of results) candidates.set(result.fileId, result);
+                if (await workCandidates(candidates)) return summary;
             }
-
-            if (await workCandidates(candidates)) return summary;
         }
+
+    } catch (cause) {
+        if (!(cause instanceof NewsletterBudgetReached)) throw cause;
+        summary.budgetReached = true;
     }
 
+    if (routine && !summary.budgetReached && summary.articlesUnreadable === 0 && summary.truncatedYears.length === 0) {
+        // A slower overlapping run must never move the checkpoint backwards.
+        await prisma.newsletterCheckpoint.updateMany({
+            where: { id: "daily", checkedThrough: { lt: startedAt } },
+            data: { checkedThrough: startedAt },
+        });
+    }
     return summary;
 }
 

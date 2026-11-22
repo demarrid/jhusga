@@ -9,7 +9,7 @@
         },
         {
             "path": "/api/cron/newsletter",
-            "schedule": "30 8 * * *"
+            "schedule": "30 6 * * *"
         },
         {
             "path": "/api/cron/summaries",

@@ -57,6 +57,7 @@ export async function GET(request: Request) {
             // A little under the platform's limit, so the run records what it
             // did instead of being killed mid-article with nothing to show.
             runBudgetMs: Math.min(NEWSLETTER_RUN_BUDGET_MS, 40_000),
+            limit: 2,
         });
 
         return Response.json({ ok: true, newsletter });

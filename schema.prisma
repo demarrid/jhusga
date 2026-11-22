@@ -745,6 +745,11 @@ model SyncRun {
 // A miss is a judgement under the phrase list in config/newsletter.ts, not a
 // fact about the article. Widening that list means these rows are stale: delete
 // them, or run with --refetch, which ignores them.
+model NewsletterCheckpoint {
+  id            String   @id
+  checkedThrough DateTime
+}
+
 model NewsletterMiss {
     /** "newsletter:2025/10/<slug>", as Document.driveFileId would hold it. */
     fileId String @id

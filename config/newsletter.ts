@@ -135,12 +135,13 @@ export const NEWSLETTER_RUN_BUDGET_MS = Number(
 /**
  * How far back a routine run searches, in whole calendar days.
  *
- * New coverage is published in the last few days, so the cron and a manual
- * `npm run sync` fence search to this window and only issue two queries
+ * Only the first check defaults to yesterday; later checks resume from the persisted
+ * last completed check. The cron and a manual
+ * `npm run sync` fence search to this window and issue two phrase queries
  * (NEWSLETTER_ROUTINE_SEARCH_PHRASES). Reaching the rest of the archive is
  * what `--backfill` is for.
  */
-export const NEWSLETTER_RECENT_DAYS = 3;
+export const NEWSLETTER_RECENT_DAYS = 1;
 
 /**
  * The most results the paper's search will report for one query, ever.

@@ -222,6 +222,23 @@ else's crawl delay cannot share a five-minute function with one that has to
 finish. Reaching 2001 is `npm run newsletter -- --backfill`, or
 `npm run sync -- --newsletter-backfill`.
 
+The daily newsletter check runs at 06:30 UTC, before the Drive and summary
+jobs. It resumes from a persisted last completed check (yesterday on the first
+run), skips articles already processed, and fetches at most two new
+candidates per run. Search, crawl delays, response bodies, and retries share
+a 40-second network deadline; the route retains a 60-second maximum to leave
+headroom for database writes. Completed search result counts avoid an extra
+request for an empty page. A budget-limited run reports `budgetReached` and
+retains the checkpoint so subsequent days retry the remaining candidates. Failed
+searches, unreadable articles, and truncated results also retain the checkpoint.
+The search uses calendar dates, so it includes the day of the last check; already
+processed articles are skipped. The checkpoint migration runs during deployment.
+Older gaps still need a manual year-specific run or backfill.
+
+Public article pages show the generated summary and a link to the original
+News-Letter article, without the article body or citation quotations. Source
+text is still stored internally for summary generation and verification.
+
 The search is not restricted to the paper's `Archives` tag. That tag is the
 digitised print section and ends around 2012; the year-fenced queries include
 those pages and everything published online since. Natural-language search
