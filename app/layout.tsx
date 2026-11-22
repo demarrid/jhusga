@@ -1,3 +1,4 @@
+import ReachCounter from "./(components)/ReachCounter";
 import type { Metadata, Viewport } from "next";
 import { Source_Serif_4, Work_Sans } from "next/font/google";
 import Footer from "./(components)/Footer";
@@ -79,6 +80,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />
+        {process.env.TELEMETRY_ENABLED === "true" && <ReachCounter />}
       </body>
     </html >
   );

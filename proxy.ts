@@ -1,3 +1,4 @@
+import { recordMetric } from "@/lib/telemetry";
 import { NextResponse, type NextRequest } from "next/server";
 import { audience, requestKind, routeGroup } from "@/lib/telemetry-policy";
 
@@ -6,8 +7,7 @@ export function proxy(request: NextRequest) {
         const source = audience(request.headers);
         if (source) {
             try {
-                console.log(JSON.stringify({ metric: "sga.request.v1", route: routeGroup(request.nextUrl.pathname),
-                    source, kind: requestKind(request.headers), count: 1 }));
+                recordMetric("request", routeGroup(request.nextUrl.pathname), source, requestKind(request.headers));
             } catch { /* Metrics must never prevent access. */ }
         }
     }

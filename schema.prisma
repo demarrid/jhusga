@@ -1141,3 +1141,24 @@ model AmendmentClearance {
     @@index([documentId, checkedAt])
     @@index([revisionId])
 }
+
+// Aggregate counters only; never visitor records.
+model TelemetryHour {
+  hour DateTime @db.Timestamptz
+  environment String
+  metric String
+  route String
+  source String
+  kind String
+  count BigInt @default(0)
+  errors BigInt @default(0)
+  durationMs Float @default(0)
+  @@id([hour, environment, metric, route, source, kind])
+}
+
+// Short-lived idempotency receipts for server write batches, not visitor IDs.
+model TelemetryBatch {
+  id String @id
+  createdAt DateTime @default(now()) @db.Timestamptz
+  @@index([createdAt])
+}

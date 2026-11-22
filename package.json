@@ -6,6 +6,7 @@
     "node": "^20.19 || ^22.12 || ^24.0"
   },
   "scripts": {
+    "metrics": "tsx scripts/metrics.ts",
     "dev": "next dev",
     "build": "next build",
     "vercel-build": "prisma migrate deploy && npm run build",
