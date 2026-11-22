@@ -1,3 +1,4 @@
+import { measureSync } from "@/lib/telemetry";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
@@ -676,7 +677,7 @@ export async function dispatchSyncContinuation(runId: string, origin: string, se
  * the run stalls at its last checkpoint until the button or the cron resumes it.
  */
 export async function continueSyncRun(runId: string, origin: string): Promise<SliceOutcome> {
-    const outcome = await runSyncSlice(runId);
+    const outcome = await measureSync(() => runSyncSlice(runId));
     if (outcome !== "more") return outcome;
 
     const secret = process.env.CRON_SECRET;

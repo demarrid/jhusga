@@ -1,6 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { demoModeEnabled } from "@/lib/data-mode";
+import { measureDatabase } from "@/lib/telemetry";
 
 /**
  * Prisma 7 connects through a driver adapter rather than a URL in the schema.
@@ -43,7 +44,13 @@ function createPrismaClient() {
         );
     }
 
-    return new PrismaClient({ adapter: new PrismaPg(url) });
+    // Query-only extension preserves model results and transaction behavior.
+    // Keep the existing TransactionClient-compatible public type.
+    return new PrismaClient({ adapter: new PrismaPg(url) }).$extends({
+        query: { $allOperations({ args, query }) {
+            return measureDatabase(() => query(args));
+        } },
+    }) as unknown as PrismaClient;
 }
 
 // Next's dev server re-evaluates modules on every edit, which would otherwise

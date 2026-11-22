@@ -35,6 +35,7 @@ import path from "node:path";
  * lib/prisma.ts, which is what makes that true.
  */
 const SUITES = [
+    "telemetry",
     "sign-in-email",
     "anchor",
     "archive",

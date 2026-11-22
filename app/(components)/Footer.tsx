@@ -22,6 +22,7 @@ export default function Footer() {
           <ScrollTopLink href="/documents">Documents</ScrollTopLink>
           <ScrollTopLink href="/contact">Contact</ScrollTopLink>
           <ScrollTopLink href="/discussion">Discussion</ScrollTopLink>
+          <ScrollTopLink href="/privacy">Privacy and metrics</ScrollTopLink>
         </nav>
       </div>
 
