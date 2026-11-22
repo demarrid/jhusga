@@ -1,3 +1,4 @@
+import { MetricRetry, metricFailure } from "../lib/telemetry-retry";
 import { POST } from "../app/api/metrics/reach/route";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -7,6 +8,19 @@ import { audience, routeGroup, requestKind } from "../lib/telemetry-policy";
 import { measureDatabase } from "../lib/telemetry";
 
 async function main() {
+    const retry = new MetricRetry();
+    assert.equal(retry.failed(0), 60_000);
+    assert.equal(retry.ready(59_999), false);
+    assert.equal(retry.ready(60_000), true);
+    assert.equal(retry.failed(60_000), 120_000);
+    retry.failed(180_000);
+    assert.equal(retry.failed(420_000), 300_000);
+    retry.succeeded();
+    assert.equal(retry.ready(0), true);
+    assert.equal(retry.failed(0), 60_000);
+    assert.equal(metricFailure({ code: "P2010", meta: { code: "42P01" }, message: "sensitive SQL" }), "schema-missing");
+    assert.equal(metricFailure(new Error("secret credentials")), "unknown");
+    assert.equal(metricFailure(new Error("Cannot find module secret/path")), "runtime-module");
     process.env.TELEMETRY_ENABLED = "false";
     assert.equal(audience(new Headers({ dnt: "1", "user-agent": "Googlebot" })), null);
     assert.equal(audience(new Headers({ "sec-gpc": "1" })), null);

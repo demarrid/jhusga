@@ -1,3 +1,4 @@
+import { MetricRetry, metricFailure } from "./telemetry-retry";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
@@ -10,6 +11,7 @@ let pending: { id: string; rows: Metric[]; at: number } | undefined;
 let flushing: Promise<boolean> | undefined;
 let timer: ReturnType<typeof setInterval> | undefined;
 let cleanupAt = 0;
+const retry = new MetricRetry();
 export const telemetryEnabled = () => process.env.TELEMETRY_ENABLED === "true";
 
 export function recordMetric(metric: "request" | "database" | "daily-browser", route: string, source: string, kind: string, errors = 0, durationMs = 0) {
@@ -30,6 +32,7 @@ export function recordMetric(metric: "request" | "database" | "daily-browser", r
     if (row.count >= 100) void flushMetrics();
 }
 export async function flushMetrics(): Promise<boolean> {
+    if (!retry.ready()) return false;
     if (flushing) {
         const ok = await flushing;
         return ok && (buckets.size ? flushMetrics() : true);
@@ -46,9 +49,11 @@ export async function flushMetrics(): Promise<boolean> {
             const { persistMetrics } = await import("./telemetry-store");
             await persistMetrics(pending.id, pending.rows);
             pending = undefined;
+            retry.succeeded();
             return true;
-        } catch {
-            console.warn("Aggregate metrics could not be saved; pending batch retained temporarily.");
+        } catch (error) {
+            const retryMs = retry.failed();
+            console.warn("Aggregate metrics save failed", { category: metricFailure(error), retrySeconds: retryMs / 1000 });
             return false;
         }
     })();

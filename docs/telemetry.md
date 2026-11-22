@@ -69,3 +69,9 @@ Keep the sync cron running. Reports are restricted to the last 90 dates.
 Database backups and provider/security logs have separate retention controls.
 These metrics are for capacity planning and coarse reach, never advertising,
 personalization, user scoring, identity reconstruction, or access restrictions.
+
+Failed saves use instance-local exponential backoff: 60 seconds, 120 seconds,
+240 seconds, then at most one attempt per 300 seconds until a save succeeds.
+Warnings contain only a fixed error category and retry delay; no raw database
+error, query text, connection details or visitor data. Separate instances can
+each emit a warning. A successful save resets the backoff.
