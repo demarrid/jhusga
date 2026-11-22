@@ -36,6 +36,7 @@ import path from "node:path";
  */
 const SUITES = [
     "telemetry",
+    "telemetry-pool",
     "sign-in-email",
     "anchor",
     "archive",

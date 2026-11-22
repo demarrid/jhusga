@@ -1,6 +1,5 @@
-import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { demoModeEnabled } from "@/lib/data-mode";
+import { database } from "@/lib/database-client";
 import { measureDatabase } from "@/lib/telemetry";
 
 /**
@@ -29,24 +28,9 @@ import { measureDatabase } from "@/lib/telemetry";
  * first query with the same message it used to fail on at import.
  */
 function createPrismaClient() {
-    // Demo reads return before touching Prisma; the inert URL only allows the
-    // modules to load when local credentials have not been configured.
-    const url = process.env.DATABASE_URL ?? (demoModeEnabled()
-        ? "postgresql://demo:demo@127.0.0.1:1/demo"
-        : undefined);
-    if (!url) {
-        throw new Error("DATABASE_URL is not set; copy .env.example to .env");
-    }
-
-    if (url.startsWith("file:")) {
-        throw new Error(
-            "DATABASE_URL points at a SQLite file, but the schema is now postgresql. Use a Postgres connection string.",
-        );
-    }
-
     // Query-only extension preserves model results and transaction behavior.
     // Keep the existing TransactionClient-compatible public type.
-    return new PrismaClient({ adapter: new PrismaPg(url) }).$extends({
+    return database().client.$extends({
         query: { $allOperations({ args, query }) {
             return measureDatabase(() => query(args));
         } },

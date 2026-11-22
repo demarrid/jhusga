@@ -26,7 +26,7 @@ export function metricDiagnostics(error: unknown) {
 export function metricFailure(error: unknown): string {
     const codes: Record<string, string> = {
         "42P01": "schema-missing", "42501": "permission-denied", "28P01": "authentication",
-        "53300": "connection-limit", "57014": "query-timeout", "P1000": "authentication",
+        "53300": "connection-limit", "P2037": "connection-limit", "57014": "query-timeout", "P1000": "authentication",
         "P1001": "connection-unreachable", "P1002": "connection-timeout",
         "P2024": "pool-timeout", "P2021": "schema-missing", "P1011": "tls",
         "ECONNRESET": "connection-reset", "ECONNREFUSED": "connection-refused",

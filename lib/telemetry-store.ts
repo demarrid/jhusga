@@ -1,13 +1,8 @@
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { database, closeDatabase } from "./database-client";
 
 export type Metric = { hour: string; environment: string; metric: string; route: string; source: string; kind: string; count: number; errors: number; durationMs: number };
-let client: PrismaClient | undefined;
-// Intentionally uninstrumented: writing metrics must not generate more metrics.
-export function metricsClient() {
-    return client ??= new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 1,
-        connectionTimeoutMillis: 3000, statement_timeout: 5000 }) });
-}
+// Use the unextended shared client: no recursive instrumentation or extra pool.
+export function metricsClient() { return database().client; }
 export const MERGE_METRICS_SQL = `
 WITH accepted AS (
  INSERT INTO "TelemetryBatch" ("id", "createdAt") VALUES ($1, NOW())
@@ -33,4 +28,4 @@ export async function pruneMetrics() {
     await metricsClient().$executeRaw`DELETE FROM "TelemetryHour" WHERE "hour" < NOW() - INTERVAL '90 days'`;
     await metricsClient().$executeRaw`DELETE FROM "TelemetryBatch" WHERE "createdAt" < NOW() - INTERVAL '2 days'`;
 }
-export async function closeMetrics() { await client?.$disconnect(); }
+export async function closeMetrics() { await closeDatabase(); }
