@@ -19,3 +19,8 @@ export function requestKind(headers: Headers): string {
     if (headers.has("next-router-prefetch") || /prefetch/i.test(headers.get("purpose") ?? "")) return "prefetch";
     return headers.get("rsc") === "1" ? "rsc" : "request";
 }
+
+/** UTC bucket start; no per-request timestamps are persisted. */
+export function metricBucketStart(now = new Date()): string {
+    return new Date(Math.floor(now.getTime() / 900000) * 900000).toISOString();
+}

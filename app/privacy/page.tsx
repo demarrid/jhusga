@@ -27,7 +27,7 @@ export default function Privacy() {
         </section>
         <section className={styles.rule}>
             <h2>Hosting and security</h2>
-        <p>We retain hourly aggregate counters for up to 90 days while scheduled cleanup is running, plus short-lived receipts to prevent duplicate batch writes. Hosting providers may separately retain request and security logs. These protections apply to our added metrics, not those provider logs. Existing sign-in and abuse prevention remain separate from audience measurement.</p>
+        <p>We retain 15-minute aggregate counters for up to 90 days while scheduled cleanup is running, plus short-lived receipts to prevent duplicate batch writes. Hosting providers may separately retain request and security logs. These protections apply to our added metrics, not those provider logs. Existing sign-in and abuse prevention remain separate from audience measurement.</p>
         </section>
     </div></div>
     </div>;

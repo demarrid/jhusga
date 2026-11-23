@@ -1162,3 +1162,18 @@ model TelemetryBatch {
   createdAt DateTime @default(now()) @db.Timestamptz
   @@index([createdAt])
 }
+
+
+// Fifteen-minute counters; legacy hourly rows remain separate.
+model TelemetryQuarter {
+  hour DateTime @db.Timestamptz
+  environment String
+  metric String
+  route String
+  source String
+  kind String
+  count BigInt @default(0)
+  errors BigInt @default(0)
+  durationMs Float @default(0)
+  @@id([hour, environment, metric, route, source, kind])
+}

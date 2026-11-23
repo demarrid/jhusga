@@ -1,7 +1,8 @@
 /**
  * Ingest The Johns Hopkins News-Letter's coverage of the SGA.
  *
- *   npm run newsletter                  -- the last three days, as a manual sync and the cron do
+ *   npm run newsletter                  -- since the last completed daily check
+ *   npm run newsletter -- --since 2026-10-27 -- one-time catch-up; keeps the daily checkpoint
  *   npm run newsletter -- --backfill    -- every year since 2001, until budget
  *   npm run newsletter -- --year 2015   -- one year; repeatable
  *   npm run newsletter -- --dry         -- search only, fetch and store nothing
@@ -51,6 +52,15 @@ async function main() {
     } = await import("../config/newsletter");
 
     const chosen = years(argv);
+    const sinceValue = value(argv, "--since");
+    const since = sinceValue ? new Date(`${sinceValue}T00:00:00Z`) : undefined;
+    if (args.has("--since") && (!sinceValue || !/^\d{4}-\d{2}-\d{2}$/.test(sinceValue) ||
+        !since || !Number.isFinite(since.getTime()) || since.toISOString().slice(0, 10) !== sinceValue || since > new Date())) {
+        throw new Error("--since needs a valid past or current YYYY-MM-DD date");
+    }
+    if (since && (chosen.length || args.has("--backfill"))) {
+        throw new Error("Use --since separately from --year or --backfill");
+    }
     const limit = Number(value(argv, "--limit")) || MAX_ARTICLES_PER_RUN;
 
     if (args.has("--dry")) {
@@ -107,7 +117,8 @@ async function main() {
                 }
             }
         } else {
-            const window = recentNewsletterSearchWindow();
+            const checkpoint = since ? null : await prisma.newsletterCheckpoint.findUnique({ where: { id: "daily" } });
+            const window = recentNewsletterSearchWindow(new Date(), since ?? checkpoint?.checkedThrough);
             const logYear = window.to.year;
 
             for (const phrase of phrases) {
@@ -163,6 +174,7 @@ async function main() {
 
     const summary = await ingestNewsletterCoverage({
         backfill: args.has("--backfill"),
+        since,
         years: chosen.length ? chosen : undefined,
         refetch: args.has("--refetch"),
         limit,

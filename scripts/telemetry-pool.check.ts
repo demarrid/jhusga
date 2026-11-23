@@ -42,6 +42,7 @@ async function main() {
     const idle = () => new Promise(resolve => setTimeout(resolve, DATABASE_IDLE_MS + 500));
     try {
         await db.exec(await readFile("prisma/migrations/20261122090000_aggregate_telemetry/migration.sql", "utf8"));
+        await db.exec(await readFile("prisma/migrations/20261122200000_quarter_hour_telemetry/migration.sql", "utf8"));
         assert.equal(metricsClient(), database().client, "metrics must reuse the raw application client");
         const pool = database().pool;
         let peak = 0;
@@ -55,7 +56,7 @@ async function main() {
         for (const result of results) if (result.status === "rejected") console.error(result.reason?.code, result.reason?.meta ?? result.reason?.message);
         assert.ok(results.every(r => r.status === "fulfilled"));
         assert.equal(await flushMetrics(), true);
-        const counts = await db.query<{ metric: string; count: number }>('SELECT metric, SUM(count)::int AS count FROM "TelemetryHour" GROUP BY metric');
+        const counts = await db.query<{ metric: string; count: number }>('SELECT metric, SUM(count)::int AS count FROM "TelemetryQuarter" GROUP BY metric');
         assert.equal(counts.rows.find(x => x.metric === "database")?.count, 40, "telemetry writes must not instrument themselves");
         assert.equal(counts.rows.find(x => x.metric === "request")?.count, 40);
         assert.ok(peak <= DATABASE_POOL_MAX);

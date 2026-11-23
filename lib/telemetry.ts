@@ -1,3 +1,4 @@
+import { metricBucketStart } from "./telemetry-policy";
 import { MetricRetry, metricFailure, metricDiagnostics } from "./telemetry-retry";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -16,10 +17,10 @@ export const telemetryEnabled = () => process.env.TELEMETRY_ENABLED === "true";
 
 export function recordMetric(metric: "request" | "database" | "daily-browser", route: string, source: string, kind: string, errors = 0, durationMs = 0) {
     if (!telemetryEnabled()) return;
-    const hour = new Date(); hour.setUTCMinutes(0, 0, 0);
+    const hour = metricBucketStart();
     const environment = process.env.VERCEL_ENV === "production" ? "production" : process.env.VERCEL_ENV === "preview" ? "preview" : "local";
-    const key = JSON.stringify([hour.toISOString(), environment, metric, route, source, kind]);
-    const row = buckets.get(key) ?? { hour: hour.toISOString(), environment, metric, route, source, kind, count: 0, errors: 0, durationMs: 0 };
+    const key = JSON.stringify([hour, environment, metric, route, source, kind]);
+    const row = buckets.get(key) ?? { hour: hour, environment, metric, route, source, kind, count: 0, errors: 0, durationMs: 0 };
     // A prolonged outage must not grow process memory without bound.
     if (!buckets.has(key) && buckets.size >= 500) return;
     row.count++; row.errors += errors; row.durationMs += durationMs;

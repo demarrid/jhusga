@@ -103,6 +103,8 @@ export type CoverageEvent = {
 export type CoverageOptions = {
     /** Search every year since NEWSLETTER_EARLIEST_YEAR, not just the recent ones. */
     backfill?: boolean;
+    /** One-time catch-up boundary; never changes the daily checkpoint. */
+    since?: Date;
     /** Search exactly these years, overriding both defaults. */
     years?: number[];
     /** Fetch articles the archive already holds, to pick up corrections. */
@@ -160,7 +162,7 @@ function searchPasses(options: CoverageOptions, now: Date, checkedThrough?: Date
         return [{ mode: "years", years }];
     }
 
-    return [{ mode: "recent", window: recentNewsletterSearchWindow(now, checkedThrough) }];
+    return [{ mode: "recent", window: recentNewsletterSearchWindow(now, options.since ?? checkedThrough) }];
 }
 
 function phrasesToSearch(options: CoverageOptions): readonly string[] {
@@ -370,7 +372,7 @@ export async function ingestNewsletterCoverage(
     const deadline = Date.now() + (options.runBudgetMs ?? NEWSLETTER_RUN_BUDGET_MS);
 
     const startedAt = new Date();
-    const routine = !options.backfill && !options.years?.length && !options.refetch;
+    const routine = !options.backfill && !options.years?.length && !options.refetch && !options.since;
     // Persist the initial boundary too, so an unsuccessful first run can resume.
     const checkpoint = routine ? await prisma.newsletterCheckpoint.upsert({
         where: { id: "daily" },

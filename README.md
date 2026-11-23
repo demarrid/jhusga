@@ -233,7 +233,9 @@ retains the checkpoint so subsequent days retry the remaining candidates. Failed
 searches, unreadable articles, and truncated results also retain the checkpoint.
 The search uses calendar dates, so it includes the day of the last check; already
 processed articles are skipped. The checkpoint migration runs during deployment.
-Older gaps still need a manual year-specific run or backfill.
+Recover an existing gap with `npm run newsletter -- --since 2026-10-27`.
+This one-time range leaves the daily checkpoint unchanged. Older gaps can also
+use a manual year-specific run or backfill.
 
 Public article pages show the generated summary and a link to the original
 News-Letter article, without the article body or citation quotations. Source

@@ -51,6 +51,12 @@ async function main() {
         assert.equal(searchUrls[0]!.searchParams.get("ts_day"), "10", "search resumes from the stored check date");
         assert.equal(checkpointWrites, 1, "complete run advances checkpoint");
         assert.equal(requests, 3, "two searches and one article; no empty pagination requests");
+        const catchup = await ingestNewsletterCoverage({ runBudgetMs: 1000, since: new Date("2026-10-27T00:00:00Z") });
+        assert.equal(catchup.alreadyHeld, 1);
+        assert.equal(checkpointWrites, 1, "one-time catch-up preserves the daily checkpoint");
+        assert.equal(searchUrls.at(-1)!.searchParams.get("ts_month"), "10");
+        assert.equal(searchUrls.at(-1)!.searchParams.get("ts_day"), "27");
+        requests -= 2; // Keep the subsequent routine-run request assertions independent.
         const second = await ingestNewsletterCoverage({ runBudgetMs: 1000 });
         assert.equal(second.alreadyHeld, 1);
         assert.equal(requests, 5, "held articles are not fetched again");

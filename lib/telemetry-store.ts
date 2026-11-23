@@ -12,20 +12,21 @@ WITH accepted AS (
  hour timestamptz, environment text, metric text, route text, source text, kind text,
  count integer, errors integer, "durationMs" double precision)
 )
-INSERT INTO "TelemetryHour" ("hour","environment","metric","route","source","kind","count","errors","durationMs")
+INSERT INTO "TelemetryQuarter" ("hour","environment","metric","route","source","kind","count","errors","durationMs")
  SELECT hour, environment, metric, route, source, kind, count, errors, "durationMs"
  FROM payload WHERE EXISTS (SELECT 1 FROM accepted)
 ON CONFLICT ("hour","environment","metric","route","source","kind")
-DO UPDATE SET "count" = "TelemetryHour"."count" + EXCLUDED."count",
- "errors" = "TelemetryHour"."errors" + EXCLUDED."errors",
- "durationMs" = "TelemetryHour"."durationMs" + EXCLUDED."durationMs"
+DO UPDATE SET "count" = "TelemetryQuarter"."count" + EXCLUDED."count",
+ "errors" = "TelemetryQuarter"."errors" + EXCLUDED."errors",
+ "durationMs" = "TelemetryQuarter"."durationMs" + EXCLUDED."durationMs"
 `;
 export async function persistMetrics(id: string, rows: Metric[]) {
     await metricsClient().$executeRawUnsafe(MERGE_METRICS_SQL, id, JSON.stringify(rows));
 }
 export async function pruneMetrics() {
-    // Called by existing scheduled sync, no new scheduler or per-request cleanup.
+    // Called by existing scheduled sync.
     await metricsClient().$executeRaw`DELETE FROM "TelemetryHour" WHERE "hour" < NOW() - INTERVAL '90 days'`;
+    await metricsClient().$executeRaw`DELETE FROM "TelemetryQuarter" WHERE "hour" < NOW() - INTERVAL '90 days'`;
     await metricsClient().$executeRaw`DELETE FROM "TelemetryBatch" WHERE "createdAt" < NOW() - INTERVAL '2 days'`;
 }
 export async function closeMetrics() { await closeDatabase(); }

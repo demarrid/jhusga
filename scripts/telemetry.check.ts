@@ -1,3 +1,4 @@
+import { metricBucketStart } from "../lib/telemetry-policy";
 import { MetricRetry, metricFailure, metricDiagnostics } from "../lib/telemetry-retry";
 import { POST } from "../app/api/metrics/reach/route";
 import assert from "node:assert/strict";
@@ -8,6 +9,9 @@ import { audience, routeGroup, requestKind } from "../lib/telemetry-policy";
 import { measureDatabase } from "../lib/telemetry";
 
 async function main() {
+    assert.equal(metricBucketStart(new Date("2026-11-22T23:59:59.999Z")), "2026-11-22T23:45:00.000Z");
+    assert.equal(metricBucketStart(new Date("2026-11-23T00:00:00Z")), "2026-11-23T00:00:00.000Z");
+    assert.equal(metricBucketStart(new Date("2026-11-22T14:15:00Z")), "2026-11-22T14:15:00.000Z");
     const wrapped = { name: "PrismaClientKnownRequestError", code: "P2010",
         meta: { driverAdapterError: { cause: { originalCode: "42P01", message: "secret SQL" } } } };
     assert.equal(metricFailure(wrapped), "schema-missing");
@@ -50,24 +54,28 @@ async function main() {
     const db = new PGlite();
     try {
         await db.exec(await readFile("prisma/migrations/20261122090000_aggregate_telemetry/migration.sql", "utf8"));
+        await db.exec(await readFile("prisma/migrations/20261122200000_quarter_hour_telemetry/migration.sql", "utf8"));
         const rows = [{ hour: "2026-11-22T01:00:00Z", environment: "production", metric: "request", route: "documents",
             source: "unknown", kind: "request", count: 3, errors: 1, durationMs: 12.5 }];
         await db.query(MERGE_METRICS_SQL, ["batch-a", JSON.stringify(rows)]);
         await db.query(MERGE_METRICS_SQL, ["batch-a", JSON.stringify(rows)]);
-        let result = await db.query<{count: number; errors: number; durationMs: number}>('SELECT * FROM "TelemetryHour"');
+        let result = await db.query<{count: number; errors: number; durationMs: number}>('SELECT * FROM "TelemetryQuarter"');
         assert.equal(Number(result.rows[0].count), 3, "retry must not double-count");
         await db.query(MERGE_METRICS_SQL, ["batch-b", JSON.stringify(rows)]);
-        result = await db.query('SELECT * FROM "TelemetryHour"');
+        result = await db.query('SELECT * FROM "TelemetryQuarter"');
         assert.equal(Number(result.rows[0].count), 6, "distinct instances must add, not overwrite");
         assert.equal(Number(result.rows[0].errors), 2);
         assert.equal(result.rows[0].durationMs, 25);
         await db.query(MERGE_METRICS_SQL, ["batch-c", JSON.stringify([{...rows[0], environment: "preview"}])]);
-        assert.equal((await db.query('SELECT * FROM "TelemetryHour"')).rows.length, 2);
+        assert.equal((await db.query('SELECT * FROM "TelemetryQuarter"')).rows.length, 2);
+        await db.query(MERGE_METRICS_SQL, ["quarter-test", JSON.stringify([{...rows[0], hour:"2026-11-22T01:15:00Z"}])]);
+        const quarters = await db.query('SELECT "hour" FROM "TelemetryQuarter" WHERE environment = \'production\' ORDER BY "hour"');
+        assert.equal(quarters.rows.length, 2, "separate quarters must not merge");
         await assert.rejects(db.query(MERGE_METRICS_SQL, ["failed-batch", "invalid json"]));
         assert.equal((await db.query('SELECT * FROM "TelemetryBatch" WHERE id = $1', ["failed-batch"])).rows.length, 0,
             "receipt and counters must commit atomically");
-        await db.exec('DELETE FROM "TelemetryHour" WHERE "hour" < TIMESTAMPTZ \'2027-03-01\' - INTERVAL \'90 days\'');
-        assert.equal((await db.query('SELECT * FROM "TelemetryHour"')).rows.length, 0);
+        await db.exec('DELETE FROM "TelemetryQuarter" WHERE "hour" < TIMESTAMPTZ \'2027-03-01\' - INTERVAL \'90 days\'');
+        assert.equal((await db.query('SELECT * FROM "TelemetryQuarter"')).rows.length, 0);
     } finally { await db.close(); }
     console.log("Telemetry privacy, SQL persistence, idempotency, isolation, rollback, retention, and error propagation passed.");
 }

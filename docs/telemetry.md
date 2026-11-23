@@ -44,7 +44,7 @@ Database health counters remain on without any per-request/visitor identifiers.
 
 ## Storage, batching, reliability
 
-TelemetryHour holds only hourly aggregate rows with bounded categories.
+TelemetryQuarter holds 15-minute aggregate rows; TelemetryHour retains legacy hourly data.
 TelemetryBatch holds random server batch IDs solely for idempotent retries;
 they do not identify clients. One parameterized SQL statement atomically records
 a batch receipt and increments all its counters. Duplicate batch retries do not
@@ -79,3 +79,22 @@ each emit a warning. A successful save resets the backoff.
 Diagnostics also include an allowlisted error type and bounded Prisma/SQLSTATE
 codes, including codes nested under driver-adapter causes. Raw error messages,
 metadata, SQL and connection strings are still excluded.
+
+
+## Time-series export
+
+    npm run --silent metrics -- 1 production 15m > metrics.jsonl
+    npm run --silent metrics -- 7 production hour
+
+The fourth argument is 15m, hour, or day (default day). JSON lines on stdout
+contain bucketStart as an ISO UTC timestamp; explanatory notes go to stderr.
+New collection rounds to :00, :15, :30, :45. The bucket width is independent
+of save frequency: this does not add a per-request timestamp or change flush
+timing. Finer buckets can create up to four times as many aggregate rows.
+
+Apply the new migration before starting the updated application. Old hourly
+data remains available in hour/day reports but is excluded from 15m reports,
+rather than falsely assigning a full hour to its first quarter. The current
+bucket is partial; missing buckets are not proof of zero traffic.
+Daily-browser counts in a quarter mean first counted appearances that UTC day,
+not all active browsers or simultaneous users during that quarter.
