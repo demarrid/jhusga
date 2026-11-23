@@ -119,6 +119,12 @@ export default async function DocumentPage({
     const sections = meetingSections ? meetingOutline(authoredSections, document.agendaMatches ?? [],
         relevantDocuments(document.agendaReferences ?? [], document.references, agendas.map(row => row.id)).documents,
         uniqueUnresolvedLinks([...(document.agendaUnresolvedLinks ?? []), ...document.unresolvedLinks]), document.agendaOutline) : authoredSections;
+    // A citation chip scrolls to a passage in the article. The article is not
+    // on the page, so the chip would have nowhere to land.
+    const secondary = isSecondaryKind(document.kind);
+    const restatement = secondary && document.restatement
+        ? { ...document.restatement, citations: [] }
+        : document.restatement;
 
     return (
         <main className={styles.page}>
@@ -260,16 +266,18 @@ export default async function DocumentPage({
               * The reading pane and the aids to reading it. On a narrow screen
               * the summary comes first, because a reader who cannot see both
               * at once is better served by the short version.
+              *
+              * An article is not reprinted. The document column says where
+              * the text lives, and the summary stays in the sidebar where it
+              * sits beside a record. The section list is one of those aids
+              * only when it can point at headings on the page.
               */}
-            {isSecondaryKind(document.kind) ? (
-                <section className={styles.articleSummary} aria-labelledby="article-summary">
-                    <h2 id="article-summary">Summary</h2>
-                    <DocumentRestatement restatement={document.restatement
-                        ? { ...document.restatement, citations: [] }
-                        : null} />
-                </section>
-            ) : (
-            <div className={styles.readerLayout}>
+            <div className={secondary ? `${styles.readerLayout} ${styles.noBody}` : styles.readerLayout}>
+                {secondary ? (
+                <article className={styles.documentPane}>
+                    <p className={styles.withheld}>This content is available only on the News-Letter.</p>
+                </article>
+                ) : (
                 <article className={styles.documentPane}>
                     {document.discoveredVia !== "archive" && <DocumentVersionSelector key={`versions-${view.selected.id}`} options={view.options} selectedId={view.selected.id} initiallyComparing={comparing} hasPrevious={comparison !== null}>
                     <section id="document-version-history" className={styles.versionHistory} aria-label="Version history">
@@ -287,20 +295,21 @@ export default async function DocumentPage({
                     </DocumentVersionSelector>}
                     <DocumentViewer key={`viewer-${view.selected.id}`} blocks={document.blocks} />
                 </article>
+                )}
 
                 <aside className={styles.sidebar}>
                     <DoubleStickyHolder>
-                        <section className={styles.sidebarSection}>
-                            <h2>{document.legislationEdition?.role === "draft" ? "Draft summary" : "Summary"}</h2>
-                            {view.historical ? <p className={styles.asideMeta}>
+                        <section className={styles.sidebarSection} aria-labelledby="article-summary">
+                            <h2 id="article-summary">{document.legislationEdition?.role === "draft" ? "Draft summary" : "Summary"}</h2>
+                            {!secondary && view.historical ? <p className={styles.asideMeta}>
                                 This version has no saved summary.{" "}
                                 {view.selected.id !== view.latest.id && <>
                                     <Link href={latestHref} scroll={false}>View the latest version</Link>.
                                 </>}
-                            </p> : <DocumentRestatement restatement={document.restatement} />}
+                            </p> : <DocumentRestatement restatement={restatement} />}
                         </section>
 
-                        {(sections.length > 0 || agendas.length > 0) && (
+                        {!secondary && (sections.length > 0 || agendas.length > 0) && (
                             <nav className={styles.sidebarSection} aria-labelledby="document-sections">
                                 <h2 id="document-sections">Sections{agendas.map((agenda, index) => (
                                     <Link key={agenda.id} className={styles.sectionAgendaLink} href={`/documents/${agenda.id}`} target="_blank" rel="noopener noreferrer">
@@ -336,7 +345,7 @@ export default async function DocumentPage({
                             </section>
                         )}
 
-                        {(document.driveOwnerName || document.driveLastEditorName) && (
+                        {!secondary && (document.driveOwnerName || document.driveLastEditorName) && (
                             <p className={styles.asideMeta}>
                                 {[
                                     document.driveOwnerName &&
@@ -351,7 +360,6 @@ export default async function DocumentPage({
                     </DoubleStickyHolder>
                 </aside>
             </div>
-            )}
         </main>
     );
 }

@@ -900,6 +900,34 @@
   font-size: 0.78rem;
 }
 
+/* The document column is one sentence, so it cannot give the sticky rail
+   a page to scroll against. The rail keeps its column, and it stays in
+   flow so the summary can be read to the end. */
+@media (min-width: 901px) {
+  .noBody .sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .noBody .sidebar > div {
+    overflow: visible;
+    flex: none;
+    min-height: auto;
+  }
+}
+
+.withheld {
+  margin: 0;
+  /* The sidebar's rule sits above its heading. This matches that offset so
+     the sentence starts level with "Summary". */
+  padding-top: calc(0.8rem + 2px);
+  color: #6a7c8f;
+  font-family: var(--font-source-serif-4), Georgia, serif;
+  font-size: 1.03rem;
+  line-height: 1.78;
+}
+
 @media (max-width: 900px) {
   .readerLayout {
     grid-template-columns: minmax(0, 1fr);
@@ -971,11 +999,6 @@
 
 .versionSentence[aria-busy="true"] {
   opacity: 0.55;
-}
-
-.articleSummary {
-  max-width: 65rem;
-  padding: clamp(3rem, 6vw, 5rem) max(6vw, 1.5rem) clamp(6rem, 10vw, 9rem);
 }
 
 .documentImage {

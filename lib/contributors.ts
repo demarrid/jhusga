@@ -100,6 +100,8 @@ export function contributorRoleLabel(role: string): string {
 
 /** Line prefixes that introduce a list of people, mapped to what they mean. */
 const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolean }[] = [
+    // Planning assignments establish mentions, not authorship or attendance.
+    { pattern: /^(?:planners?|additional\s+insight)$/i, role: "mentioned", firstNames: true },
     { pattern: /^(?:introduced\s+by|introducers?)$/i, role: "introducer" },
     { pattern: /^(?:sponsored\s+by|sponsors?|co-?sponsors?)$/i, role: "sponsor" },
     { pattern: /^(?:staff\s+present|staff|faculty|admin|advisors?)$/i, role: "staff" },

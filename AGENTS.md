@@ -30,3 +30,14 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Keep the message aligned with the final diff. Leave committing and pushing
   to the user unless they explicitly request otherwise.
 - This file is a local Git commit template and should remain ignored.
+
+## Asking for input
+
+- Give the user at least two minutes to fill in an input field before proceeding
+  with an optional assumption or ending the turn. Continue independent work while
+  waiting; use waits of at most 60 seconds each. If an answer is required, keep it
+  pending until the user responds. Elapsed time is never an answer or approval.
+- When asking the user for input, play one Windows notification chime via
+  PowerShell: `[System.Media.SystemSounds]::Question.Play()`. Do not repeat the
+  chime while they are typing. If playback is unavailable, say so rather than
+  claiming the user heard it.

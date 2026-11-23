@@ -177,9 +177,12 @@ export function renderDocument(
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
     const slides = presentationSections(content);
+    // This report's PDF export has column-width wraps and running page titles.
+    // Recognize its structure narrowly; minutes and tables keep authored breaks.
+    const report = /^TEN FOR ON E\s*:/m.test(content) && /^Introduction \| 0[12]$/m.test(content);
     const inline: Inline = (ranges, mode) => {
         const runs = inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets, options.images?.filter(image => image.inline));
-        return slides.length ? runs.map(run => ({ ...run, text: run.text.replace(/\n/g, " ") })) : runs;
+        return slides.length || report ? runs.map(run => ({ ...run, text: run.text.replace(/\n/g, " ") })) : runs;
     };
 
     const lines = toLines(content);
@@ -188,6 +191,9 @@ export function renderDocument(
     const { anchors, minutesEntries } = indexSections(content);
 
     if (options.sheetDelimiter) return parseSheet(lines, options.sheetDelimiter, inline, anchors);
+    const parse = (segment: Line[]) => report
+        ? parseReport(segment, inline, anchors)
+        : parseBlocks(segment, inline, anchors, minutesEntries, slides);
     // Recovered images sit at verified paragraph boundaries. Parse each segment
     // with the original source offsets and shared citation/section anchors.
     const blocks: Block[] = [];
@@ -195,13 +201,44 @@ export function renderDocument(
     for (const image of [...(options.images ?? [])].filter(image => !image.inline).sort((a, b) => a.offset - b.offset)) {
         const at = image.offset === content.length ? lines.length : lines.findIndex(line => line.start === image.offset);
         if (at < from) continue;
-        blocks.push(...parseBlocks(lines.slice(from, at), inline, anchors, minutesEntries, slides));
+        blocks.push(...parse(lines.slice(from, at)));
         const asset = { src: image.src, alt: image.alt, width: image.width, height: image.height };
         blocks.push({ kind: "paragraph", runs: [{ text: "", image: asset,
             bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] });
         from = at;
     }
-    blocks.push(...parseBlocks(lines.slice(from), inline, anchors, minutesEntries, slides));
+    blocks.push(...parse(lines.slice(from)));
+    return blocks;
+}
+
+/** Reflow the report without rewriting stored text or losing citation offsets.
+ * Keep page titles as landmarks, and retain captions and pull quotes verbatim.
+ */
+function parseReport(lines: Line[], inline: Inline, anchors: Map<number, string>): Block[] {
+    const blocks: Block[] = [];
+    let paragraph: Line[] = [];
+    const flush = () => {
+        if (!paragraph.length) return;
+        blocks.push({ kind: "paragraph", runs: inline(joinedRanges(paragraph)), sectionId: anchors.get(paragraph[0].start) });
+        paragraph = [];
+    };
+    for (const line of lines) {
+        const text = line.text.trim();
+        if (!text) { flush(); continue; }
+        const pageTitle = /^[A-Za-z][A-Za-z &]+ \| \d{2}$/.test(text);
+        const heading = /[A-Z]/.test(text) && /^[A-Z\s:—–-]+$/.test(text);
+        if (pageTitle || heading) {
+            flush();
+            blocks.push({ kind: "heading", level: pageTitle ? 2 : 3, runs: inline([lineRange(line)]), sectionId: anchors.get(line.start) });
+            continue;
+        }
+        const previous = paragraph.at(-1)?.text.trim() ?? "";
+        // The export lost paragraph metadata. Sentence boundaries provide
+        // conservative reading breaks without guessing at missing words.
+        if (anchors.has(line.start) || (/[.!?][”’\"]?$/.test(previous) && /^[A-Z“]/.test(text))) flush();
+        paragraph.push(line);
+    }
+    flush();
     return blocks;
 }
 
