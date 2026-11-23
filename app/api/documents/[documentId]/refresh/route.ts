@@ -2,7 +2,7 @@ import { invalidateArchiveCache } from "@/lib/archive-cache";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { consumeRateLimit } from "@/lib/ratelimit";
 import { refreshDocument } from "@/server/document-refresh";
-import { getVersionedDocument } from "@/server/document-versions";
+import { getLatestPublishedVersionId } from "@/server/document-versions";
 
 export const maxDuration = 60;
 
@@ -22,10 +22,10 @@ export async function POST(request: Request, { params }: {
     const { documentId } = await params;
     try {
         const changed = await refreshDocument(documentId);
-        const view = await getVersionedDocument(documentId, "latest");
-        if (!view) return new Response(null, { status: 404 });
         if (changed) invalidateArchiveCache();
-        return Response.json({ latestVersionId: view.latest.id });
+        const latestVersionId = await getLatestPublishedVersionId(documentId);
+        if (latestVersionId === null) return new Response(null, { status: 404 });
+        return Response.json({ latestVersionId });
     } catch (error) {
         console.error("Document source refresh failed", documentId, error);
         return new Response(null, { status: 503 });

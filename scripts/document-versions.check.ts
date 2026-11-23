@@ -1,6 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import assert from "node:assert/strict";
 import { selectDocumentVersion, versionDay, versionOptions } from "../lib/document-versions";
-import { recordDocumentVersion } from "../lib/document-version-history";
+
 import type { Prisma } from "@prisma/client";
 
 const options = versionOptions([
@@ -28,6 +29,8 @@ assert.equal(selectDocumentVersion(unknownTime, dated)?.missingDatedVersion, fal
 
 type Occurrence = { id: string; revisionId: string; sourceModifiedTime: Date | null; observedAt: Date; status: string };
 async function main() {
+    Object.assign(globalThis, { AsyncLocalStorage });
+    const { recordDocumentVersion } = await import("../lib/document-version-history");
     const occurrences = new Map<string, Occurrence>();
     const tx = { documentVersion: { upsert: async ({ where, create, update }: {
         where: { id: string }; create: Occurrence; update: Partial<Occurrence>;
@@ -69,16 +72,17 @@ async function main() {
     type Where = { id?: string; status: string; revision: { documentId: string } };
     const matches = (row: typeof rows[number], where: Where) => row.status === where.status
         && row.revision.documentId === where.revision.documentId && (!where.id || row.id === where.id);
+    let reads = 0;
     Object.assign(globalThis, { prisma: {
-        document: { findUnique: async () => structuredClone(current), findMany: async () => [] },
+        document: { findUnique: async () => { reads++; return structuredClone(current); }, findMany: async () => [] },
         documentVersion: {
-            findMany: async ({ where }: { where: Where }) => rows.filter(row => matches(row, where)),
+            findMany: async ({ where }: { where: Where }) => { reads++; return rows.filter(row => matches(row, where)); },
             findFirst: async ({ where }: { where: Where }) => rows.find(row => matches(row, where)) ?? null,
         },
         documentMedia: { findFirst: async () => null },
         amendmentClearance: { findFirst: async () => null },
     } });
-    const { getVersionedDocument } = await import("../server/document-versions");
+    const { loadVersionedDocument: getVersionedDocument, getLatestPublishedVersionId } = await import("../server/document-versions");
     const { loadDocument } = await import("../server/documents");
     const historical = await getVersionedDocument("document");
     assert.equal(historical?.selected.id, "old");
@@ -91,12 +95,14 @@ async function main() {
         assert.equal(await getVersionedDocument("document", id), null);
         assert.equal(await loadDocument("document", id), null, "direct historical reads also enforce publication and document ownership");
     }
+    assert.equal(await getLatestPublishedVersionId("document"), "new", "refresh uses published versions only");
     const latest = await getVersionedDocument("document", "latest");
     assert.equal(latest?.selected.id, "new");
     assert.equal(latest?.historical, false);
     assert.equal(latest?.document.restatement?.content, current.summary.content);
     assert.ok(latest?.document.heldNotice, "held source warning remains visible");
     current.discoveredVia = "archive";
+    assert.equal(await getLatestPublishedVersionId("document"), "latest");
     current.datedAt = new Date("1978-10-31T12:00:00Z");
     assert.equal((await getVersionedDocument("document"))?.selected.id, "latest", "archive OCR corrections default to the latest transcription");
     assert.equal((await getVersionedDocument("document", "old"))?.selected.id, "latest", "archive historical URLs cannot reopen obsolete OCR");
@@ -113,6 +119,30 @@ async function main() {
     const oldImages = await getVersionedDocument("document", "old");
     assert.equal(oldImages?.historical, true);
     assert.equal(oldImages?.document.restatement, null);
+
+    Object.assign(globalThis, { AsyncLocalStorage });
+    const entries = new Map<string, unknown>();
+    Object.assign(globalThis, { __incrementalCache: {
+        generateSimpleCacheKey: async (key: string) => key,
+        get: async (key: string) => entries.has(key) ? { value: entries.get(key), isStale: false } : null,
+        set: async (key: string, value: unknown) => { entries.set(key, value); },
+    } });
+    const { getVersionedDocument: cachedView, getDocumentVersionContent } = await import("../server/document-versions");
+    const cold = await cachedView("document", "old");
+    const coldReads = reads;
+    const warm = await cachedView("document", "old");
+    assert.equal(reads, coldReads, "warm versioned page must perform no document/version-list reads");
+    assert.equal(warm?.document.content, cold?.document.content);
+    assert.ok(warm?.document.driveModifiedTime instanceof Date);
+    assert.ok(warm?.document.datedAt instanceof Date);
+    assert.equal((await cachedView("document", "new"))?.selected.id, "new", "versions have separate cache keys");
+    assert.equal(await cachedView("document", "foreign"), null, "cache never bypasses publication/ownership");
+    assert.equal(await getDocumentVersionContent(warm!.document, "foreign"), null);
+    rows.push({ ...rows[1], id: "newest", sourceModifiedTime: new Date("2026-11-05T12:00:00Z") });
+    assert.equal(await getLatestPublishedVersionId("document"), "newest", "refresh ID bypasses a warm page cache");
+    assert.notEqual((await cachedView("document", "new"))?.latest.id, "newest");
+    entries.clear(); // Simulate the archive tag invalidation performed after a changed refresh.
+    assert.equal((await cachedView("document", "new"))?.latest.id, "newest");
     console.log("Document version checks passed: date defaults, DST, reversions, publication, scoping and summaries.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

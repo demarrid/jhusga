@@ -684,6 +684,10 @@ export async function getDocument(documentId: string): Promise<DocumentDetail | 
     if (demoModeEnabled()) return demoDocument(documentId);
     const document = await cachedDocument(documentId);
     if (!document) return null;
+    return hydrateDocumentDetail(document);
+}
+
+export function hydrateDocumentDetail(document: DocumentDetail): DocumentDetail {
     // Next's Data Cache serializes Dates as strings. Keep the public contract
     // identical on cold and warm reads, without mutating the cached object.
     const date = (value: Date | null) => value === null ? null : new Date(value);
