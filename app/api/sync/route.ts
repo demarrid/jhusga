@@ -82,8 +82,9 @@ export async function POST(request: Request) {
         return reply(202, true, "A sync is already running.", active.id);
     }
 
+    // Summary recovery does not refresh Drive and must not start its cooldown.
     const last = await prisma.syncRun.findFirst({
-        where: { status: "success", finishedAt: { not: null } },
+        where: { status: "success", finishedAt: { not: null }, filesSeen: { gt: 0 } },
         orderBy: { finishedAt: "desc" },
         select: { finishedAt: true },
     });

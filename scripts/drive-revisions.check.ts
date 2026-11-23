@@ -105,6 +105,15 @@ async function main() {
                 return { imported: 1, failed: 0 };
             } }), { imported: 1, failed: 1, skipped: 0 });
         } finally { console.error = originalError; }
+        clock += 24 * 60 * 60_000;
+        globalThis.fetch = async () => Response.json({ error: "invalid_grant", error_description: "private details" }, { status: 400 });
+        await assert.rejects(listDriveRevisions("expired"), error => {
+            assert.ok(error instanceof Error);
+            assert.match(error.message, /npm run drive:connect/);
+            assert.match(error.message, /seven days/);
+            assert.ok(!error.message.includes("private details"));
+            return true;
+        });
         console.log("all OAuth revision checks passed");
     } finally {
         globalThis.fetch = originalFetch;

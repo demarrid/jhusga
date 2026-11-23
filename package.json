@@ -30,7 +30,8 @@
     "check": "tsx scripts/check.ts",
     "seed:demo": "tsx scripts/seed.demo.ts",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "drive:connect": "node scripts/drive-connect.mjs"
   },
   "dependencies": {
     "@nextui-org/react": "^2.6.11",

@@ -445,9 +445,9 @@ export async function startSyncRun(
 
     const others = await prisma.syncRun.findMany({
         where: { status: "running", id: { not: id } },
-        select: { id: true, startedAt: true },
+        select: { id: true, startedAt: true, state: true },
     });
-    const earlier = others.find((other) =>
+    const earlier = others.filter((other) => blocksSyncRun(other.state, options.summariesOnly ?? false)).find((other) =>
         other.startedAt < created.startedAt ||
         (other.startedAt.getTime() === created.startedAt.getTime() && other.id < id));
     if (!earlier) return id;
@@ -461,12 +461,20 @@ export async function startSyncRun(
 
 export type ActiveRun = { id: string; startedAt: Date; heartbeatAt: Date; leaseUntil: Date | null; step?: string };
 
-export async function activeSyncRun(): Promise<ActiveRun | null> {
-    return prisma.syncRun.findFirst({
+/** Summary recovery must not prevent a new Drive scan from discovering files. */
+function blocksSyncRun(state: unknown, summariesOnly: boolean): boolean {
+    return summariesOnly || !(state && typeof state === "object" && "summariesOnly" in state && state.summariesOnly === true);
+}
+
+export async function activeSyncRun(options: { summariesOnly?: boolean } = {}): Promise<ActiveRun | null> {
+    const runs = await prisma.syncRun.findMany({
         where: { status: "running" },
         orderBy: { startedAt: "asc" },
-        select: { id: true, startedAt: true, heartbeatAt: true, leaseUntil: true, step: true },
+        select: { id: true, startedAt: true, heartbeatAt: true, leaseUntil: true, step: true, state: true },
     });
+    const run = runs.find((candidate) => blocksSyncRun(candidate.state, options.summariesOnly ?? false));
+    if (!run) return null;
+    return { id: run.id, startedAt: run.startedAt, heartbeatAt: run.heartbeatAt, leaseUntil: run.leaseUntil, step: run.step };
 }
 
 /** No invocation holds it and none has checkpointed lately: the hand-off was lost. */

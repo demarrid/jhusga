@@ -28,7 +28,7 @@ export async function GET(request: Request) {
         return Response.json({ error: "Unauthorised" }, { status: 401 });
     }
 
-    let active = await activeSyncRun();
+    let active = await activeSyncRun({ summariesOnly: true });
     if (active && isAbandoned(active)) {
         await abandonSyncRun(active.id);
         active = null;

@@ -60,6 +60,7 @@ const SUITES = [
     "document-corrections",
     "drive",
     "drive-revisions",
+    "drive-connect",
     "editions",
     "editors",
     "links",
@@ -95,7 +96,7 @@ const SUITES = [
 ];
 
 function outcome(suite: string): string | null {
-    const file = path.join("scripts", `${suite}.check.ts`);
+    const file = path.join("scripts", `${suite}.check.${suite === "drive-connect" ? "mjs" : "ts"}`);
 
     console.log(`\n=== ${suite} ${"=".repeat(Math.max(0, 68 - suite.length))}`);
 

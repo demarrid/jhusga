@@ -34,8 +34,8 @@ async function main() {
             rows.set(data.id as string, row);
             return { startedAt: row.startedAt };
         },
-        findMany: async ({ where }: { where: { status: string; id: { not: string } } }) =>
-            [...rows.values()].filter((row) => row.status === where.status && row.id !== where.id.not).map(clone),
+        findMany: async ({ where }: { where: { status: string; id?: { not: string } } }) =>
+            [...rows.values()].filter((row) => row.status === where.status && row.id !== where.id?.not).map(clone),
         updateMany: async ({ where, data }: { where: Row; data: Row }) => {
             const row = rows.get(where.id as string);
             if (!row || row.status !== where.status || !leaseFree(row, where)) return { count: 0 };
@@ -49,7 +49,7 @@ async function main() {
         findUniqueOrThrow: async ({ where }: { where: { id: string } }) => clone(rows.get(where.id)!),
     } } });
 
-    const { isAbandoned, isStalled, runSyncSlice, startSyncRun } = await import("../lib/sync-run");
+    const { activeSyncRun, isAbandoned, isStalled, runSyncSlice, startSyncRun } = await import("../lib/sync-run");
     type Step = import("../lib/sync-run").Step;
     type Slice = import("../lib/sync-run").Slice;
     type Cursor = { ingest?: { pending: string[]; at: number } };
@@ -172,6 +172,26 @@ async function main() {
     assert.equal(second, first);
     assert.equal(rows.size, 2);
     assert.equal([...rows.values()].filter((r) => r.status === "running").length, 1);
+
+    // A saved summary queue cannot starve Drive discovery, and neither kind
+    // of trigger may create duplicate work within its own queue.
+    rows.clear();
+    const summaryQueue = await startSyncRun("cron", { summariesOnly: true });
+    assert.equal(await activeSyncRun(), null, "Drive ignores a summaries-only run");
+    assert.equal((await activeSyncRun({ summariesOnly: true }))?.id, summaryQueue);
+    now += 1;
+    const driveQueue = await startSyncRun("cron", { steps });
+    assert.notEqual(driveQueue, summaryQueue, "Drive gets a fresh walk despite unfinished summaries");
+    assert.equal((await activeSyncRun())?.id, driveQueue);
+    now += 1;
+    assert.equal(await startSyncRun("button", { steps }), driveQueue);
+    assert.equal(await startSyncRun("cron", { summariesOnly: true }), summaryQueue);
+    assert.equal(row(summaryQueue).status, "running", "preserve summary checkpoints");
+    rows.clear();
+    const fullQueue = await startSyncRun("cron", { steps });
+    now += 1;
+    assert.equal(await startSyncRun("cron", { summariesOnly: true }), fullQueue,
+        "summary recovery can still join an existing full sync");
 
     // Stalled is a lost hand-off; abandoned is one nobody resumed for hours.
     const at = 10 * 60 * 60_000;

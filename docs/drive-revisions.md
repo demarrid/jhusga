@@ -4,35 +4,64 @@ The archive's DOCX export contains document text, not Google Docs revision autho
 OAuth revision metadata supplies last-editor names separately; retained revision
 exports supply text for comparison. An API key cannot read that history.
 
-## Personal OAuth setup
+## Connect or renew in one command
 
-1. Enable Google Drive API in your Google Cloud project. Configure the OAuth
-   consent screen and add your personal Google account as a test user if needed.
-2. Create a **Web application** OAuth client. Add
-   `https://developers.google.com/oauthplayground` as an authorized redirect URI.
-3. Open [OAuth Playground](https://developers.google.com/oauthplayground).
-   In its settings select **Use your own OAuth credentials** and enter your
-   client ID and secret. Use offline access and force the consent prompt.
-4. Authorize `https://www.googleapis.com/auth/drive.readonly` using the account
-   that has **writer/editor or owner access** to the minutes; public viewer
-   access is insufficient for revision history. Exchange the code
-   for tokens. Copy the refresh token into your server environment, along with
-   `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`.
-5. Apply migrations with `npx prisma migrate deploy`, then generate the client
-   with `npx prisma generate`. Run `npm run revisions` for all published native
-   Google Docs minutes, or `npm run revisions -- DRIVE_FILE_ID` for one file.
-   Sync automatically refreshes revision history for new native Google Docs
-   minutes and minutes whose published content changes. It waits until meeting
-   classification finishes and skips unchanged text, agendas, and held edits.
-   OAuth must be configured in the sync environment. The manual command remains
-   available for backfills and retrying failed imports; failures retain stored
-   history and are reported in the sync result and logs.
+Run `npm run drive:connect` from the repository root, open the sign-in link it
+prints, and approve Google Drive read-only access. The command receives the
+callback locally, verifies the new refresh token, and saves it in `.env`.
+It never prints tokens. Use the Google account with **editor or owner access**
+to the minutes; public viewer access does not grant revision-history access.
 
-Keep credentials in `.env` locally and deployment secrets on the server. They
-must never use a NEXT_PUBLIC prefix. No account credentials are needed in chat.
-An external OAuth app in Testing normally has a seven-day refresh-token lifetime
-for Drive scopes. For unattended use, configure the appropriate production
-consent status; token revocation and account access changes can still stop imports.
+To check credentials without changing them: `npm run drive:connect -- --check`.
+Use `--help` for the short setup reminder. The command works with Node directly
+on Windows or in WSL (the browser must be able to reach WSL's localhost).
+It times out after ten minutes; Ctrl+C cancels it without replacing credentials.
+
+### One-time setup
+
+1. Enable the Google Drive API in your Google Cloud project.
+2. In **Google Auth Platform → Clients**, select your **Web application** client.
+   Add this exact **Authorized redirect URI**:
+   `http://127.0.0.1:53682/google/callback`. Keep any existing redirect URIs.
+3. Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in `.env`.
+   Existing OAuth Playground credentials can be reused; no new client is needed.
+4. Run `npm run drive:connect` and follow the link. If Google reports
+   `redirect_uri_mismatch`, check step 2, including the port and path.
+
+### Stop the seven-day expiry
+
+An **External** app with publishing status **Testing** issues refresh tokens
+that expire after seven days for Drive scopes. Refreshing access tokens does
+not extend that deadline. In the same project's **Google Auth Platform →
+Audience**, use **Publish app** to move to **In production**, then run
+`npm run drive:connect` again. This removes the Testing-specific deadline;
+revocation, account policies, and other Google token limits can still require
+reconnection. Google may require verification depending on the app's use and
+requested scopes. Publishing the OAuth app does not make your Drive files public.
+
+This is the likely explanation for weekly expiry, not a setting the renewal
+command can inspect or change. See Google's [token lifetime rules](https://developers.google.com/identity/protocols/oauth2)
+and [Audience settings](https://support.google.com/cloud/answer/15549945?hl=en).
+
+### Apply the renewed credential to the live site
+
+The command updates **local `.env` only**. In Vercel's project settings, replace
+`GOOGLE_OAUTH_REFRESH_TOKEN` for **Production** with the value saved in `.env`,
+and redeploy. The deployed client ID and secret must match the local client.
+Restart an already-running local server too. Never put these credentials in
+`NEXT_PUBLIC_*` variables or paste them into chat.
+
+### Retry revision imports
+
+Run `npm run revisions -- DRIVE_FILE_ID` for one published minutes document,
+or `npm run revisions` for all published native Google Docs minutes. Sync
+refreshes revision history for new or changed published minutes after meeting
+classification, skipping unchanged text, agendas, and held edits. Credentials
+must be configured in the environment running the sync. Failed imports retain
+stored history and are reported in the sync result and logs.
+
+For a new installation, apply migrations with `npx prisma migrate deploy` and
+generate the client with `npx prisma generate` before importing revisions.
 
 ## Credit policy and limits
 

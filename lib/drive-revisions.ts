@@ -52,7 +52,13 @@ async function accessToken(): Promise<string> {
                 client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!,
                 refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN! }),
         });
-        if (!response.ok) throw new Error(`Drive OAuth refresh failed (${response.status}); check consent and refresh token`);
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({})) as { error?: string };
+            const hint = error.error === "invalid_grant"
+                ? "consent expired or was revoked; run npm run drive:connect (Google Testing apps expire after seven days)"
+                : "check the OAuth client credentials or run npm run drive:connect";
+            throw new Error(`Drive OAuth refresh failed (${response.status}); ${hint}`);
+        }
         const data = await response.json() as { access_token?: string; expires_in?: number };
         if (!data.access_token || !Number.isFinite(data.expires_in) || data.expires_in! <= 0) {
             throw new Error("Drive OAuth returned an invalid token response");
