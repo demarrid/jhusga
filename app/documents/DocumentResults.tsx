@@ -294,7 +294,9 @@ function DocumentCard({
                                 <Link
                                     key={id}
                                     href={`/documents?mode=find&person=${id}`}
-                                    className={styles.contributorChip}
+                                    className={entry.roles.every((role) => role === "mentioned")
+                                        ? `${styles.contributorChip} ${styles.contributorChipMention}`
+                                        : styles.contributorChip}
                                 >
                                     {entry.name}
                                     <span className={styles.contributorTooltip}>

@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { sessionEndDate, sessionStartDate } from "@/config/session";
 import { prisma } from "@/lib/prisma";
+import { narrativeSpeakers } from "@/lib/meeting-evidence";
+import { toPlainText } from "@/lib/markdown";
 
 /**
  * Credits for the staff in the ReviewedAdministrator table.
@@ -24,7 +26,7 @@ export type MentionedDocument = {
     datedAt?: Date | null;
     sessionNumber?: number | null;
 };
-export type ReviewedMention = { hopkinsAffiliateId: string; evidence: string; note: string };
+export type ReviewedMention = { hopkinsAffiliateId: string; evidence: string; note: string; role: "mentioned" | "interlocutor" };
 
 const DAY = 24 * 60 * 60 * 1000;
 const EVIDENCE_LENGTH = 300;
@@ -75,15 +77,25 @@ export function findReviewedMentions(
         const patterns = entry.forms.filter(form => usable(form, span)).map(form => formPattern(form.text));
         if (patterns.length === 0) continue;
 
-        for (const line of lines) {
-            const match = patterns.map(pattern => pattern.exec(line)).find(Boolean);
+        const meeting = document.kind === "notes.meeting" || document.kind?.startsWith("minutes.");
+        const spoken = meeting ? lines.slice(1).find(line => {
+            const plain = toPlainText(line);
+            return patterns.some(pattern => pattern.test(plain)) && narrativeSpeakers(line).some(name =>
+                patterns.some(pattern => {
+                    const matched = pattern.exec(plain)?.[0];
+                    return matched?.endsWith(name);
+                }));
+        }) : undefined;
+        for (const line of spoken ? [spoken] : lines) {
+            const match = patterns.map(pattern => pattern.exec(spoken ? toPlainText(line) : line)).find(Boolean);
             if (!match) continue;
             const text = line.trim();
             const start = Math.max(0, text.indexOf(match[0]) - 120);
             mentions.push({
                 hopkinsAffiliateId: entry.hopkinsAffiliateId,
+                role: spoken ? "interlocutor" : "mentioned",
                 evidence: text.length <= EVIDENCE_LENGTH ? text : text.slice(start, start + EVIDENCE_LENGTH).trim(),
-                note: reviewedNote(entry),
+                note: spoken ? `Reviewed identity: ${entry.title}. Source: ${entry.source}. Speaking turn recorded in the meeting text.` : reviewedNote(entry),
             });
             break;
         }

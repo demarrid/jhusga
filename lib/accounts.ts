@@ -146,26 +146,49 @@ export type AccountMatch<T extends AccountCandidate> = {
 };
 
 /**
+ * A confirmed address also covers the same handle when Drive omits the domain.
+ * `honorarose123` and `honorarose123@gmail.com` are one account.
+ */
+function confirmedPersonName(email: string): string | undefined {
+    const exact = CONFIRMED_DRIVE_ACCOUNTS[email];
+    if (exact) return exact;
+
+    const local = email.split("@")[0] ?? "";
+    if (!local) return undefined;
+
+    const names = new Set(
+        Object.entries(CONFIRMED_DRIVE_ACCOUNTS)
+            .filter(([account]) => (account.split("@")[0] ?? "") === local)
+            .map(([, name]) => name),
+    );
+    if (names.size !== 1) return undefined;
+    return [...names][0];
+}
+
+/**
  * Resolve one Drive account onto a known person, or null.
  *
- * The display name is tried first: Drive sometimes carries a real name
- * ("Tyler Turner") rather than the handle, and an exact name is better
- * evidence than any amount of handle arithmetic.
+ * A real display name is tried before handle arithmetic: Drive sometimes
+ * carries "Tyler Turner" rather than the handle, and an exact name is better
+ * evidence than any amount of stem matching. A one-word display name is the
+ * handle itself (`honorarose123`), including when Drive stored no email.
  */
 export function matchAccount<T extends AccountCandidate>(
     account: { email?: string | null; displayName?: string | null },
     people: T[],
 ): AccountMatch<T> | null {
-    const email = account.email?.trim().toLowerCase() ?? "";
+    const providedEmail = account.email?.trim().toLowerCase() ?? "";
     const displayName = account.displayName?.trim() ?? "";
+    const email = providedEmail || (displayName && !/\s/.test(displayName) ? `${displayName.toLowerCase()}@drive.local` : "");
+    const accountLabel = providedEmail || displayName;
 
     if (email && isRoleAccount(email)) return null;
 
-    const confirmed = CONFIRMED_DRIVE_ACCOUNTS[email];
+    const confirmed = email ? confirmedPersonName(email) : undefined;
     if (confirmed) {
         const matches = people.filter(person => nameKey(person.name) === nameKey(confirmed));
         if (matches.length !== 1) return null;
-        return { person: matches[0]!, score: 6, evidence: `Drive account ${email} (confirmed as ${confirmed})` };
+        return { person: matches[0]!, score: 6, evidence: `Drive account ${accountLabel} (confirmed as ${confirmed})` };
     }
 
     if (displayName) {
@@ -198,6 +221,6 @@ export function matchAccount<T extends AccountCandidate>(
     return {
         person: scored[0]!.person,
         score: scored[0]!.score,
-        evidence: `Drive account ${email}`,
+        evidence: `Drive account ${accountLabel}`,
     };
 }

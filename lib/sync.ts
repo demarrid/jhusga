@@ -219,6 +219,7 @@ export async function recordMeetings(): Promise<{ keyed: number; paired: number 
             driveCreatedTime: true,
             meetingKey: true,
             meetingRole: true,
+            content: true,
             // Read only so `meetingFor` can refuse a News-Letter headline,
             // which otherwise reads as minutes of the meeting it reports on.
             kind: true,
@@ -695,7 +696,7 @@ export async function recordContributors(
         );
         for (const mention of mentions) {
             await prisma.documentContributor.create({
-                data: { documentId, role: "mentioned", source: REVIEWED_SOURCE, ...mention },
+                data: { documentId, source: REVIEWED_SOURCE, ...mention },
             });
         }
         linked += mentions.length;

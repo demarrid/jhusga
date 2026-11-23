@@ -1,5 +1,9 @@
 /** Reviewed archive metadata; original filenames and source text remain intact. */
 export const DOCUMENT_CORRECTIONS: Record<string, { displayTitle: string; datedOn?: string | null }> = {
+    // The agenda was filled with attributed discussion during the lunch.
+    "1UAP6U5J0pS0Vq4-1amxCZ085vLVjOEJxCpi6X_LE6Do": {
+        displayTitle: "Executive Board × President Daniels Lunch — Agenda and Minutes (3/25/26)",
+    },
     // Reviewed 2026-11-18: exact copy of MINUTES 12, including its old header.
     // Keep undated until a substantive, distinct meeting record is verified;
     // a filename, header, or modified-time change alone does not clear this.

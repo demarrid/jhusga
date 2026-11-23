@@ -333,7 +333,11 @@ export default async function DocumentPage({
                                 <ul>
                                     {byPerson(document.contributors).map((person) => (
                                         <li key={person.id}>
-                                            <Link href={`/documents?mode=find&person=${person.id}`} title={person.tooltip}>
+                                            <Link
+                                                className={person.mentionOnly ? styles.mentionedName : undefined}
+                                                href={`/documents?mode=find&person=${person.id}`}
+                                                title={person.tooltip}
+                                            >
                                                 {person.name}
                                             </Link>
                                             <span className={styles.asideMeta}>
@@ -375,7 +379,7 @@ export default async function DocumentPage({
  */
 function byPerson(
     contributors: { id: string; name: string; role: string; note: string | null }[],
-): { id: string; name: string; roles: string; tooltip?: string }[] {
+): { id: string; name: string; roles: string; mentionOnly: boolean; tooltip?: string }[] {
     const people = new Map<
         string,
         { id: string; name: string; held: { role: string; note: string | null }[] }
@@ -402,6 +406,9 @@ function byPerson(
                 .sort((a, b) => contributorRoleOrder(a.role) - contributorRoleOrder(b.role))
                 .map((entry) => contributorRoleLabel(entry.role))
                 .join(", "),
+            // Another role on the same document is the thing worth coloring.
+            // A name that only comes up in passing stays quiet.
+            mentionOnly: person.held.every((entry) => entry.role === "mentioned"),
         }));
 }
 

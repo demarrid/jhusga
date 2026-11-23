@@ -1,3 +1,4 @@
+import { hasRecordedDiscussion, narrativeSpeakers } from "@/lib/meeting-evidence";
 import { toPlainText } from "@/lib/markdown";
 
 /**
@@ -21,6 +22,7 @@ export const CONTRIBUTOR_ROLES = [
     "nominee",
     "reporting",
     "interlocutor",
+    "involved",
     "mentioned",
     "author",
     "present",
@@ -69,6 +71,8 @@ export function contributorRoleLabel(role: string): string {
         // weaker fact and leaves the stronger one unsaid.
         case "interlocutor":
             return "Interlocutor";
+        case "involved":
+            return "Involved";
         case "mentioned":
             return "Mentioned";
         case "author":
@@ -100,8 +104,8 @@ export function contributorRoleLabel(role: string): string {
 
 /** Line prefixes that introduce a list of people, mapped to what they mean. */
 const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolean }[] = [
-    // Planning assignments establish mentions, not authorship or attendance.
-    { pattern: /^(?:planners?|additional\s+insight)$/i, role: "mentioned", firstNames: true },
+    // Planning assignments establish involvement, not authorship or attendance.
+    { pattern: /^(?:planners?|additional\s+insight)$/i, role: "involved", firstNames: true },
     { pattern: /^(?:introduced\s+by|introducers?)$/i, role: "introducer" },
     { pattern: /^(?:sponsored\s+by|sponsors?|co-?sponsors?)$/i, role: "sponsor" },
     { pattern: /^(?:staff\s+present|staff|faculty|admin|advisors?)$/i, role: "staff" },
@@ -977,6 +981,10 @@ function harvestSpeaker(
     if (!inList && !minutes) return;
 
     const text = line.replace(ENUMERATOR, "").trim();
+    if (minutes) {
+        const contextual = /^([A-Za-z’'-]+)\s*\([^)]{1,100}\):\s*(.+)$/.exec(text);
+        if (contextual) recordSpeaker(found, contextual[1]!, contextual[2]!, text);
+    }
     harvestSpeakerAttributions(found, text);
 
     // Outline notes name the speaker in the item itself: `Jazz - physics and
@@ -1489,8 +1497,10 @@ export function extractContributors(
             recordPerson(found, meetingPartner[1]!, "mentioned", title!);
         }
     }
-    // Participant lists can include planned attendees; use Mentioned until
-    // the actual minutes establish attendance or a speaking turn.
+    // Participants in a populated meeting record attended; an unfilled agenda
+    // only lists expected participants. Explicit absence still takes precedence.
+    const recorded = minutes && hasRecordedDiscussion(markdown);
+    const participantEvidence = new Set<string>();
     if (minutes) {
         let participants = false;
         for (const raw of lines) {
@@ -1500,11 +1510,19 @@ export function extractContributors(
             if (participants) {
                 const entry = /^(.+?),\s*(?:PhD,\s*)?(.+)$/.exec(line);
                 if (entry && OFFICE_WORDS.test(entry[2]!)) {
-                    recordPerson(found, entry[1]!, "mentioned", line, entry[2]!);
+                    if (recorded) participantEvidence.add(line.slice(0, 300));
+                    recordPerson(found, entry[1]!, recorded ? "present" : "mentioned", line, entry[2]!);
                 }
             }
             const introduction = /^([A-Z][a-z]+(?: [A-Z][A-Za-z’'-]+){1,3})\s+[–—-]\s+previously worked\b/.exec(line);
-            if (introduction) recordPerson(found, introduction[1]!, "mentioned", line);
+            if (introduction) recordPerson(found, introduction[1]!, recorded ? "present" : "mentioned", line);
+        }
+    }
+    if (minutes) {
+        for (const raw of lines) {
+            for (const name of narrativeSpeakers(raw)) {
+                recordSpeaker(found, name, "Recorded discussion", toPlainText(raw));
+            }
         }
     }
     // Introductions such as "marrow: associate director of advising" or
@@ -1684,7 +1702,9 @@ export function extractContributors(
     }
     if (title && !meetingPartner) harvestTitleAuthor(found, title);
 
-    return [...found.values()];
+    const extracted = [...found.values()];
+    return extracted.filter(person => !(person.role === "present" && participantEvidence.has(person.evidence) && extracted.some(other =>
+        nameKey(other.name) === nameKey(person.name) && ["absent", "excused"].includes(other.role))));
 }
 
 /**

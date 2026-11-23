@@ -44,3 +44,6 @@ for (const [driveFileId, record] of Object.entries(reviewed)) {
 }
 
 console.log("Document category checks passed");
+
+assert.equal(documentMeetingRole({kind: "minutes.executive", title: "Lunch Agenda", folderPath: "Agendas", content: "Omotara and Tyler expressed their concern.\nPresident Daniels noted the issue.\nSrigouri proposed more options."}), "minutes");
+assert.equal(documentMeetingRole({kind: "minutes.executive", title: "Lunch Agenda", folderPath: "Agendas", content: "Date: Tuesday\nTime: 11:00\nLocation: BSC\nPresident Daniels will discuss funding."}), "agenda");

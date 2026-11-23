@@ -22,6 +22,7 @@
  */
 
 import { isCommitteeRecordsFolder, isSecondaryKind } from "@/lib/kinds";
+import { hasRecordedDiscussion } from "@/lib/meeting-evidence";
 import { expandCalendarYear } from "@/lib/calendar-year";
 
 export const MEETING_ROLES = ["agenda", "minutes"] as const;
@@ -256,12 +257,14 @@ function bodyFor(title: string, folderPath: string): string | null {
 /**
  * Whether this is the agenda or the minutes.
  *
- * The folder wins: "MINUTES for Exec Meetings" holds documents titled
+ * Recorded discussion wins over filing metadata. Otherwise the folder wins:
+ * "MINUTES for Exec Meetings" holds documents titled
  * "Executive Meeting #10" that are minutes despite the title, and an agenda
  * titled "Senate GBM #13" says nothing about itself at all. Only when the
  * folder is silent does the title get a say.
  */
-function roleFor(title: string, folderPath: string): MeetingRole | "" {
+function roleFor(title: string, folderPath: string, content = ""): MeetingRole | "" {
+    if (hasRecordedDiscussion(content)) return "minutes";
     const segments = folderPath.split("/");
 
     const folderSaysMinutes = segments.some((segment) => /minutes/i.test(segment));
@@ -293,8 +296,8 @@ function roleFor(title: string, folderPath: string): MeetingRole | "" {
 }
 
 /** Category roles don't require a pairable meeting key (for example CSAC agendas). */
-export function documentMeetingRole(document: { kind: string; title: string; folderPath: string }): MeetingRole | "" {
-    return document.kind.startsWith("minutes.") ? roleFor(document.title, document.folderPath) : "";
+export function documentMeetingRole(document: { kind: string; title: string; folderPath: string; content?: string }): MeetingRole | "" {
+    return document.kind.startsWith("minutes.") ? roleFor(document.title, document.folderPath, document.content) : "";
 }
 
 /** The title with everything that is a year or a session filed off. */
@@ -465,6 +468,7 @@ export type MeetingInput = {
      * secondary source out; see the guard in `meetingFor`.
      */
     kind?: string;
+    content?: string;
 };
 
 /**
@@ -488,7 +492,7 @@ export function meetingFor(input: MeetingInput): Meeting {
     if (EXTERNAL_MEETING.test(title)) return NO_MEETING;
     if (input.sessionNumber === null) return NO_MEETING;
 
-    const role = roleFor(title, input.folderPath);
+    const role = roleFor(title, input.folderPath, input.content);
     if (!role) return NO_MEETING;
 
     const body = bodyFor(title, input.folderPath);
@@ -626,7 +630,7 @@ export function meetingLog(input: MeetingInput & { content: string }): MeetingLo
     // neither it nor the folder says, the attendance the file itself keeps
     // does: nobody writes down who was absent from an agenda.
     const role =
-        roleFor(title, input.folderPath) ||
+        roleFor(title, input.folderPath, input.content) ||
         (RECORDS_ATTENDANCE.test(input.content) ? "minutes" : "");
     if (!role) return null;
 

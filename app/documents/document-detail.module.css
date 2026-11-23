@@ -708,6 +708,18 @@
   color: #035cb5;
 }
 
+/* Same hue as the other names, at a fraction of the saturation. A mention
+   is a name in the text, and the blue used for someone who introduced a
+   bill or was in the room makes the two look like the same kind of fact. */
+.sidebar a.mentionedName {
+  color: #58636e;
+}
+
+.sidebar a.mentionedName:hover,
+.sidebar a.mentionedName:focus-visible {
+  color: #3d474f;
+}
+
 .sidebar .outline a.sectionDocumentLink {
   font-family: var(--font-work-sans), Tahoma, sans-serif;
   font-size: 0.68rem;

@@ -48,3 +48,8 @@ assert.equal(mention!.note, reviewedNote(shollenberger));
 assert.match(mention!.note, /Source: https:\/\/wellbeing\.jhu\.edu\/kevin\./);
 
 console.log("reviewed-administrators checks passed");
+
+const speakerRoster: RosterEntry[] = [{hopkinsAffiliateId: "daniels", title: "President", source: "archive", forms: [{text: "President Daniels", validFrom: null, validTo: null}]}];
+assert.equal(findReviewedMentions({title: "President Daniels Lunch", kind: "minutes.executive", content: "President Daniels noted that sales were low."}, speakerRoster)[0]?.role, "interlocutor");
+assert.equal(findReviewedMentions({title: "Minutes", kind: "minutes.executive", content: "Charles: President Daniels noted this last week."}, speakerRoster)[0]?.role, "mentioned");
+assert.equal(findReviewedMentions({title: "Resolution", kind: "resolution", content: "President Daniels noted that sales were low."}, speakerRoster)[0]?.role, "mentioned");

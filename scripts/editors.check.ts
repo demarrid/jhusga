@@ -19,6 +19,7 @@ assert.deepEqual(rankedEditors([row(0, "Owner", baseline), row(1, "Unknown", nul
 assert.deepEqual(rankedEditors([row(0, "Owner", baseline), row(1, "Alice", words("alpha", 1000)),
     row(2, "Bob", `${words("alpha", 1000)} ${words("beta", 30)}`)]).get("minutes")!.map(x => x.name), ["Alice"]);
 assert.equal(editorDisplayName({name: "honorarose123", email: "honorarose123@gmail.com"}, [{id:"honora", name:"Honora Muratori"}]), "Honora Muratori");
+assert.equal(editorDisplayName({name: "honorarose123", email: ""}, [{id:"honora", name:"Honora Muratori"}]), "Honora Muratori");
 assert.equal(editorDisplayName({name:"unknown123", email:"unknown123@gmail.com"}, []), "");
 assert.equal(editorDisplayName({name:"Tyler Turner", email:""}, []), "Tyler Turner");
 const anonymous = { ...row(1, "", `${baseline} ${words("anonymous", 2000)}`), editorEmail: "" };

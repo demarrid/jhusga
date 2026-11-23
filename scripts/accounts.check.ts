@@ -127,6 +127,14 @@ check(
 
 check("confirmed opaque accounts resolve without weakening handle scoring", matchAccount({ email: "s.109su3ire@gmail.com" }, [{ id: "sumi", name: "Sumire Sumi" }])?.person.id === "sumi");
 check("confirmed accounts do not invent a missing person", matchAccount({ email: "s.109su3ire@gmail.com" }, people) === null);
+check(
+    "a confirmed handle resolves from the display name alone",
+    matchAccount({ displayName: "honorarose123" }, people)?.person.id === "honora",
+);
+check(
+    "a confirmed account still resolves when another person shares the given name",
+    matchAccount({ email: "honorarose123@gmail.com" }, [...people, { id: "other", name: "Honora Rossi" }])?.person.id === "honora",
+);
 check("display names can identify accounts without emails", matchAccount({ displayName: "Tyler Turner" }, people)?.person.id === "tyler");
 check("duplicate display names remain unresolved", matchAccount({ displayName: "Tyler Turner" }, [{ id: "a", name: "Tyler Turner" }, { id: "b", name: "Tyler Turner" }]) === null);
 

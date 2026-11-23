@@ -1257,6 +1257,16 @@ check("compound offices preserve the bill introducer", compoundIntroducer.some(p
 const attendanceNote = extractContributors("Present: Sophia Baleeiro, Shiran Hanono-Michli (conflict w/time change, counted as present), Julia Lee", "Minutes", "minutes.committee");
 check("attendance note delimiters never create people", attendanceNote.length === 3 && !attendanceNote.some(p => p.name === "Time Change") && attendanceNote.some(p => p.name === "Shiran Hanono-Michli" && p.note === "conflict w/time change, counted as present"));
 const agoraParticipants = extractContributors("# Participants\nExecutive Branch\nSumire Sumi, *Student Body President*\nDr. Ruth Braunstein, PhD, *Executive Director of the SNF Agora Institute*\n# Agenda\n# Minutes\nSheri Butarazzi - previously worked at school of medicine\nSophia: What initiatives are you working on?", "Agora Meeting", "notes.meeting");
-check("meeting notes include participants and speakers", ["Sumire Sumi", "Ruth Braunstein", "Sheri Butarazzi"].every(name => agoraParticipants.some(p => p.name === name && p.role === "mentioned")) && agoraParticipants.some(p => p.name === "Sophia" && p.role === "interlocutor"));
+check("meeting notes include participants and speakers", ["Sumire Sumi", "Ruth Braunstein", "Sheri Butarazzi"].every(name => agoraParticipants.some(p => p.name === name && p.role === "present")) && agoraParticipants.some(p => p.name === "Sophia" && p.role === "interlocutor"));
 const printedSignatures = extractContributors("Signatures of Enactment:\n_____\nJason Yu\nStudent Body President of the Johns Hopkins SGA", "Bill", "bill.funding");
 check("printed enactment signatures do not add people", !printedSignatures.some(p => p.name === "Jason Yu"));
+
+const narrative = extractContributors("1. Omotara and Tyler expressed that meal swipes would help.\n2. President Daniels noted the low sales.\n3. Srigouri also noted the lack of options.\n4. Vishnu thinks more funding is needed.\n5. Imad proposed a new budget.", "Lunch Agenda", "minutes.executive");
+check("narrative and joint attributions identify interlocutors", ["Omotara", "Tyler", "Daniels", "Srigouri", "Vishnu", "Imad"].every(name => narrative.some(p => p.name === name && p.role === "interlocutor" && p.onlyIfKnown)));
+check("secondhand speech does not promote the quoted administrator", !extractContributors("Charles: Dr. Brown told us last week to schedule it.", "Minutes", "minutes.executive").some(p => p.name === "Brown" && p.role === "interlocutor"));
+check("legislation does not infer speaking from narrative", !extractContributors("President Daniels stated his priorities.", "Resolution", "resolution").some(p => p.role === "interlocutor"));
+check("planning labels distinguish involvement from mentions", ["Abraham", "Mahima", "Sumi"].every(name => extractContributors("Planners: Abraham and Mahima\nAdditional Insight: Sumi, members of FSL", "Task Force", "plan").some(p => p.name === name && p.role === "involved")));
+check("an unfilled participant list does not prove presence", extractContributors("# Participants\nSumire Sumi, Student Body President\n# Agenda\nDate: Tuesday\nTime: 8:00\nLocation: Agora\n# Minutes", "Meeting", "notes.meeting").every(p => p.role !== "present"));
+check("parenthetical speaker context preserves the person", extractContributors("Rain (student advisory board): We should propose ideas.", "Minutes", "notes.meeting").some(p => p.name === "Rain" && p.role === "interlocutor"));
+
+if (failures) process.exitCode = 1;
