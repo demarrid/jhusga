@@ -30,13 +30,17 @@ export function database() {
 }
 
 /**
- * Retry while the server refuses new connections (53300 / P2037). The refusal
- * happens before any statement runs, so a retry cannot repeat a write.
+ * Retry startup refusals and the exact pg-pool acquisition timeout errors.
+ * Both happen before any statement runs. Acquisition timeouts get at most one
+ * retry (each acquisition already waits 5 seconds); ambiguous failures do not.
  */
 export async function retryConnectionLimit<T>(run: () => Promise<T>, delays = CONNECTION_LIMIT_RETRY_MS): Promise<T> {
     for (let attempt = 0; ; attempt++) {
         try { return await run(); } catch (error) {
-            if (attempt >= delays.length || metricFailure(error) !== "connection-limit") throw error;
+            const category = metricFailure(error);
+            const retryable = category === "connection-limit" ||
+                (category === "connection-acquire-timeout" && attempt < 1);
+            if (attempt >= delays.length || !retryable) throw error;
             await new Promise(resolve => setTimeout(resolve, delays[attempt] * (0.5 + Math.random())));
         }
     }

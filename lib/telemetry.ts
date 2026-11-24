@@ -15,7 +15,7 @@ let cleanupAt = 0;
 const retry = new MetricRetry();
 export const telemetryEnabled = () => process.env.TELEMETRY_ENABLED === "true";
 
-export function recordMetric(metric: "request" | "database" | "daily-browser", route: string, source: string, kind: string, errors = 0, durationMs = 0) {
+export function recordMetric(metric: "request" | "database" | "database-error" | "daily-browser", route: string, source: string, kind: string, errors = 0, durationMs = 0) {
     if (!telemetryEnabled()) return;
     const hour = metricBucketStart();
     const environment = process.env.VERCEL_ENV === "production" ? "production" : process.env.VERCEL_ENV === "preview" ? "preview" : "local";
@@ -70,7 +70,13 @@ export async function measureDatabase<T>(query: () => Promise<T>): Promise<T> {
     const start = performance.now();
     let failed = false;
     try { return await query(); }
-    catch (error) { failed = true; throw error; }
+    catch (error) {
+        failed = true;
+        // Fixed categories only; no error message, query, document, or visitor ID.
+        // Separate metric avoids double-counting database calls and errors.
+        recordMetric("database-error", "all", source, metricFailure(error));
+        throw error;
+    }
     finally { recordMetric("database", "all", source, "orm", Number(failed), performance.now() - start); }
 }
 export function measureSync<T>(fn: () => Promise<T>): Promise<T> {

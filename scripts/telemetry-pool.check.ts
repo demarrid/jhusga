@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import net from "node:net";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
-import { database, closeDatabase, DATABASE_POOL_MAX, DATABASE_IDLE_MS, CONNECTION_LIMIT_RETRY_MS } from "../lib/database-client";
+import { database, closeDatabase, DATABASE_POOL_MAX, DATABASE_IDLE_MS, CONNECTION_LIMIT_RETRY_MS, retryConnectionLimit } from "../lib/database-client";
 import { prisma } from "../lib/prisma";
 import { metricsClient, persistMetrics } from "../lib/telemetry-store";
 import { metricFailure } from "../lib/telemetry-retry";
@@ -24,8 +24,15 @@ async function main() {
     const server = new PGLiteSocketServer({ db, port: 0, host: "127.0.0.1", maxConnections: DATABASE_POOL_MAX });
     await server.start();
     const [host, port] = server.getServerConn().split(":");
-    let refuseNext = 0, refused = 0;
+    let refuseNext = 0, refused = 0, stallNext = 0, stalled = 0;
     const proxy = net.createServer(socket => {
+        if (stallNext > 0) {
+            stallNext--; stalled++;
+            socket.on("data", () => { /* Accept TCP but never finish the handshake. */ });
+            socket.on("error", () => socket.destroy());
+            socket.on("end", () => socket.end());
+            return;
+        }
         if (refuseNext > 0) {
             refuseNext--; refused++;
             socket.once("data", () => socket.end(tooManyClients()));
@@ -80,6 +87,35 @@ async function main() {
         assert.equal(await flushMetrics(), true);
         console.log("Connection-limit refusals: 2 refusals retried into one write; persistent refusal surfaced after",
             CONNECTION_LIMIT_RETRY_MS.length, "retries.");
+
+        await idle();
+        pool.options.connectionTimeoutMillis = 100;
+        stallNext = 1;
+        await prisma.$executeRawUnsafe(`INSERT INTO "TelemetryBatch" ("id", "createdAt") VALUES ('timeout-retry-write', NOW())`);
+        assert.equal(stalled, 1);
+        assert.equal((await db.query<{n: number}>(`SELECT COUNT(*)::int AS n FROM "TelemetryBatch" WHERE id = 'timeout-retry-write'`)).rows[0].n, 1);
+        await idle();
+        stallNext = 2;
+        const timeout = await prisma.$queryRawUnsafe("SELECT 1").then(() => undefined, (e: unknown) => e);
+        assert.equal(metricFailure(timeout), "connection-acquire-timeout");
+        assert.equal(stalled, 3, "persistent acquisition timeout gets only one retry");
+        pool.options.connectionTimeoutMillis = 5000;
+        assert.equal(await flushMetrics(), true);
+        const categories = await db.query<{kind: string; count: number}>(`SELECT kind, SUM(count)::int AS count FROM "TelemetryQuarter" WHERE metric = 'database-error' GROUP BY kind`);
+        assert.equal(categories.rows.find(r => r.kind === 'connection-acquire-timeout')?.count, 1);
+
+        for (const message of ["query timeout", "Connection terminated unexpectedly", "timeout exceeded when trying to connect: private data"]) {
+            let attempts = 0;
+            const error = new Error(message);
+            await assert.rejects(retryConnectionLimit(async () => { attempts++; throw error; }, [0, 0]), e => e === error);
+            assert.equal(attempts, 1, "ambiguous errors must never replay writes");
+        }
+        let queued = 0;
+        assert.equal(await retryConnectionLimit(async () => {
+            if (++queued === 1) throw new Error("timeout exceeded when trying to connect");
+            return 42;
+        }, [0]), 42);
+        console.log("Acquisition timeout recovered into exactly one write; persistent and ambiguous failures surfaced; anonymous error category saved.");
     } finally { await closeDatabase(); proxy.close(); await server.stop(); await db.close(); }
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

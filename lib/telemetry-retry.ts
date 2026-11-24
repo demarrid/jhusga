@@ -36,6 +36,10 @@ export function metricFailure(error: unknown): string {
     for (const code of diagnostic.codes) if (Object.hasOwn(codes, code)) return codes[code];
     const e = error as { message?: unknown };
     const message = typeof e?.message === "string" ? e.message : "";
+    // These exact pg-pool errors occur before a client is handed to a query.
+    // Do not broaden this to generic timeouts: a statement may have committed.
+    if (message === "timeout exceeded when trying to connect" ||
+        message === "Connection terminated due to connection timeout") return "connection-acquire-timeout";
     if (/unsupported startup parameter/i.test(message)) return "unsupported-connection-option";
     if (/tenant or user not found/i.test(message)) return "connection-identity";
     if (/timeout|timed out/i.test(message)) return "timeout";

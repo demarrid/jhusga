@@ -24,6 +24,7 @@ async function main() {
         if (interval === "15m") console.error("Legacy hourly counters excluded: they cannot be split accurately into 15-minute intervals.");
         console.error("Do not sum daily browsers into monthly uniques. Unknown requests are NOT confirmed humans.");
         console.error("Database counts are ORM calls, not billed SQL operations. Metrics writes are excluded.");
+        console.error("database-error counts break down failed calls by fixed category; do not add them to database totals. Older data has no category breakdown.");
         if (!rows.length) console.error("No saved metrics in this window/environment.");
         for (const row of rows) console.log(JSON.stringify(row, (_, v) => typeof v === "bigint" ? v.toString() : v));
     } finally { await closeMetrics(); }
