@@ -120,6 +120,7 @@ const ALLOWED: RateVerdict = { allowed: true, retryAfterSeconds: 0 };
 export async function consumeRateLimit(
     action: RateLimitAction,
     subject?: string,
+    options?: { onUnavailable?: "allow" | "deny" },
 ): Promise<RateVerdict> {
     const [limit, windowSeconds] = RATE_LIMITS[action];
 
@@ -156,9 +157,13 @@ export async function consumeRateLimit(
             ),
         };
     } catch (cause) {
-        // Failing open. A database hiccup should not lock everybody out of
-        // posting, and the consequence of the other choice -- an outage where
-        // nobody can speak -- is worse than the consequence of this one.
+        // Forum writes fail open: a database hiccup should not lock everybody
+        // out of posting. A source check fails closed. The database is already
+        // refusing sessions, and starting an ingest would open more of them.
+        if (options?.onUnavailable === "deny") {
+            console.error("Rate limit check failed, refusing the request:", cause);
+            throw cause;
+        }
         console.error("Rate limit check failed, allowing the request:", cause);
         return ALLOWED;
     }

@@ -5,16 +5,26 @@ import { manualArchiveIds } from "@/lib/manual-archive";
 import { prisma } from "@/lib/prisma";
 import { isSharePointFileId } from "@/lib/sharepoint";
 import { emptySyncSummary, ingestFile, ingestPendingLink } from "@/lib/sync";
+import { visitRefresh } from "@/lib/visit-refresh";
 
-const pending = new Map<string, Promise<boolean>>();
-
-/** Coalesce simultaneous visits without exporting the same source twice. */
-export async function refreshDocument(documentId: string): Promise<boolean> {
-    const existing = pending.get(documentId);
-    if (existing) return existing;
-    const work = refreshSource(documentId);
-    pending.set(documentId, work);
-    try { return await work; } finally { pending.delete(documentId); }
+/**
+ * Check one source, or skip before touching the database.
+ *
+ * `allowed` runs only after this instance has claimed the single in-flight
+ * slot. A refusal or a database error still counts as a check, so a full
+ * database does not get a retry on every subsequent page view.
+ */
+export async function refreshDocument(
+    documentId: string,
+    allowed: () => Promise<boolean>,
+): Promise<boolean | "skipped" | "limited"> {
+    if (visitRefresh.start(documentId, Date.now()) === "skip") return "skipped";
+    try {
+        if (!await allowed()) return "limited";
+        return await refreshSource(documentId);
+    } finally {
+        visitRefresh.finish(documentId, Date.now());
+    }
 }
 
 async function refreshSource(documentId: string) {

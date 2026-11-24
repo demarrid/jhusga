@@ -17,11 +17,14 @@ export async function POST(request: Request, { params }: {
         }
     } catch { return new Response(null, { status: 403 }); }
     if (demoModeEnabled()) return Response.json({ latestVersionId: null });
-    const verdict = await consumeRateLimit("document_refresh");
-    if (!verdict.allowed) return new Response(null, { status: 429 });
     const { documentId } = await params;
     try {
-        const changed = await refreshDocument(documentId);
+        const changed = await refreshDocument(documentId, async () => {
+            const verdict = await consumeRateLimit("document_refresh", undefined, { onUnavailable: "deny" });
+            return verdict.allowed;
+        });
+        if (changed === "skipped") return Response.json({ latestVersionId: null });
+        if (changed === "limited") return new Response(null, { status: 429 });
         if (changed) invalidateArchiveCache();
         const latestVersionId = await getLatestPublishedVersionId(documentId);
         if (latestVersionId === null) return new Response(null, { status: 404 });

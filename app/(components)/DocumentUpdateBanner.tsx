@@ -2,6 +2,11 @@
 import { useEffect, useState } from "react";
 import styles from "./DocumentUpdateBanner.module.css";
 
+// Past the page's own database work. The pooled session stays open for its
+// idle window after the response, and a reader who only pauses on the way to
+// the next document should not start a Drive check.
+const SOURCE_CHECK_DELAY_MS = 8_000;
+
 export default function DocumentUpdateBanner({ documentId, latestVersionId }: {
     documentId: string;
     latestVersionId: string;
@@ -9,18 +14,23 @@ export default function DocumentUpdateBanner({ documentId, latestVersionId }: {
     const [updated, setUpdated] = useState(false);
     useEffect(() => {
         let active = true;
-        void fetch(`/api/documents/${encodeURIComponent(documentId)}/refresh`, {
-            method: "POST", cache: "no-store",
-        }).then(async response => {
-            if (!response.ok) return;
-            const result = await response.json();
-            if (active && typeof result.latestVersionId === "string") {
-                setUpdated(result.latestVersionId !== latestVersionId);
-            }
-        }).catch(() => {
-            // Source outages must not interrupt reading the archived copy.
-        });
-        return () => { active = false; };
+        const timer = window.setTimeout(() => {
+            void fetch(`/api/documents/${encodeURIComponent(documentId)}/refresh`, {
+                method: "POST", cache: "no-store",
+            }).then(async response => {
+                if (!response.ok) return;
+                const result = await response.json();
+                if (active && typeof result.latestVersionId === "string") {
+                    setUpdated(result.latestVersionId !== latestVersionId);
+                }
+            }).catch(() => {
+                // Source outages must not interrupt reading the archived copy.
+            });
+        }, SOURCE_CHECK_DELAY_MS);
+        return () => {
+            active = false;
+            window.clearTimeout(timer);
+        };
     }, [documentId, latestVersionId]);
 
     function reload() {

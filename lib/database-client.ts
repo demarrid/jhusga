@@ -6,8 +6,11 @@ import { demoModeEnabled } from "./data-mode";
 import { metricFailure } from "./telemetry-retry";
 
 // One pool per JS runtime, shared by instrumented application queries and raw
-// telemetry writes. Vercel instances still each need their own bounded pool.
-export const DATABASE_POOL_MAX = 2;
+// telemetry writes. Each Fluid instance is its own process, and Prisma
+// Postgres counts every open session against the prisma_migration role.
+// Two sessions per instance exhausted that role in production (P2037).
+// Queries on one instance queue on the single session.
+export const DATABASE_POOL_MAX = 1;
 // Long enough for a follow-up cache refresh to reuse the open socket. Vercel
 // waits this long after the last query before it is allowed to freeze.
 export const DATABASE_IDLE_MS = 5_000;
@@ -25,6 +28,7 @@ export function database() {
         ? "postgresql://demo:demo@127.0.0.1:1/demo" : undefined);
     if (!connectionString) throw new Error("DATABASE_URL is not set; copy .env.example to .env");
     if (connectionString.startsWith("file:")) throw new Error("DATABASE_URL must be a Postgres connection string.");
+    warnIfDirectPrismaHost(connectionString);
     const pool = new Pool({ connectionString, max: DATABASE_POOL_MAX,
         idleTimeoutMillis: DATABASE_IDLE_MS, connectionTimeoutMillis: DATABASE_CONNECT_MS });
     // Ensure Vercel does not freeze the runtime before idle sockets can close.
@@ -50,6 +54,20 @@ export async function retryConnectionLimit<T>(run: () => Promise<T>, delays = CO
             await new Promise(resolve => setTimeout(resolve, delays[attempt] * (0.5 + Math.random())));
         }
     }
+}
+
+let warnedDirectHost = false;
+
+/** The direct host takes one server session per client. Serverless needs the pooler. */
+function warnIfDirectPrismaHost(connectionString: string) {
+    if (warnedDirectHost) return;
+    let host = "";
+    try { host = new URL(connectionString).hostname; } catch { return; }
+    if (host !== "db.prisma.io") return;
+    warnedDirectHost = true;
+    console.warn(
+        "DATABASE_URL uses the direct Prisma Postgres host db.prisma.io. Serverless handlers need the pooled host, or each instance holds a prisma_migration session until the role limit is exhausted.",
+    );
 }
 
 /** CLI/test shutdown only. Never disconnect at the end of a web request. */
