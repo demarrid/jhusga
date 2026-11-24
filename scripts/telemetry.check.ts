@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { MERGE_METRICS_SQL } from "../lib/telemetry-store";
 import { audience, routeGroup, requestKind } from "../lib/telemetry-policy";
+import { retryConnectionLimit } from "../lib/database-client";
 import { measureDatabase } from "../lib/telemetry";
 
 async function main() {
@@ -33,6 +34,20 @@ async function main() {
     assert.equal(metricFailure({ code: "P2010", meta: { code: "42P01" }, message: "sensitive SQL" }), "schema-missing");
     assert.equal(metricFailure(new Error("secret credentials")), "unknown");
     assert.equal(metricFailure(new Error("Cannot find module secret/path")), "runtime-module");
+    assert.equal(metricFailure({ name: "PrismaClientKnownRequestError", message: "Invalid `prisma.document.findUnique()` invocation:\n\nConnection terminated due to connection timeout",
+        meta: { driverAdapterError: { cause: { message: "Connection terminated unexpectedly" } } } }), "connection-acquire-timeout");
+    assert.equal(metricFailure(new Error("timeout exceeded when trying to connect: private data")), "timeout");
+    assert.equal(metricFailure(new Error("Failed to connect to upstream database. Please contact Prisma support if the problem persists.")), "upstream-unavailable");
+    assert.equal(metricFailure(new Error("Connection terminated unexpectedly")), "connection-closed");
+    let upstreamAttempts = 0;
+    assert.equal(await retryConnectionLimit(async () => {
+        if (++upstreamAttempts === 1) throw new Error("Failed to connect to upstream database. secret");
+        return "recovered";
+    }, [0]), "recovered");
+    assert.equal(upstreamAttempts, 2);
+    let closedAttempts = 0;
+    await assert.rejects(retryConnectionLimit(async () => { closedAttempts++; throw new Error("Connection terminated unexpectedly"); }, [0]));
+    assert.equal(closedAttempts, 1, "a dropped connection must not be replayed");
     process.env.TELEMETRY_ENABLED = "false";
     assert.equal(audience(new Headers({ dnt: "1", "user-agent": "Googlebot" })), null);
     assert.equal(audience(new Headers({ "sec-gpc": "1" })), null);

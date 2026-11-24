@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import net from "node:net";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
-import { database, closeDatabase, DATABASE_POOL_MAX, DATABASE_IDLE_MS, CONNECTION_LIMIT_RETRY_MS, retryConnectionLimit } from "../lib/database-client";
+import { database, closeDatabase, DATABASE_POOL_MAX, DATABASE_IDLE_MS, DATABASE_CONNECT_MS, CONNECTION_LIMIT_RETRY_MS, retryConnectionLimit } from "../lib/database-client";
 import { prisma } from "../lib/prisma";
 import { metricsClient, persistMetrics } from "../lib/telemetry-store";
 import { metricFailure } from "../lib/telemetry-retry";
@@ -99,7 +99,7 @@ async function main() {
         const timeout = await prisma.$queryRawUnsafe("SELECT 1").then(() => undefined, (e: unknown) => e);
         assert.equal(metricFailure(timeout), "connection-acquire-timeout");
         assert.equal(stalled, 3, "persistent acquisition timeout gets only one retry");
-        pool.options.connectionTimeoutMillis = 5000;
+        pool.options.connectionTimeoutMillis = DATABASE_CONNECT_MS;
         assert.equal(await flushMetrics(), true);
         const categories = await db.query<{kind: string; count: number}>(`SELECT kind, SUM(count)::int AS count FROM "TelemetryQuarter" WHERE metric = 'database-error' GROUP BY kind`);
         assert.equal(categories.rows.find(r => r.kind === 'connection-acquire-timeout')?.count, 1);

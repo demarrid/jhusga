@@ -180,6 +180,7 @@ export function renderDocument(
     // This report's PDF export has column-width wraps and running page titles.
     // Recognize its structure narrowly; minutes and tables keep authored breaks.
     const report = /^TEN FOR ON E\s*:/m.test(content) && /^Introduction \| 0[12]$/m.test(content);
+    const oieReport = /^Office of Institutional Equity \| \d{4} Annual Report$/m.test(content);
     const inline: Inline = (ranges, mode) => {
         const runs = inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets, options.images?.filter(image => image.inline));
         return slides.length || report ? runs.map(run => ({ ...run, text: run.text.replace(/\n/g, " ") })) : runs;
@@ -193,6 +194,7 @@ export function renderDocument(
     if (options.sheetDelimiter) return parseSheet(lines, options.sheetDelimiter, inline, anchors);
     const parse = (segment: Line[]) => report
         ? parseReport(segment, inline, anchors)
+        : oieReport ? parseOieReport(segment, inline, anchors, content)
         : parseBlocks(segment, inline, anchors, minutesEntries, slides);
     // Recovered images sit at verified paragraph boundaries. Parse each segment
     // with the original source offsets and shared citation/section anchors.
@@ -236,6 +238,81 @@ function parseReport(lines: Line[], inline: Inline, anchors: Map<number, string>
         // The export lost paragraph metadata. Sentence boundaries provide
         // conservative reading breaks without guessing at missing words.
         if (anchors.has(line.start) || (/[.!?][”’\"]?$/.test(previous) && /^[A-Z“]/.test(text))) flush();
+        paragraph.push(line);
+    }
+    flush();
+    return blocks;
+}
+
+/** PDF prose wraps are physical lines, while table/chart rows must stay apart.
+ * The report's own contents supplies subheadings, without inventing a hierarchy
+ * or guessing which empty table cell an extracted value belongs to.
+ */
+function parseOieReport(lines: Line[], inline: Inline, anchors: Map<number, string>, content: string): Block[] {
+    const titles = new Set([...content.matchAll(/^(.+?)\s*\.{3,}\s*\d+\s*$/gm)].map(match => match[1].trim()));
+    const blocks: Block[] = [];
+    let paragraph: Line[] = [];
+    const flush = () => {
+        if (!paragraph.length) return;
+        blocks.push({ kind: "paragraph", sectionId: anchors.get(paragraph[0].start),
+            runs: inline(joinedRanges(paragraph)).map(run => ({ ...run, text: run.text.replace(/\n/g, " ") })) });
+        paragraph = [];
+    };
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        const text = line.text.trim();
+        if (!text) { flush(); continue; }
+        const runningTitle = /^Office of Institutional Equity \| \d{4} Annual Report$/;
+        if (/^\d+$/.test(text) && runningTitle.test(lines[index + 1]?.text.trim() ?? "")) {
+            flush();
+            blocks.push({ kind: "heading", level: 2, sectionId: anchors.get(line.start),
+                runs: inline(joinedRanges([line, lines[++index]])).map(run => ({ ...run, text: run.text.replace(/\n/g, " · ") })) });
+            continue;
+        }
+        const toc = /\.{3,}\s*\d+$/.test(text);
+        const heading = !toc && (titles.has(text) || /^(?:[IVX]+\.\s|Appendix [A-Z]$|Table of Contents$|(?:Table|Chart) \d+[. –—]|MESSAGE FROM:)/.test(text));
+        if (heading) {
+            flush();
+            blocks.push({ kind: "heading", level: 3, sectionId: anchors.get(line.start), runs: inline([lineRange(line)]) });
+            continue;
+        }
+        const numericRow = (candidate: Line) => anchors.has(candidate.start) ? null
+            : /^([A-Za-z].*?)(\s+[\d,]+%?(?:\s+[\d,]+%?)+)\s*$/.exec(candidate.text);
+        const firstRow = numericRow(line);
+        if (firstRow) {
+            const rows: TableRow[] = [];
+            let end = index;
+            const width = firstRow[2].trim().split(/\s+/).length;
+            while (end < lines.length) {
+                const match = numericRow(lines[end]);
+                if (!match || match[2].trim().split(/\s+/).length !== width) break;
+                const source = lines[end];
+                const cells = [inline([{ start: source.start, end: source.start + match[1].length }])];
+                for (const value of match[2].matchAll(/[\d,]+%?/g)) {
+                    const start = source.start + match[1].length + value.index!;
+                    cells.push(inline([{ start, end: start + value[0].length }]));
+                }
+                rows.push({ cells });
+                end++;
+            }
+            if (rows.length > 1) {
+                flush();
+                blocks.push({ kind: "table", header: null, rows });
+                index = end - 1;
+                continue;
+            }
+        }
+        // Preserve every numeric row verbatim, including chart labels, footnote
+        // markers, and rows whose PDF extraction omitted empty cells.
+        const data = toc || /^(?:[\d,% .]+|\([\dn =,]+\)|[a-z])$/.test(text) || /(?:\s[\d,]+%?){2,}$/.test(text);
+        if (data) {
+            flush();
+            blocks.push({ kind: "paragraph", sectionId: anchors.get(line.start), runs: inline([lineRange(line)]) });
+            continue;
+        }
+        const previous = paragraph.at(-1)?.text.trim() ?? "";
+        const definition = /^[A-Z][A-Za-z /–-]{2,65}:\s/.test(text);
+        if (anchors.has(line.start) || definition || (/^[a-z]\.\s/.test(text)) || (/[.!?][”’\"]?$/.test(previous) && /^[A-Z“]/.test(text))) flush();
         paragraph.push(line);
     }
     flush();

@@ -8,7 +8,13 @@ import { metricFailure } from "./telemetry-retry";
 // One pool per JS runtime, shared by instrumented application queries and raw
 // telemetry writes. Vercel instances still each need their own bounded pool.
 export const DATABASE_POOL_MAX = 2;
-export const DATABASE_IDLE_MS = 1000;
+// Long enough for a follow-up cache refresh to reuse the open socket. Vercel
+// waits this long after the last query before it is allowed to freeze.
+export const DATABASE_IDLE_MS = 5_000;
+// pg uses this both for a new handshake and for waiting on a busy socket.
+// Five seconds was shorter than Prisma Postgres handshakes and document reads,
+// which produced the acquisition timeouts in production logs.
+export const DATABASE_CONNECT_MS = 15_000;
 export const CONNECTION_LIMIT_RETRY_MS = [100, 300, 900];
 type Database = { pool: Pool; client: PrismaClient };
 const state = globalThis as unknown as { sgaDatabase?: Database };
@@ -20,7 +26,7 @@ export function database() {
     if (!connectionString) throw new Error("DATABASE_URL is not set; copy .env.example to .env");
     if (connectionString.startsWith("file:")) throw new Error("DATABASE_URL must be a Postgres connection string.");
     const pool = new Pool({ connectionString, max: DATABASE_POOL_MAX,
-        idleTimeoutMillis: DATABASE_IDLE_MS, connectionTimeoutMillis: 5000 });
+        idleTimeoutMillis: DATABASE_IDLE_MS, connectionTimeoutMillis: DATABASE_CONNECT_MS });
     // Ensure Vercel does not freeze the runtime before idle sockets can close.
     attachDatabasePool(pool);
     pool.on("error", () => console.warn("Idle database connection failed; pool will replace it."));
@@ -32,14 +38,14 @@ export function database() {
 /**
  * Retry startup refusals and the exact pg-pool acquisition timeout errors.
  * Both happen before any statement runs. Acquisition timeouts get at most one
- * retry (each acquisition already waits 5 seconds); ambiguous failures do not.
+ * retry; ambiguous failures do not, because a statement may already have committed.
  */
 export async function retryConnectionLimit<T>(run: () => Promise<T>, delays = CONNECTION_LIMIT_RETRY_MS): Promise<T> {
     for (let attempt = 0; ; attempt++) {
         try { return await run(); } catch (error) {
             const category = metricFailure(error);
             const retryable = category === "connection-limit" ||
-                (category === "connection-acquire-timeout" && attempt < 1);
+                ((category === "connection-acquire-timeout" || category === "upstream-unavailable") && attempt < 1);
             if (attempt >= delays.length || !retryable) throw error;
             await new Promise(resolve => setTimeout(resolve, delays[attempt] * (0.5 + Math.random())));
         }

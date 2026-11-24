@@ -22,6 +22,30 @@ export function metricDiagnostics(error: unknown) {
     return { type, codes };
 }
 
+const ACQUIRE_TIMEOUT_MESSAGES = new Set([
+    "timeout exceeded when trying to connect",
+    "Connection terminated due to connection timeout",
+]);
+
+function chainMessages(error: unknown): string[] {
+    const messages: string[] = [];
+    const seen = new Set<unknown>();
+    function visit(value: unknown, depth: number) {
+        if (!value || typeof value !== "object" || depth > 5 || seen.has(value)) return;
+        seen.add(value);
+        const node = value as Record<string, unknown>;
+        if (typeof node.message === "string") messages.push(node.message);
+        for (const key of ["cause", "meta", "driverAdapterError", "error"]) visit(node[key], depth + 1);
+    }
+    visit(error, 0);
+    return messages;
+}
+
+/** Exact pg-pool text only, including when Prisma puts it on its own line. */
+function isConnectionAcquireTimeout(message: string): boolean {
+    return message.split(/\r?\n/).some(line => ACQUIRE_TIMEOUT_MESSAGES.has(line.trim()));
+}
+
 /** Inspect messages only to select a fixed label; never emit the message. */
 export function metricFailure(error: unknown): string {
     const codes: Record<string, string> = {
@@ -34,12 +58,15 @@ export function metricFailure(error: unknown): string {
     };
     const diagnostic = metricDiagnostics(error);
     for (const code of diagnostic.codes) if (Object.hasOwn(codes, code)) return codes[code];
-    const e = error as { message?: unknown };
-    const message = typeof e?.message === "string" ? e.message : "";
     // These exact pg-pool errors occur before a client is handed to a query.
     // Do not broaden this to generic timeouts: a statement may have committed.
-    if (message === "timeout exceeded when trying to connect" ||
-        message === "Connection terminated due to connection timeout") return "connection-acquire-timeout";
+    const messages = chainMessages(error);
+    if (messages.some(isConnectionAcquireTimeout)) return "connection-acquire-timeout";
+    // Prisma's pooler reports this before a statement is sent.
+    if (messages.some(text => /Failed to connect to upstream database/i.test(text))) return "upstream-unavailable";
+    if (messages.some(text => text.split(/\r?\n/).some(line => line.trim() === "Connection terminated unexpectedly"))) return "connection-closed";
+    const e = error as { message?: unknown };
+    const message = typeof e?.message === "string" ? e.message : "";
     if (/unsupported startup parameter/i.test(message)) return "unsupported-connection-option";
     if (/tenant or user not found/i.test(message)) return "connection-identity";
     if (/timeout|timed out/i.test(message)) return "timeout";

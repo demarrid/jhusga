@@ -1,4 +1,4 @@
-import { database, closeDatabase } from "./database-client";
+import { closeDatabase, database, retryConnectionLimit } from "./database-client";
 
 export type Metric = { hour: string; environment: string; metric: string; route: string; source: string; kind: string; count: number; errors: number; durationMs: number };
 // Use the unextended shared client: no recursive instrumentation or extra pool.
@@ -21,7 +21,9 @@ DO UPDATE SET "count" = "TelemetryQuarter"."count" + EXCLUDED."count",
  "durationMs" = "TelemetryQuarter"."durationMs" + EXCLUDED."durationMs"
 `;
 export async function persistMetrics(id: string, rows: Metric[]) {
-    await metricsClient().$executeRawUnsafe(MERGE_METRICS_SQL, id, JSON.stringify(rows));
+    // The batch id makes a replay insert nothing, so retrying a refused
+    // connection cannot double-count.
+    await retryConnectionLimit(() => metricsClient().$executeRawUnsafe(MERGE_METRICS_SQL, id, JSON.stringify(rows)));
 }
 export async function pruneMetrics() {
     // Called by existing scheduled sync.
