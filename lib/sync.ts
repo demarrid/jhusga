@@ -15,6 +15,7 @@ import { assessChange, isGoverning } from "@/lib/integrity";
 import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor, documentMeetingRole } from "@/lib/meetings";
 import { resolveAffiliates } from "@/lib/names";
+import { validatePersonMentions } from "@/lib/person-validation";
 import { findReviewedMentions, loadReviewedRoster, REVIEWED_SOURCE } from "@/lib/reviewed-administrators";
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
@@ -272,6 +273,7 @@ export async function recordTitles(): Promise<number> {
             displayTitle: true,
             folderPath: true,
             sessionNumber: true,
+            meetingRole: true,
             driveCreatedTime: true,
             datedAt: true,
             // A committee that types every meeting of the year into one file
@@ -570,7 +572,10 @@ export async function recordContributors(
         },
     });
 
-    const parsed = extractContributors(content, document?.title, document?.kind);
+    const parsed = await validatePersonMentions(
+        extractContributors(content, document?.title, document?.kind),
+        { title: document?.title ?? "", content },
+    );
 
     const administratorResolutions = new Map<number, AdministratorResult>();
     const affiliateIds = await resolveAffiliates(

@@ -1177,3 +1177,14 @@ model TelemetryQuarter {
   durationMs Float @default(0)
   @@id([hour, environment, metric, route, source, kind])
 }
+
+// Context-scoped AI personhood decisions; never identity or credit assignments.
+model PersonMentionReview {
+    key            String @id
+    promptVersion  String
+    model          String
+    candidateCount Int
+    input          String
+    decisions      Json
+    createdAt      DateTime @default(now())
+}

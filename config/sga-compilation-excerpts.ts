@@ -1,0 +1,51 @@
+import type { DocumentKind } from '../lib/kinds';
+
+// Reviewed against the existing image-reviewed transcription, not inferred PDF
+// page numbers. Ranges are inclusive, one-based lines of this exact source hash.
+export const compilationId = '9933ad79-8df2-4cc2-ad5c-ed268ca59e7c';
+export const compilationHash = '44df1440ffa4e27e2db4e43fb6ed342d0ed44828749e077e3d3c00ee00ec8ca7';
+export type Excerpt = { start: number; end: number; title: string; kind: DocumentKind; date?: string };
+export const compilationExcerpts: Excerpt[] = [
+    { start: 1, end: 109, title: 'SGA Roundtable Dinner with University Administrators — October 10, 2016', kind: 'minutes.other', date: '2016-10-10' },
+    { start: 111, end: 134, title: 'SGA Retreat Agenda — September 4 (annotated copy)', kind: 'minutes.other' },
+    { start: 136, end: 155, title: 'SGA Retreat Agenda — September 4 (second copy)', kind: 'minutes.other' },
+    { start: 157, end: 171, title: 'SGA Retreat Training Notes', kind: 'notes.meeting' },
+    { start: 173, end: 277, title: 'SGA Transition Notes', kind: 'transition' },
+    { start: 279, end: 346, title: 'Weekly Report for Kirsten Fricke — July 15–20, 2016', kind: 'report' },
+    { start: 348, end: 409, title: 'Conduct Board and Ethics Board Recruitment Notes', kind: 'notes.meeting' },
+    { start: 411, end: 559, title: 'Committee on Student Elections Bylaws — Alexandra Ballato revision', kind: 'guiding.bylaws' },
+    { start: 561, end: 724, title: 'SGA Inauguration and Awards Ceremony — May 1, 2016 (first copy)', kind: 'event.material', date: '2016-05-01' },
+    { start: 726, end: 896, title: 'SGA Inauguration and Awards Ceremony — May 1, 2016 (second copy)', kind: 'event.material', date: '2016-05-01' },
+    { start: 898, end: 952, title: 'Club Championship Reserve Fund Meeting Agenda — March 2, 2016', kind: 'minutes.other', date: '2016-03-02' },
+    { start: 954, end: 1068, title: 'Proposal for Establishing the JHU Club Championship Reserve Fund — March 2, 2016', kind: 'plan', date: '2016-03-02' },
+    { start: 1070, end: 1097, title: 'CSE Member Recruitment Notes', kind: 'election' },
+    { start: 1199, end: 1249, title: 'Senate Meeting Agenda — November 3, 2015', kind: 'minutes.senate', date: '2015-11-03' },
+    { start: 1251, end: 1302, title: 'SGA Funding, Neighborhood Noise, and Events Notes — November 19, 2015', kind: 'notes.meeting', date: '2015-11-19' },
+    { start: 1304, end: 1553, title: 'SGA Halloween Event Receipt — October 28, 2015', kind: 'finance.record', date: '2015-10-28' },
+    { start: 1555, end: 1574, title: 'SGA Mental Health Bill Working Notes', kind: 'notes.meeting' },
+    { start: 1576, end: 1741, title: 'Mental Health Omnibus Bill of 2015 (PLUSH Act) — November 17, 2015', kind: 'bill.other', date: '2015-11-17' },
+    { start: 1743, end: 1803, title: 'Senate Meeting Agenda — October 13, 2015', kind: 'minutes.senate', date: '2015-10-13' },
+    { start: 1805, end: 1866, title: 'Halloween Bus Sponsorship Act of 2015 (first copy)', kind: 'bill.funding' },
+    { start: 1868, end: 1937, title: 'Halloween Bus Sponsorship Act of 2015 (second copy)', kind: 'bill.funding' },
+    { start: 1939, end: 2443, title: 'Dinner with Student Government Association — October 22, 2015 Briefing and Appendices', kind: 'report', date: '2015-10-22' },
+    { start: 2445, end: 2630, title: 'SGA Dinner Agenda — October 20, 2015', kind: 'minutes.other', date: '2015-10-20' },
+    { start: 2632, end: 2679, title: 'CSE Freshman Elections and Information Session Planning Notes', kind: 'election' },
+    { start: 2862, end: 2900, title: 'International Student Programming Meeting Agenda — September 29, 2015', kind: 'minutes.other', date: '2015-09-29' },
+    { start: 2902, end: 2954, title: 'Senate Meeting Agenda — September 29, 2015', kind: 'minutes.senate', date: '2015-09-29' },
+    { start: 2956, end: 3066, title: 'Rules Bill of 2015 — September 29, 2015 (Alston and Green sponsors)', kind: 'bill.senate_rules', date: '2015-09-29' },
+    { start: 3068, end: 3157, title: 'Hoptoberfest Sponsorship Act 2015', kind: 'bill.funding' },
+    { start: 3159, end: 3189, title: 'CSE Recruitment Process and Timeline Notes', kind: 'election' },
+    { start: 3191, end: 3208, title: 'SGA Main Goals 2015–2016', kind: 'plan' },
+    { start: 3210, end: 3268, title: 'Senate Meeting Agenda — October 6, 2015', kind: 'minutes.senate', date: '2015-10-06' },
+    { start: 3270, end: 3346, title: 'Condom Health Initiative Act of 2015 — October 6, 2015', kind: 'bill.funding', date: '2015-10-06' },
+    { start: 3348, end: 3397, title: 'Resolution Expressing Approval of Bringing UBlend to the Homewood Campus', kind: 'resolution' },
+    { start: 3399, end: 3490, title: 'Absence Policy Amendment — October 6, 2015', kind: 'bill.bylaws_amendment', date: '2015-10-06' },
+    { start: 3492, end: 3612, title: 'Rules Bill of 2015–16 (Alston and Sorenson sponsors)', kind: 'bill.senate_rules' },
+    { start: 3614, end: 3664, title: 'Helicopter Video Shoot Correspondence — October 6, 2015', kind: 'correspondence', date: '2015-10-06' },
+    { start: 3684, end: 3714, title: 'SGA Meeting #1 Notes — August 30, 2015', kind: 'notes.meeting', date: '2015-08-30' },
+    { start: 3716, end: 3761, title: 'JHU Principal Administrative Officers and Deans — December 2, 2014', kind: 'directory', date: '2014-12-02' },
+    { start: 3784, end: 3816, title: 'Student Engagement Organizational Chart — July 14, 2015', kind: 'directory', date: '2015-07-14' },
+    { start: 3818, end: 3865, title: 'Provost and Student Affairs Organizational Chart', kind: 'directory' },
+    { start: 3888, end: 4174, title: 'Senior Class FY15 Financial Record and FY16 Opening Balance', kind: 'finance.record' },
+    { start: 4259, end: 4546, title: 'Community Forum of November 13, 2014 — Report of November 19, 2014', kind: 'report', date: '2014-11-19' },
+];

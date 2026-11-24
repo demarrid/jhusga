@@ -145,6 +145,10 @@ const PLACEHOLDER_WORDS = new Set([
     "year",
     "title",
     "tbd",
+    "tba",
+    "announced",
+    "determined",
+    "vacant",
     "na",
     "none",
     "n/a",
@@ -1189,6 +1193,9 @@ export const UNIVERSITY_OFFICE =
 function harvestTitledGuest(found: Map<string, ExtractedContributor>, line: string): boolean {
     const match = line.replace(ENUMERATOR, "").trim().match(/^([^()]{3,60}?)\s*\(([^()]{3,100})\)\s*$/);
     if (!match || !UNIVERSITY_OFFICE.test(match[2]!) || !isStandalonePersonName(match[1]!)) return false;
+    // A parenthetical must describe this person's office. A project credited
+    // to a dean ("Dean X and Y's Concept") does not turn its title into a guest.
+    if (/['’]s\b|\b(?:concept|proposal|project|idea)\b/i.test(match[2]!)) return false;
     return recordPerson(found, match[1]!, "guest", line, match[2]);
 }
 

@@ -39,6 +39,7 @@ export const REGULAR_MIN_DOCUMENTS = 1;
  */
 const MANUAL_NAME_ALIASES = [
     { alias: "Tola Alaofin", canonical: "Omotola Alaofin" },
+    { alias: "Nifemi Ajayi", canonical: "Oluwanifemi Ajayi" },
 ] as const;
 
 export function canonicalPersonName(name: string): string {

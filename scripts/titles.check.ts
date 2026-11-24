@@ -479,7 +479,7 @@ check("a caucus's numbered meeting is the caucus's, not the Senate's",
     canon("DC Meeting Minutes #3", "111th SGA Master Folder (2023-24)/SGA Senate/Caucuses/Disability Caucus", 111, on("2023-12-09")));
 check("a caucus keeps the ampersand in its name",
     canon("10/26 Meeting #1", "SGA Senate/Caucuses/Women & Gender Minority Caucus/Minutes", 111, on("2023-10-27")) ===
-        "Women & Gender Minority Caucus Meeting — Minutes (10/26/23)",
+        "Women & Gender Minority Caucus Meeting #1 — Minutes (10/26/23)",
     canon("10/26 Meeting #1", "SGA Senate/Caucuses/Women & Gender Minority Caucus/Minutes", 111, on("2023-10-27")));
 
 const uploaded = standardTitles([1, 2, 3, 5].map((number) => ({
@@ -497,5 +497,19 @@ check("a file made alone still borrows Drive's date",
     uploaded.get("sp26-5") === "Academic Affairs Committee Meeting #5 — Minutes (03/11/26)",
     uploaded.get("sp26-5"));
 
+const historical = { id: 'historical', title: 'h_s meeting 2 agenda', kind: 'minutes.committee',
+    folderPath: 'Historical Documents/2016-2017/Health _ Safety', sessionNumber: 104,
+    datedAt: on('2016-09-22'), content: 'Health and Safety Committee 2016-2017\n\nMeeting #2\n\nThursday, September 22, 2016' };
+check('historical committee headings use the modern format without renaming the committee',
+    canonicalTitle(historical) === 'Health and Safety Committee Meeting #2 — Agenda (09/22/16)');
+check('a historical meeting does not require a session key for its display title',
+    canonicalTitle({ ...historical, sessionNumber: null }) === 'Health and Safety Committee Meeting #2 — Agenda (09/22/16)');
+check('an underscore date is never a meeting number',
+    canonicalTitle({ ...historical, title: '10_07_16', datedAt: on('2016-10-07'), content: 'Committee on Student Organizations 2016-17\nAgenda and Minutes\n10/07/16' }) ===
+        'Student Organizations Committee Meeting — Agenda and Minutes (10/07/16)');
+check('a historical class council retains its cohort',
+    canonicalTitle({ ...historical, kind: 'minutes.class_council', title: '10_17_18 Agenda', datedAt: on('2018-10-17'), content: 'Class of 2021 Council Meeting\n10/17/18 Agenda' }) ===
+        'Class of 2021 Council Meeting — Agenda (10/17/18)');
+check('historical templates retain their distinction', canonicalTitle({ ...historical, title: 'Copy of Civic Engagement Meeting #XX (XX_XX_XX)' }) === null);
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

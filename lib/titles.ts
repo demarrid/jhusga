@@ -34,7 +34,7 @@ import { formatDateNumeric } from "@/lib/dates";
 import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 import { meetingHeaderDate } from "@/lib/identity";
 import { isCommitteeRecordsFolder, isSecondaryKind } from "@/lib/kinds";
-import { committeeAcronym, committeeFrom, meetingFor, meetingLog, type MeetingRole } from "@/lib/meetings";
+import { committeeAcronym, committeeFrom, documentMeetingRole, meetingFor, meetingLog, meetingNumber, yearlessDate, type MeetingRole } from "@/lib/meetings";
 import { sessionOrdinal } from "@/config/session";
 
 /**
@@ -147,7 +147,7 @@ function titleCase(value: string): string {
 /** The body a meeting key names, as the site writes it. */
 function bodyLabel(body: string): string | null {
     if (body.startsWith("committee:")) {
-        const name = body.slice("committee:".length);
+        const name = body.slice("committee:".length).replace(/^committee on\s+|\s+committee$/gi, '');
         return `${COMMITTEE_NAMES[name] ?? titleCase(name)} Committee Meeting`;
     }
     if (body.startsWith("caucus:")) {
@@ -202,12 +202,14 @@ function meetingParts(
         : { label, number: ordinal, date: null };
 }
 
-const ROLE_SUFFIX: Record<MeetingRole, string> = {
+const ROLE_SUFFIX: Record<MeetingRole | 'combined', string> = {
     agenda: "Agenda",
     minutes: "Minutes",
+    combined: "Agenda and Minutes",
 };
 
 export type TitleInput = {
+    meetingRole?: string;
     datedAt?: Date | null;
     driveFileId?: string;
     id: string;
@@ -314,14 +316,16 @@ function meetingTitle(input: TitleInput, dates?: Map<string, Date | null>): stri
     const parts = meetingParts(meeting.key);
     if (!parts) return null;
 
-    const number = parts.number ? ` #${parts.number}` : "";
+    const explicitNumber = /\b(?:meeting|gbm)\s*#\s*(\d{1,3})\b/i.exec(input.title)?.[1];
+    const number = explicitNumber ? ` #${Number(explicitNumber)}` : parts.number ? ` #${parts.number}` : "";
     const date =
         formatDateNumeric(input.datedAt) ?? parts.date ??
         formatDateNumeric(dates?.has(meeting.key) ? dates.get(meeting.key) : input.driveCreatedTime);
 
     return formatMeetingTitle(
         parts.label,
-        meeting.role,
+        /\bagenda\s*(?:and|&|\+|\/)\s*minutes\b/i.test(`${input.title}\n${(input.content ?? '').split(/\r?\n/).map(toPlainText).filter(Boolean).slice(0, 10).join('\n')}`)
+            ? 'combined' : meeting.role,
         number,
         date,
     );
@@ -337,11 +341,65 @@ function meetingTitle(input: TitleInput, dates?: Map<string, Date | null>): stri
  */
 function formatMeetingTitle(
     label: string,
-    role: MeetingRole,
+    role: MeetingRole | 'combined',
     number: string,
     qualifier: string | null,
 ): string {
     return `${label}${number} — ${ROLE_SUFFIX[role]}${qualifier ? ` (${qualifier})` : ""}`;
+}
+
+/** Old imports often have neither the modern folder layout nor a session key.
+ * Read their own heading for display only; do not invent meeting identities.
+ */
+function historicalMeetingTitle(input: TitleInput): string | null {
+    if (!input.kind?.startsWith('minutes.')) return null;
+    const title = cleanTitle(input.title);
+    if (/\b(?:retreat|dinner|roundtable|template|with|w\/|w_|deans?|provost|advisor|adviser|cabinet|coalition)\b/i.test(input.title)) return null;
+    const heading = (input.content ?? '').split(/\r?\n/).map(toPlainText).filter(Boolean).slice(0, 10);
+    const headingText = heading.join('\n');
+    const combined = /\bagenda\s*(?:and|&|\+|\/)\s*minutes\b/i.test(`${title}\n${headingText}`);
+    const role = documentMeetingRole({ kind: input.kind, title: `${title}\n${headingText}`, folderPath: input.folderPath, content: input.content }) || input.meetingRole;
+    if (!combined && role !== 'agenda' && role !== 'minutes') return null;
+    let label: string | null = null;
+    if (input.kind === 'minutes.committee') {
+        const names = heading.map(line => line
+            .replace(/^SGA\s+/i, '').replace(/\s+(?:19|20)\d{2}(?:\s*[-–]\s*\d{2,4})?\s*$/, '')
+            .replace(/\s+Meeting(?:\s+(?:Agenda|Minutes))?\s*$/i, ''));
+        const explicit = names.map(line => /^(?:Committee on ([A-Za-z&, -]{3,70})|([A-Za-z&, -]{3,70}) Committee)$/i.exec(line)).find(Boolean);
+        let committee = explicit ? (explicit[1] ?? explicit[2]).trim() : committeeFrom(input.folderPath);
+        if (!committee) {
+            // Exact historical folder names, not arbitrary personal subfolders.
+            const known = ['academic affairs', 'civic engagement', 'constitution and bylaws', 'finance', 'health and safety', 'health safety and sustainability', 'student organizations', 'student services', 'sustainability and development'];
+            committee = input.folderPath.split('/').map(part => part.toLowerCase().replace(/[_&,]+/g, ' ').replace(/\s+/g, ' ').trim())
+                .map(part => part === 'health safety' ? 'health and safety' : part === 'student orgs' || part === 'student organziations' ? 'student organizations' : part)
+                .find(part => known.includes(part)) ?? null;
+        }
+        if (committee) label = bodyLabel(`committee:${committee.toLowerCase().replace(/^committee on\s+|\s+committee$/gi, '')}`);
+    } else if (input.kind === 'minutes.class_council') {
+        const evidence = `${headingText}\n${title}`;
+        const cohort = /\bClass of ((?:19|20)\d{2})\s+(?:Council\s+)?Meeting\b/i.exec(evidence);
+        const year = /\b(Freshm[ae]n|Sophomore|Junior|Senior)\s+Class(?:\s+Council)?\b/i.exec(evidence);
+        if (cohort) label = `Class of ${cohort[1]} Council Meeting`;
+        else if (year) label = `${/^fresh/i.test(year[1]) ? 'Freshman' : titleCase(year[1])} Class Council Meeting`;
+        else if (/\bSoCC\s+Meeting\b/i.test(evidence)) label = 'Sophomore Class Council Meeting';
+    } else if (input.kind === 'minutes.senate' && /\b(?:senate|general body|gbm)\b/i.test(`${title}\n${headingText}`)) {
+        label = 'Senate General Body Meeting';
+    } else if (input.kind === 'minutes.executive' && /\bexec(?:utive)?\s+(?:board\s+)?(?:meeting|minutes)\b/i.test(`${title}\n${headingText}`)) {
+        label = 'Executive Board Meeting';
+    } else if (input.kind === 'minutes.judicial' && /\bjudiciar[yi]\b/i.test(`${title}\n${headingText}`)) {
+        label = 'Judiciary Meeting';
+    }
+    if (!label) return null;
+    // Explicit numbers survive even when the filename also contains a date.
+    const numbered = /\b(?:meeting|gbm)\s*#?\s*(\d{1,3})(?!\d|[./_-])\b/i.exec(`${input.title}\n${headingText}`);
+    const number = numbered ? Number(numbered[1]) : meetingNumber(input.title);
+    const partial = yearlessDate(input.title.replace(/_/g, '/'));
+    if (partial && input.datedAt && (partial.month !== input.datedAt.getUTCMonth() + 1 || partial.day !== input.datedAt.getUTCDate())) return null;
+    const date = formatDateNumeric(input.datedAt ?? meetingHeaderDate(input.content));
+    const suffix = combined ? 'Agenda and Minutes' : ROLE_SUFFIX[role as MeetingRole];
+    // Keep editorial distinctions when two copies are deliberately retained.
+    const qualifier = /\b(cancelled|canceled|annotated copy|second copy|first copy|draft)\b/i.exec(title)?.[1];
+    return `${label}${number ? ` #${number}` : ''} — ${suffix}${date ? ` (${date})` : ''}${qualifier ? ` — ${titleCase(qualifier)}` : ''}`;
 }
 
 /**
@@ -577,8 +635,9 @@ export function canonicalTitle(
     // would put an opinion column forward under the name of the document it was
     // arguing about. A headline is shown exactly as printed.
     if (isSecondaryKind(input.kind)) return null;
+    if (input.kind?.startsWith('minutes.') && /\bcopy of\b|#\s*xx\b|\b\w+(?:['’]s|_s)\s+.+\bmeeting\b/i.test(input.title)) return null;
 
-    return resolutionTitle(input) ?? meetingTitle(input, dates) ?? logTitle(input) ?? committeeMinutesTitle(input) ?? standingTitle(input);
+    return resolutionTitle(input) ?? meetingTitle(input, dates) ?? logTitle(input) ?? historicalMeetingTitle(input) ?? committeeMinutesTitle(input) ?? standingTitle(input);
 }
 
 /**

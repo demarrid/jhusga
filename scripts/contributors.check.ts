@@ -33,6 +33,27 @@ function check(label: string, condition: boolean, detail?: unknown) {
 
 console.log("sanitizeExport");
 
+for (const line of [
+    "iii. Freshmen Help Guide (Dean Wendland and Schlesinger's Concept)",
+    "Freshmen Help Guide (Dean Wendland and Schlesinger’s Concept)",
+    "Campus Welcome Handbook (Provost Smith's Proposal)",
+]) {
+    check("a project attributed to administrators is not a guest",
+        !extractContributors(line, "Retreat Breakdown", "minutes.executive")
+            .some(person => person.role === "guest"));
+}
+check("a named guest with an actual university office still parses",
+    extractContributors("Jarron Jackson (Assistant Vice President for Public Safety)", "Meeting", "minutes.other")
+        .some(person => person.name === "Jarron Jackson" && person.role === "guest"));
+
+for (const placeholder of ["To Be Announced", "To be determined", "TBA", "Vacant"]) {
+    const people = extractContributors(`7. **Class President Reports**\n   d. Freshman Class President — *${placeholder}*\n   e. Senior Class President — Amy Sun`, "Senate agenda", "minutes.senate");
+    check(`agenda placeholder ${placeholder} is not a person`,
+        people.every(person => person.name === "Amy Sun"), people);
+    check("real class president still parses alongside a placeholder",
+        people.some(person => person.name === "Amy Sun"), people);
+}
+
 check("staff prices do not invent a person named Hour",
     extractContributors("Event staff: $19.65/hour\nSupervisor: $22.40/hour")
         .length === 0);
