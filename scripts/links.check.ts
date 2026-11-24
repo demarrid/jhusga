@@ -2,7 +2,7 @@
  * Checks that the links SGA authors actually type resolve into references,
  * including the escaped form Google Docs exports.
  */
-import { extractDocumentLinks, extractDriveLinks, resolveReferences } from "../lib/links";
+import { extractDocumentLinks, extractDriveLinks, extractInternalDocumentLinks, resolveReferences } from "../lib/links";
 import { linkedSyncTargets } from "../lib/sync";
 
 let failures = 0;
@@ -20,6 +20,15 @@ const BYLAWS = "1_X1PhkHiaV0CukRs1sfmKzqcOYUM_AHsmDAcE6qoW5I";
 const SHEET = "1Qvz2Vtg0eAS2Wk-13HdvF76Nx6Ic3OK_yMa4ysxH_Ok";
 
 console.log("extraction");
+
+const localId = "bafa7171-1f46-4c9e-aa2d-0990b4cc04e4";
+const localText = `[Bylaws](https://www.jhusga.org/documents/${localId}?returnTo=%2Fdocuments) and [again](/documents/${localId}#section)`;
+check("local archive URLs resolve and deduplicate by document ID", extractInternalDocumentLinks(localText).length === 1 && extractInternalDocumentLinks(localText)[0]?.documentId === localId);
+check("lookalike sites and non-document routes are excluded", extractInternalDocumentLinks(`[fake](https://www.jhusga.org.evil.example/documents/${localId}) https://www.jhusga.org/documents/${localId}/compare`).length === 0);
+check("local links enter the reference graph without external ingestion", resolveReferences([
+    { id: "source", driveFileId: "source-file", content: localText },
+    { id: localId, driveFileId: "target-file", content: "" },
+]).some(edge => edge.fromDocumentId === "source" && edge.toDocumentId === localId && edge.anchorText === "Bylaws"));
 
 const refreshTargets = linkedSyncTargets([
     { driveFileId: "minutes", content: `[Nutrition](https://docs.google.com/document/d/${BILL}/edit)\n[New](https://docs.google.com/document/d/${SHEET}/edit)`, sessionNumber: 114, discoveredVia: "walk", source: "minutes-url" },

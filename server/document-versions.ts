@@ -9,7 +9,7 @@ import { selectDocumentVersion, versionOptions } from "@/lib/document-versions";
 import { loadDocument, hydrateDocumentDetail, type DocumentDetail } from "@/server/documents";
 
 const cachedVersionedDocument = unstable_cache(loadVersionedDocument,
-    ["versioned-document-v1"], { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS });
+    ["versioned-document-v2"], { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS });
 
 /** Cache the whole selected view, including version options and historical reads. */
 export async function getVersionedDocument(documentId: string, requested?: string) {

@@ -241,6 +241,15 @@
   color: #377ebc;
 }
 
+/* Unreferenced evidence is a compact source row, not a loose paragraph or
+   an apparent continuation of the final claim. Anchor its tooltips here too. */
+.summarySources {
+  position: relative;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
 .muted {
   color: #6a7c8f;
   font-size: 0.72rem;

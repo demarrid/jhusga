@@ -21,7 +21,7 @@ import {
 import { heldNotice } from "@/lib/integrity";
 import { agendaMappingKey, agendaMappingHash, agendaSectionLinks, agendaOutlineWithLinks, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
 import { DOCUMENT_CATEGORIES, documentCategory, documentCategoryFilter, type DocumentKind, isDocumentKind } from "@/lib/kinds";
-import { extractDocumentLinks } from "@/lib/links";
+import { extractDocumentLinks, extractInternalDocumentLinks } from "@/lib/links";
 import { compareNamesBySurname } from "@/lib/contributors";
 import { isMeetingRole, meetingForDocument, type MeetingRole } from "@/lib/meetings";
 import { prisma } from "@/lib/prisma";
@@ -676,7 +676,7 @@ function normaliseStatus(status: string): SectionStatus {
 
 const cachedDocument = unstable_cache(
     loadDocument,
-    ["document-detail-v2"],
+    ["document-detail-v3"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
@@ -889,8 +889,12 @@ export async function loadDocument(
     }
 
     const outgoing = extractDocumentLinks(document.content);
-    const linkedTargets = outgoing.length ? await prisma.document.findMany({
-        where: { driveFileId: { in: outgoing.map(link => link.fileId) } },
+    const internal = extractInternalDocumentLinks(document.content);
+    const linkedTargets = outgoing.length || internal.length ? await prisma.document.findMany({
+        where: { OR: [
+            { driveFileId: { in: outgoing.map(link => link.fileId) } },
+            { id: { in: internal.map(link => link.documentId) }, reviewState: "published" },
+        ] },
         select: { ...relatedSelect, driveFileId: true },
     }) : [];
     const heldTargets = new Set(linkedTargets.map(row => row.driveFileId));
@@ -900,6 +904,12 @@ export async function loadDocument(
         if (target && target.id !== document.id && !directReferences.has(target.id)) directReferences.set(target.id, { ...toRelated(target, link.text), sourceOffset: link.offset });
     }
     const unresolvedLinks = outgoing.filter((link) => !heldTargets.has(link.fileId));
+    for (const link of internal) {
+        const target = linkedTargets.find(row => row.id === link.documentId);
+        if (target && target.id !== document.id && !directReferences.has(target.id)) {
+            directReferences.set(target.id, { ...toRelated(target, /^https?:|^\//i.test(link.text.replace(/\\/g, "")) ? "" : link.text), sourceOffset: link.offset });
+        }
+    }
     const amendmentReview = document.reviewState === "held" && document.heldRevisionId
         ? await prisma.amendmentClearance.findFirst({
             where: { documentId: document.id, revisionId: document.heldRevisionId },
@@ -922,7 +932,7 @@ export async function loadDocument(
             return { title: link.text || (target ? toRelated(target).title : "Document"),
                 href: target ? `/documents/${target.id}` : link.url };
         }) } : undefined,
-        references: [...directReferences.values()],
+        references: [...directReferences.values()].sort((a, b) => (a.sourceOffset ?? 0) - (b.sourceOffset ?? 0)),
         referencedBy: document.referencesIn.map((edge) => toRelated(edge.fromDocument)),
         unresolvedLinks: unresolvedLinks.map((link) => ({
             sourceOffset: link.offset,

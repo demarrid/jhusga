@@ -2,8 +2,31 @@ import assert from 'node:assert/strict';
 import { dispatchSyncContinuation, modelStep, requestSyncContinuation, type Slice } from '../lib/sync-run';
 import { summarizeDocument } from '../lib/summarize';
 import { emptySyncSummary } from '../lib/sync';
+import { hasCronSecret } from '../lib/cron-auth';
 
 async function main() {
+    const previousSecret = process.env.CRON_SECRET;
+    const originalWarn = console.warn;
+    const authLogs: unknown[][] = [];
+    console.warn = (...args) => { authLogs.push(args); };
+    try {
+        process.env.CRON_SECRET = 'private-fixture-token';
+        assert.equal(hasCronSecret(new Request('https://example.org', {headers:{authorization:'Bearer private-fixture-token'}})), true);
+        assert.equal(authLogs.length, 0);
+        assert.equal(hasCronSecret(new Request('https://example.org')), false);
+        assert.equal(hasCronSecret(new Request('https://example.org', {headers:{authorization:'Bearer wrong-private-token'}})), false);
+        delete process.env.CRON_SECRET;
+        assert.equal(hasCronSecret(new Request('https://example.org')), false);
+        const serialized = JSON.stringify(authLogs);
+        assert.match(serialized, /header-missing/);
+        assert.match(serialized, /credential-mismatch/);
+        assert.match(serialized, /secret-missing/);
+        assert.ok(!serialized.includes('private-fixture-token') && !serialized.includes('wrong-private-token'));
+    } finally {
+        console.warn = originalWarn;
+        if (previousSecret === undefined) delete process.env.CRON_SECRET;
+        else process.env.CRON_SECRET = previousSecret;
+    }
     let now = Date.now();
     Date.now = () => now;
     let requests = 0;

@@ -30,6 +30,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Keep the message aligned with the final diff. Leave committing and pushing
   to the user unless they explicitly request otherwise.
 - This file is a local Git commit template and should remain ignored.
+- When asked to commit or push, use the `demarrid` GitHub account. Verify the
+  commit identity and push credentials belong to that account; do not silently
+  use another account or rewrite existing commits without being asked.
 
 ## Asking for input
 

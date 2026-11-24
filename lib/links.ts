@@ -164,6 +164,21 @@ export function extractDocumentLinks(markdown: string): DocumentLink[] {
     ].sort((a, b) => a.offset - b.offset);
 }
 
+/** Local archive links use document IDs rather than external storage IDs. */
+export function extractInternalDocumentLinks(markdown: string) {
+    const links = linksFrom(markdown, "drive",
+        /https?:\/\/(?:www\.)?jhusga\.org\/documents\/[^\s<>)\]"'`]+/gi,
+        raw => {
+            const cleaned = unescapeUrl(raw);
+            if (!/^(?:https?:\/\/(?:www\.)?jhusga\.org)?\/documents\//i.test(cleaned)) return null;
+            try {
+                const url = new URL(cleaned, "https://www.jhusga.org");
+                return /^\/documents\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\/?$/i.exec(url.pathname)?.[1].toLowerCase() ?? null;
+            } catch { return null; }
+        });
+    return links.map(({ fileId, text, offset, url }) => ({ documentId: fileId, text, offset, url }));
+}
+
 export type ReferenceEdge = {
     fromDocumentId: string;
     toDocumentId: string;
@@ -186,13 +201,21 @@ export function resolveReferences(
     documents: { id: string; driveFileId: string; content: string }[],
 ): ReferenceEdge[] {
     const byFileId = new Map(documents.map((document) => [document.driveFileId, document.id]));
+    const ids = new Set(documents.map(document => document.id));
     const edges: ReferenceEdge[] = [];
 
     for (const document of documents) {
         let ordinal = 0;
-        for (const link of extractDocumentLinks(document.content)) {
-            const toDocumentId = byFileId.get(link.fileId);
+        const targets = [
+            ...extractDocumentLinks(document.content).map(link => ({ ...link, target: byFileId.get(link.fileId) })),
+            ...extractInternalDocumentLinks(document.content).map(link => ({ ...link, target: ids.has(link.documentId) ? link.documentId : undefined })),
+        ].sort((a, b) => a.offset - b.offset);
+        const seen = new Set<string>();
+        for (const link of targets) {
+            const toDocumentId = link.target;
             if (!toDocumentId || toDocumentId === document.id) continue;
+            if (seen.has(toDocumentId)) continue;
+            seen.add(toDocumentId);
 
             edges.push({
                 fromDocumentId: document.id,

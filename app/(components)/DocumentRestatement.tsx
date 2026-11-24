@@ -40,7 +40,8 @@ export default function DocumentRestatement({
     });
 
     const used = new Set(citedIndexes(restatement.content));
-    const leftover = restatement.citations.filter((_, index) => !used.has(index + 1));
+    const leftover = restatement.citations.map((citation, index) => ({ citation, index: index + 1 }))
+        .filter(({ index }) => !used.has(index));
 
     return (
         <div className={styles.summary}>
@@ -54,15 +55,16 @@ export default function DocumentRestatement({
             {renderBlocks(restatement.content, byIndex)}
 
             {leftover.length > 0 && (
-                <p>
-                    {leftover.map((citation, index) => (
+                <div className={styles.summarySources}>
+                    <span>Additional sources: </span>
+                    {leftover.map(({ citation, index }) => (
                         <QuoteChip
                             key={citation.annotationId}
                             citation={citation}
-                            index={used.size + index + 1}
+                            index={index}
                         />
                     ))}
-                </p>
+                </div>
             )}
 
         </div>
