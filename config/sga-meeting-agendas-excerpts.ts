@@ -1,0 +1,40 @@
+import type { Excerpt } from './sga-compilation-excerpts';
+
+// Inclusive transcription lines, pinned to the reviewed source; not PDF pages.
+export const compilationId = '132a69b0-28b9-4901-a5d4-75c6c919419a';
+export const compilationHash = '61c51ff421d9f9f241ac44d8204b8c4436b9b5a5cc33ac3d99a33963a90a4f1c';
+export const compilationExcerpts: Excerpt[] = [
+    { start: 1, end: 31, title: 'Senate Meeting #21 Agenda — April 18, 2017', kind: 'minutes.senate', date: '2017-04-18' },
+    { start: 33, end: 56, title: 'Executive Board Meeting Agenda — April 19, 2017', kind: 'minutes.executive', date: '2017-04-19' },
+    { start: 58, end: 87, title: 'Senate Meeting #20 Agenda — April 11, 2017', kind: 'minutes.senate', date: '2017-04-11' },
+    { start: 89, end: 108, title: 'Executive Board Meeting Agenda — February 22, 2017', kind: 'minutes.executive', date: '2017-02-22' },
+    { start: 110, end: 139, title: 'Senate Meeting #16 Agenda — February 21, 2017', kind: 'minutes.senate', date: '2017-02-21' },
+    { start: 141, end: 160, title: 'Executive Board Meeting Agenda — March 8, 2017', kind: 'minutes.executive', date: '2017-03-08' },
+    { start: 162, end: 193, title: 'Senate Meeting #18 Agenda — March 7, 2017', kind: 'minutes.senate', date: '2017-03-07' },
+    { start: 195, end: 457, title: 'Committee on Student Elections Bylaws — March 2017 Revision', kind: 'guiding.bylaws' },
+    { start: 459, end: 689, title: "What's in a Bylaw? — March 7, 2017", kind: 'presentation', date: '2017-03-07' },
+    { start: 691, end: 716, title: 'Executive Board Meeting Agenda — April 5, 2017', kind: 'minutes.executive', date: '2017-04-05' },
+    { start: 718, end: 1636, title: 'SGA Bylaws — April 4, 2017 (Tentative, Annotated Draft)', kind: 'guiding.bylaws', date: '2017-04-04' },
+    { start: 1638, end: 1716, title: 'Senate Meeting #19 Agenda — April 4, 2017', kind: 'minutes.senate', date: '2017-04-04' },
+    { start: 1718, end: 1745, title: 'Executive Board Meeting Agenda — March 29, 2017', kind: 'minutes.executive', date: '2017-03-29' },
+    { start: 1747, end: 1779, title: 'Executive Board Meeting Agenda — April 12, 2017', kind: 'minutes.executive', date: '2017-04-12' },
+    { start: 1781, end: 1842, title: 'Senate Meeting #15 Agenda — February 14, 2017', kind: 'minutes.senate', date: '2017-02-14' },
+    { start: 1844, end: 1868, title: 'Executive Board Meeting Agenda — February 15, 2017', kind: 'minutes.executive', date: '2017-02-15' },
+    { start: 1870, end: 1916, title: 'Senate Meeting #14 Agenda — February 7, 2017', kind: 'minutes.senate', date: '2017-02-07' },
+    { start: 1918, end: 2046, title: 'Student Activities Commission Funding Policies', kind: 'guiding.other' },
+    { start: 2048, end: 2122, title: 'Senate Meeting #13 Agenda — January 31, 2017', kind: 'minutes.senate', date: '2017-01-31' },
+    { start: 2124, end: 2164, title: "Say Goodbye to Red Tape and Howdy to Let's Do It — SGA Infographic", kind: 'reference' },
+    { start: 2166, end: 2242, title: 'SGA in a Nutshell — 2016–2017', kind: 'reference' },
+    { start: 2244, end: 2279, title: 'SGA Contact List — 2016–2017', kind: 'directory' },
+    { start: 2281, end: 2306, title: 'Executive Board Meeting Agenda — November 11, 2016', kind: 'minutes.executive', date: '2016-11-11' },
+    { start: 2308, end: 2362, title: 'Senate Meeting #10 Agenda — November 8, 2016', kind: 'minutes.senate', date: '2016-11-08' },
+    { start: 2364, end: 2411, title: 'Senate Meeting #7 Agenda — October 18, 2016', kind: 'minutes.senate', date: '2016-10-18' },
+    { start: 2413, end: 2460, title: 'Senate Meeting #8 Agenda — October 25, 2016', kind: 'minutes.senate', date: '2016-10-25' },
+    { start: 2462, end: 2482, title: 'Executive Board Meeting Agenda — October 27, 2016', kind: 'minutes.executive', date: '2016-10-27' },
+    { start: 2484, end: 2522, title: 'Senate Meeting #9 Agenda — November 1, 2016', kind: 'minutes.senate', date: '2016-11-01' },
+    { start: 2524, end: 3139, title: "President's Briefing: Dinner with SGA — November 2, 2016 (with Appendices)", kind: 'reference', date: '2016-11-02' },
+    { start: 3141, end: 3173, title: 'Senate Meeting #6 Agenda — October 11, 2016', kind: 'minutes.senate', date: '2016-10-11' },
+    { start: 3175, end: 3220, title: 'Senate Meeting #5 Agenda — October 4, 2016', kind: 'minutes.senate', date: '2016-10-04' },
+    { start: 3222, end: 3261, title: 'Senate Meeting #4 Agenda — September 27, 2016', kind: 'minutes.senate', date: '2016-09-27' },
+    { start: 3263, end: 3303, title: 'Senate Meeting #1 Agenda — September 6, 2016', kind: 'minutes.senate', date: '2016-09-06' },
+];

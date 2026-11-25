@@ -28,6 +28,7 @@
     "review": "tsx scripts/review.ts",
     "prune": "tsx scripts/prune.ts",
     "reprocess": "tsx scripts/reprocess.ts",
+    "people": "tsx scripts/people.ts",
     "check": "tsx scripts/check.ts",
     "seed:demo": "tsx scripts/seed.demo.ts",
     "db:migrate": "prisma migrate dev",

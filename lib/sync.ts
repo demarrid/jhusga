@@ -16,6 +16,7 @@ import { extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor, documentMeetingRole } from "@/lib/meetings";
 import { resolveAffiliates } from "@/lib/names";
 import { validatePersonMentions } from "@/lib/person-validation";
+import { documentPeople } from "@/lib/people-extraction-cache";
 import { findReviewedMentions, loadReviewedRoster, REVIEWED_SOURCE } from "@/lib/reviewed-administrators";
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
@@ -572,10 +573,18 @@ export async function recordContributors(
         },
     });
 
-    const parsed = await validatePersonMentions(
+    const discovered = await documentPeople(documentId, { title: document?.title ?? '', kind: document?.kind ?? 'unknown', content });
+    const parsedCandidates = await validatePersonMentions(
         extractContributors(content, document?.title, document?.kind),
         { title: document?.title ?? "", content },
     );
+
+    // Preserve explicit source-line credits; AI discovers names outside those shapes.
+    const parsed = [...parsedCandidates];
+    for (const person of discovered.people) {
+        if (!parsed.some(existing => existing.name.toLocaleLowerCase() === person.name.toLocaleLowerCase() &&
+            (existing.role === person.role || person.role === 'mentioned'))) parsed.push(person);
+    }
 
     const administratorResolutions = new Map<number, AdministratorResult>();
     const affiliateIds = await resolveAffiliates(
@@ -707,6 +716,10 @@ export async function recordContributors(
         linked += mentions.length;
     }
 
+    await prisma.documentPeopleExtraction.updateMany({
+        where: { documentId, fingerprint: discovered.fingerprint },
+        data: { appliedAt: new Date() },
+    });
     return linked;
 }
 

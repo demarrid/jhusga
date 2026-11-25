@@ -12,6 +12,21 @@ import {
 } from "../lib/render";
 
 let failures = 0;
+const archivedWorkbook = "## Legislative Index\n\n| Name | Status | Funding |\n| --- | --- | --- |\n| Rules Bill | PASSED 15-0 | 0.0 |\n\n## Temporal Statistics\n\n| Month | Bills | Resolutions |\n| --- | --- | --- |\n| September | 7 | 2 |\n\n## Sources\n\n[Original workbook](https://example.com/archive.xlsx)";
+const archivedQuote = findQuote(archivedWorkbook, "PASSED 15-0")!;
+const archivedBlocks = renderDocument(archivedWorkbook, [{ id: "archive-vote", ...archivedQuote }], { sheetDelimiter: "\t" });
+check("archived XLSX Markdown retains separate tables, headings, and source links",
+    archivedBlocks.filter(block => block.kind === "table").length === 2 &&
+    archivedBlocks.filter(block => block.kind === "heading").length === 3 &&
+    archivedBlocks.some(block => block.kind === "table" && block.header?.cells.length === 3) &&
+    allRuns(archivedBlocks).some(run => run.href === "https://example.com/archive.xlsx"));
+check("archived XLSX citations stay anchored to the original cell",
+    highlighted(archivedBlocks, "archive-vote") === "PASSED 15-0" &&
+    allRuns(archivedBlocks).filter(run => run.annotationId === "archive-vote" && run.anchor).length === 1);
+const literalSheet = renderDocument("Name\tNotes\nExample\t| A | B |\nOther\t| --- | --- |", [], { sheetDelimiter: "\t" });
+check("native spreadsheets keep pipe syntax inside literal cells",
+    literalSheet.length === 1 && literalSheet[0].kind === "table" &&
+    runsText(literalSheet[0].rows[0].cells[1]) === "| A | B |");
 function check(label: string, condition: boolean, detail?: unknown) {
     if (condition) {
         console.log(`  ok   ${label}`);

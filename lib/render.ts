@@ -191,7 +191,14 @@ export function renderDocument(
     // the stored text, leaves citation offsets where they were.
     const { anchors, minutesEntries } = indexSections(content);
 
-    if (options.sheetDelimiter) return parseSheet(lines, options.sheetDelimiter, inline, anchors);
+    // Historical XLSX imports are already Markdown, unlike live tab/CSV exports.
+    // Require an actual pipe header/separator pair and no native delimiters so
+    // ordinary spreadsheet cells containing Markdown keep their literal text.
+    const markdownSheet = options.sheetDelimiter &&
+        !content.includes(options.sheetDelimiter) &&
+        lines.some((line, index) => index > 0 && TABLE_DELIMITER.test(line.text) &&
+            lines[index - 1].text.trim().startsWith("|"));
+    if (options.sheetDelimiter && !markdownSheet) return parseSheet(lines, options.sheetDelimiter, inline, anchors);
     const parse = (segment: Line[]) => report
         ? parseReport(segment, inline, anchors)
         : oieReport ? parseOieReport(segment, inline, anchors, content)

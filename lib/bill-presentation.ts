@@ -20,42 +20,56 @@ export type BillHeaderLine = {
 };
 
 const SECTION = /^\s*SECTION\s+(?:\d+|[IVXLC]+)[.\s:–—-]+[^\n]+/i;
-const BILL_PURPOSE = /^(?:A (?:Bill|Resolution)\b|An?\s+(?:SGA\s+)?Funding Bill\b|(?:An?\s+)?Act\s+to\b)/i;
+const RESOLUTION_CLAUSE = /^\s*(?:Whereas\b|(?:Now[,]?\s+Therefore[,]?\s+)?Be\s+It\s+(?:Further\s+)?(?:Resolved|Enacted)\b)/i;
+const BODY_START = new RegExp(SECTION.source + "|" + RESOLUTION_CLAUSE.source, "i");
+const BILL_NUMBER = /\{?\s*S[. -]*(?:Bill|B|Resolution|Res)[.\s-]/i;
+const matchingText = (text: string) => text.replace(/[\u200b-\u200d\ufeff]/g, "");
+const BILL_PURPOSE = /^(?:A (?:Bill|Resolution)\b|An?\s+(?:SGA\s+)?(?:Funding )?Bill\b|An?\s+Act\b|Act\s+to\b)/i;
 
 export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks: Block[] } {
     blocks = presentPagedBill(blocks);
     const opening = blocks.slice(0, 16).flatMap(block => "runs" in block ? [runsText(block.runs)] : []).join("\n");
-    if (!/Student Government Association/i.test(opening) || !opening.split("\n").some(line => BILL_PURPOSE.test(line.trim()))) {
+    if (!/Student\s+Government\s+Association/i.test(matchingText(opening)) ||
+        !(BILL_NUMBER.test(matchingText(opening)) || opening.split("\n").some(line => BILL_PURPOSE.test(matchingText(line).trim())))) {
         return { header: [], blocks };
     }
-    // Word exports can put the complete title page and first section in one
-    // paragraph. Split at section lines without changing source runs or anchors.
+    // Word exports can put the complete title page and first provision in one
+    // paragraph. Split at section and resolution-clause lines without changing source runs or anchors.
     blocks = blocks.flatMap((block): Block[] => {
         if (block.kind !== "paragraph") return [block];
         const text = runsText(block.runs);
-        const starts = [0, ...Array.from(text.matchAll(/(?<=\n)(?=SECTION\s+(?:\d+|[IVXLC]+)[.\s:])/gi), match => match.index!), text.length];
+        const starts = [0, ...Array.from(text.matchAll(/(?<=\n)(?=SECTION\s+(?:\d+|[IVXLC]+)[.\s:]|Whereas\b|(?:Now[,]?\s+Therefore[,]?\s+)?Be\s+It\s+(?:Further\s+)?(?:Resolved|Enacted)\b)/gi), match => match.index!), text.length];
         return starts.slice(0, -1).map((start, index) => ({ ...block,
             runs: sliceRuns(block.runs, start, starts[index + 1]),
             sectionId: index === 0 ? block.sectionId : undefined,
         }));
     });
     const header: BillHeaderLine[] = [];
+    const decorations: Block[] = [];
     let consumed = 0;
     let purposeSeen = false;
     let numberSeen = false;
     for (const block of blocks) {
-        if (!(block.kind === "paragraph" || block.kind === "heading") || SECTION.test(runsText(block.runs))) break;
+        // Empty export furniture is not a boundary, and must retain any IDs.
+        if (block.kind === "rule" || ((block.kind === "table" || block.kind === "layout") &&
+            !block.rows.some(row => row.cells.some(cell => runsText(cell).trim())))) {
+            decorations.push(block);
+            consumed++;
+            continue;
+        }
+        if (!(block.kind === "paragraph" || block.kind === "heading") || BODY_START.test(matchingText(runsText(block.runs)))) break;
         const text = runsText(block.runs);
-        if (consumed >= 16) break;
-        const starts = [0, ...Array.from(text.matchAll(/\n|(?=(?:Introduced by:|Sponsored by:|Presented for))/gi), match => match.index!).filter(at => at > 0), text.length];
+        // Older resolutions export each sponsor as a separate paragraph.
+        if (consumed >= 64) break;
+        const starts = [0, ...Array.from(text.matchAll(/\n|(?=(?:Introduced by:|Sponsored by:|Presented for|Referred to the senate\b|\{[\s\u200b-\u200d]*S[. -]*(?:Bill|B|Resolution|Res)\b|An? (?:Act|Bill|Resolution)\b))/gi), match => match.index!).filter(at => at > 0), text.length];
         for (let index = 0; index < starts.length - 1; index++) {
             const start = starts[index], end = starts[index + 1];
-            const value = text.slice(start, end).trim();
+            const value = matchingText(text.slice(start, end)).trim();
             if (!value) continue;
             const kind = /^(Introduced|Sponsored) by:/i.test(value) ? "credit"
-                : /^Presented for/i.test(value) ? "reading"
+                : /^(?:Presented for|Referred to the senate\b)/i.test(value) ? "reading"
                 : BILL_PURPOSE.test(value) ? "purpose"
-                : /^\{?\s*S[. -]*(?:Bill|B|Resolution)[.\s]/i.test(value) ? "number"
+                : new RegExp("^" + BILL_NUMBER.source, "i").test(value) ? "number"
                 : header.at(-1)?.kind === "credit" ? "credit"
                 : header.at(-1)?.kind === "reading" ? "reading"
                 : purposeSeen ? "title" : numberSeen ? "purpose" : "institution";
@@ -65,11 +79,11 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
         }
         consumed++;
     }
-    // Only recognize a complete title block bounded by the bill's first section.
+    // Only recognize a complete title block bounded by a section or resolution clause.
     const firstSection = blocks[consumed];
-    if (!header.some(line => line.kind === "purpose") || !firstSection ||
+    if (!header.some(line => line.kind === "purpose" || line.kind === "number") || !firstSection ||
         !(firstSection.kind === "paragraph" || firstSection.kind === "heading") ||
-        !SECTION.test(runsText(firstSection.runs))) return { header: [], blocks };
+        !BODY_START.test(matchingText(runsText(firstSection.runs)))) return { header: [], blocks };
     const normalize = (items: Block[]): Block[] => items.flatMap((block): Block[] => {
         if (block.kind === "paragraph") {
             const text = runsText(block.runs);
@@ -90,7 +104,7 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
         }) }];
         return [block];
     });
-    return { header, blocks: normalize(blocks.slice(consumed)) };
+    return { header, blocks: [...decorations, ...normalize(blocks.slice(consumed))] };
 }
 
 /** Signature rules can start a paragraph or trail the previous signer's role. */

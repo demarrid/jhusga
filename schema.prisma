@@ -146,6 +146,7 @@ model Document {
     revisions           DocumentRevision[]
     driveRevisions      DriveRevision[]
     contributors        DocumentContributor[]
+    peopleExtraction    DocumentPeopleExtraction?
     summary             DocumentSummary?
     passages            DocumentPassage[]
 
@@ -1187,4 +1188,16 @@ model PersonMentionReview {
     input          String
     decisions      Json
     createdAt      DateTime @default(now())
+}
+
+// Independent of summary freshness. appliedAt is set only after linking succeeds.
+model DocumentPeopleExtraction {
+    documentId    String @id
+    document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+    fingerprint   String
+    promptVersion String
+    model         String
+    people        Json
+    appliedAt     DateTime?
+    updatedAt     DateTime @updatedAt
 }

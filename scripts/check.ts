@@ -49,6 +49,7 @@ const SUITES = [
     "cells",
     "cite",
     "contributors",
+    "people-extraction",
     "person-validation",
     "person-validation-sync",
     "directory",

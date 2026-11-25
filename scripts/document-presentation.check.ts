@@ -108,3 +108,54 @@ const slideAnchors = blockSectionIds(slideBlocks);
 assert(slideOutline.every(section => slideAnchors.has(section.id) && section.children.length === 0));
 assert(slideOutline.some(section => section.title === 'LEED’s Proposal (continued)'));
 assert(!slideOutline.some(section => section.title.includes('Thank you')));
+
+
+// OIE resolution (bec0b5d6): separate sponsor paragraphs, then Whereas clauses.
+const oie = "Senate\n\nof the\n\nStudent Government Association\n\nof\n\nThe Johns Hopkins University\n\n{ S. Resolution 18-19, 05 }\n\nA Resolution Calling for Johns Hopkins to Reform the Office of Institutional Equity\n\nIntroduced By: Senator Miranda Bannister of the Junior Class and Senator Madelynn Wellons of the Junior Class and considered this 4th day of December in the Year 2018\n\nSponsored By: Senator Jennifer Baron of the Senior Class\n\nSenator Kiana Boroumand of the Junior Class\n\nSenator Fatima Bouftas of the Senior Class\n\nPresident Dean Chien of the Junior Class\n\nSenator Pavan Patel of the Junior Class\n\nSenator Mohamed T. El Gendi of the Junior Class\n\nVice President AJ Tsang of the Executive Board\n\nSecretary Aspen Williams of the Executive Board\n\nPresident Noh Mebrahtu of the Executive Board\n\nSenator Ash Panakam of the Senior Class\n\nSenator Nathan Mudrak of the Freshman Class\n\nPresident Sam Schatmeyer of the Sophomore Class\n\nSenator Alex Forlenza of the Freshman Class\n\nSenator Pritika Parmar of the Freshman Class\n\nSenator Mehak Ali of the Freshman Class\n\nSenator Omar Lloyd of the Junior Class\n\nSenator akshay Bhamidipati of the Senior Class\n\nReferred to the senate by WAIVED which recommends its N/A by a vote of N/A to N/A.\n\nWhereas Section II of the Johns Hopkins Undergraduate Student Government Association\u2019s Constitution states, \u201cThe purpose of the SGA is to protect and improve the rights, opportunities, and quality of life for every undergraduate student at the Johns Hopkins University;\u201d\n\nWhereas this resolution refers to the Office of Institutional Equity\u2019s Annual Report of 2017,";
+const oieTitle = "A Resolution Calling for Johns Hopkins to Reform the Office of Institutional Equity";
+for (const content of [oie, oie.replaceAll("\n\n", "\n")]) {
+    const startOffset = content.indexOf(oieTitle);
+    const parsed = renderDocument(content, [{
+        id: "5c0fa843-05cf-463f-b854-e562927da573",
+        startOffset, endOffset: startOffset + oieTitle.length,
+    }]);
+    const result = presentBill(parsed);
+    assert(result.header.some(line => line.kind === "purpose" && runsText(line.runs).trim() === oieTitle));
+    assert(result.header.some(line => line.kind === "credit" && runsText(line.runs).includes("akshay Bhamidipati")));
+    assert(result.header.some(line => line.kind === "reading" && runsText(line.runs).includes("Referred to the senate")));
+    assert(!result.header.some(line => /Whereas/.test(runsText(line.runs))));
+    assert(result.blocks[0]?.kind === "paragraph" && runsText(result.blocks[0].runs).trimStart().startsWith("Whereas"));
+    assert.equal(result.header.flatMap(line => line.runs).filter(run => run.anchor && run.annotationId === "5c0fa843-05cf-463f-b854-e562927da573").length, 1);
+    assert.deepEqual(presentBill(parsed), result);
+}
+assert.equal(presentBill(renderDocument(oie.slice(0, oie.indexOf("Whereas")), [])).header.length, 0);
+
+// Real archive exports cover custom captions, enacting clauses, empty tables,
+// decorative rules, numbered provisions, and PDF-flattened title pages.
+const olderBills: { id: string; title: string; content: string }[] = JSON.parse(
+    readFileSync(new URL("./fixtures/bill-formatting.json", import.meta.url), "utf8"),
+);
+function sourceRunText(value: unknown): string {
+    if (Array.isArray(value)) return value.map(sourceRunText).join("");
+    if (!value || typeof value !== "object") return "";
+    if ("text" in value && typeof value.text === "string") return value.text;
+    return Object.values(value).map(sourceRunText).join("");
+}
+for (const fixture of olderBills) {
+    const startOffset = fixture.content.indexOf("Introduced By:");
+    assert(startOffset >= 0, fixture.title);
+    const annotationId = "0ec158b9-d25e-4813-a2f0-f2fddc6a6613";
+    const parsed = renderDocument(fixture.content, [{
+        id: annotationId, startOffset, endOffset: startOffset + 50,
+    }]);
+    const result = presentBill(parsed);
+    assert(result.header.some(line => line.kind === "number"), fixture.title);
+    assert(result.header.some(line => line.kind === "credit"), fixture.title);
+    assert(!result.header.some(line => /Be it enacted|Whereas/i.test(runsText(line.runs))), fixture.title);
+    assert.equal(result.header.flatMap(line => line.runs).filter(run =>
+        run.annotationId === annotationId && run.anchor).length, 1, fixture.title);
+    assert.equal(sourceRunText(result).replace(/\s/g, ""),
+        sourceRunText(parsed).replace(/\s/g, ""), fixture.title + ": retain source text");
+    assert.deepEqual(presentBill(parsed), result, fixture.title + ": no mutation");
+}
+console.log("Older bill formats, source text, and annotation anchors passed");

@@ -1,5 +1,9 @@
 /** Reviewed archive metadata; original filenames and source text remain intact. */
 export const DOCUMENT_CORRECTIONS: Record<string, { displayTitle: string; datedOn?: string | null }> = {
+    // The junior council agenda includes attendance, discussion, and a recorded vote.
+    "1hKbdFVvA1kSHzMjb5wcT3Dbkqot232cc": {
+        displayTitle: "Junior Class Council Meeting — Agenda and Minutes (12/02/18)",
+    },
     // The agenda was filled with attributed discussion during the lunch.
     "1UAP6U5J0pS0Vq4-1amxCZ085vLVjOEJxCpi6X_LE6Do": {
         displayTitle: "Executive Board × President Daniels Lunch — Agenda and Minutes (3/25/26)",
