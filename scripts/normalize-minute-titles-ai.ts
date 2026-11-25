@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile, appendFile } from 'node:fs/promises';
 import { prisma } from '../lib/prisma';
 import { generateJson } from '../lib/ai';
-import { acceptedMinuteTitle, minuteTitleSourceHash, MINUTE_TITLE_PROMPT, validateMinuteTitle } from '../lib/minute-title-ai';
+import { acceptedMinuteTitle, minuteTitleSourceHash, MINUTE_TITLE_PROMPT, standardMinuteTitleDates, validateMinuteTitle } from '../lib/minute-title-ai';
 
 process.loadEnvFile(path.join(process.cwd(), '.env'));
 
@@ -40,7 +40,21 @@ async function main() {
     const changes: { document: typeof documents[number]; proposed: string; sourceHash: string }[] = [];
     let calls = 0, skipped = 0;
     for (const document of documents) {
-        if (acceptedMinuteTitle(document)) { skipped++; continue; }
+        const accepted = acceptedMinuteTitle(document);
+        if (accepted) {
+            let refreshed = accepted;
+            try { refreshed = standardMinuteTitleDates(accepted); } catch { refreshed = accepted; }
+            if (refreshed === accepted) { skipped++; continue; }
+            const key = keyOf(refreshed);
+            if ([...(occupied.get(key) ?? [])].some(id => id !== document.id)) {
+                report.push({ id: document.id, original: document.title, status: 'collision', title: refreshed, evidence: [], reason: 'Standard date notation collides with another title' });
+                continue;
+            }
+            occupied.set(key, new Set([document.id]));
+            changes.push({ document, proposed: refreshed, sourceHash: minuteTitleSourceHash(document) });
+            report.push({ id: document.id, original: document.title, before: document.displayTitle, status: 'proposed', title: refreshed, evidence: [], reason: 'Standard date notation' });
+            continue;
+        }
         const sourceHash = minuteTitleSourceHash(document);
         const cacheKey = createHash('sha256').update(JSON.stringify([sourceHash, MINUTE_TITLE_PROMPT,
             process.env.AI_PROVIDER ?? 'anthropic', process.env.AI_MODEL ?? 'default'])).digest('hex');

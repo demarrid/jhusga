@@ -71,9 +71,13 @@ async function main() {
     if (args.includes("--cached-only")) limit = 0;
 
     if (documentId) {
-        const targeted = await prisma.document.findUnique({ where: { id: documentId }, select: { kind: true } });
+        const targeted = await prisma.document.findUnique({ where: { id: documentId }, select: { kind: true, datedAt: true } });
         if (!targeted) throw new Error("Document not found");
         if (secondary.has(targeted.kind)) throw new Error("Secondary sources keep the publication byline assigned at ingest.");
+        if (targeted.datedAt) {
+            console.log(`Skipped ${documentId}: already dated`);
+            return;
+        }
     }
 
     const directory = ".archive-local/document-dates";
@@ -86,7 +90,7 @@ async function main() {
     const map = sessionYearMap();
 
     const consider = async (document: DateRow) => {
-        if (acceptedDocumentDate(document)) {
+        if (document.datedAt || acceptedDocumentDate(document)) {
             skipped++;
             return;
         }
@@ -179,7 +183,7 @@ async function main() {
         let cursor: string | undefined;
         for (;;) {
             const batch = await prisma.document.findMany({
-                where: { kind: { notIn: [...SECONDARY_KINDS] }, ...(cursor ? { id: { gt: cursor } } : {}) },
+                where: { datedAt: null, kind: { notIn: [...SECONDARY_KINDS] }, ...(cursor ? { id: { gt: cursor } } : {}) },
                 orderBy: { id: "asc" },
                 take: 20,
                 select,

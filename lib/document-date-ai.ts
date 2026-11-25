@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { hasUnverifiedMeetingDate } from "@/config/document-corrections";
 import { academicYearStart, SESSION_NUMBER } from "@/config/session";
 import { archiveDateCandidates } from "@/lib/archive-dates";
+import { expandCalendarYear } from "@/lib/calendar-year";
 import { documentDate } from "@/lib/identity";
 import { normalizedDateDay, normalizedDateMonth, normalizedDateSortAnchor } from "@/lib/document-date-value";
 
@@ -79,8 +80,62 @@ export type DateProposal = {
     reason: string;
 };
 
+const MONTH_WORDS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+function comparableDateText(text: string): string {
+    return text.replace(/[\u200b\u200c\u200d\ufeff]/g, "").replace(/\u00a0/g, " ");
+}
+
+function looseDateText(text: string): string {
+    return comparableDateText(text).replace(/\s+/g, " ").trim();
+}
+
 function monthExpression(month: number): string {
     return MONTHS[month - 1]!.map((name) => `${name}\\.?`).join("|");
+}
+
+function monthNumber(token: string): number | null {
+    const word = token.toLowerCase().replace(/\./g, "");
+    const index = MONTH_WORDS.findIndex((month) => month === word || (word.length >= 3 && month.startsWith(word)));
+    return index >= 0 ? index + 1 : null;
+}
+
+function pad(value: number): string {
+    return String(value).padStart(2, "0");
+}
+
+/** Accept the formats a model actually returns, then store one canonical value. */
+function canonicalDateValue(raw: string): string | null {
+    const text = comparableDateText(raw).trim().replace(/(\d)(st|nd|rd|th)\b/gi, "$1");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text) || /^\d{4}-\d{2}$/.test(text) || /^\d{4}$/.test(text)) return text;
+    const slashRange = /^(\d{4})\/(\d{4})$/.exec(text);
+    if (slashRange && Number(slashRange[2]) === Number(slashRange[1]) + 1) return text;
+    const range = /^(\d{4})\s*[\u2013\u2014/-]\s*(\d{4})$/.exec(text);
+    if (range && Number(range[2]) === Number(range[1]) + 1) return `${range[1]}/${range[2]}`;
+    const shortRange = /^(?:2k)?(\d{2})\s*[\u2013\u2014/-]\s*(?:2k)?(\d{2})$/i.exec(text);
+    if (shortRange) {
+        const start = expandCalendarYear(Number(shortRange[1]));
+        const end = expandCalendarYear(Number(shortRange[2]));
+        if (end === start + 1) return `${start}/${end}`;
+    }
+    const monthFirst = /^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(text);
+    if (monthFirst) {
+        const month = monthNumber(monthFirst[1]);
+        const iso = month ? `${monthFirst[3]}-${pad(month)}-${pad(Number(monthFirst[2]))}` : "";
+        if (iso && normalizedDateDay(iso)) return iso;
+    }
+    const dayFirst = /^(\d{1,2})\s+([A-Za-z]+)\.?,?\s+(\d{4})$/.exec(text);
+    if (dayFirst) {
+        const month = monthNumber(dayFirst[2]);
+        const iso = month ? `${dayFirst[3]}-${pad(month)}-${pad(Number(dayFirst[1]))}` : "";
+        if (iso && normalizedDateDay(iso)) return iso;
+    }
+    const monthYear = /^([A-Za-z]+)\.?\s+(\d{4})$/.exec(text);
+    if (monthYear) {
+        const month = monthNumber(monthYear[1]);
+        if (month) return `${monthYear[2]}-${pad(month)}`;
+    }
+    return null;
 }
 
 function yearForms(year: number, sessionYears: string[]): string[] {
@@ -88,15 +143,33 @@ function yearForms(year: number, sessionYears: string[]): string[] {
     return sessionYears.includes(full) ? [full, full.slice(2)] : [full];
 }
 
+function validDay(year: number, month: number, day: number): boolean {
+    return Boolean(normalizedDateDay(`${year}-${pad(month)}-${pad(day)}`));
+}
+
+function supportsNumericDay(text: string, year: number, month: number, day: number, sessionYears: string[]): boolean {
+    if (!validDay(year, month, day)) return false;
+    // 4/5/2015 can be April 5 or May 4. 9.26.19 cannot, because 26 is not a month.
+    if (day !== month && day <= 12 && validDay(year, day, month)) return false;
+    return yearForms(year, sessionYears).some((form) => new RegExp(`\\b${month}[./-]${day}[./-]${form}\\b`).test(text));
+}
+
 function supportsDay(text: string, year: number, month: number, day: number, sessionYears: string[]): boolean {
+    text = comparableDateText(text);
     const monthName = monthExpression(month);
     const dayText = String(day);
-    return yearForms(year, sessionYears).some((form) => [
+    return supportsNumericDay(text, year, month, day, sessionYears) || yearForms(year, sessionYears).some((form) => [
         `\\b(?:${monthName})\\s+${dayText}(?:st|nd|rd|th)?\\b,?\\s*${form}\\b`,
         `\\b${dayText}(?:st|nd|rd|th)?\\s+(?:day\\s+of\\s+)?(?:${monthName})\\b,?\\s*(?:in\\s+the\\s+year\\s+)?${form}\\b`,
-        `\\b${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}\\b`,
+        `\\b${year}-${pad(month)}-${pad(day)}\\b`,
         `\\b${year}-${month}-${day}\\b`,
     ].some((pattern) => new RegExp(pattern, "i").test(text)));
+}
+
+function supportsRange(text: string, start: number, end: number): boolean {
+    const startShort = String(start).slice(2);
+    const endShort = String(end).slice(2);
+    return new RegExp(`\\b(?:2k)?${startShort}\\b\\s*[\\/\u2013\u2014-]\\s*(?:2k)?${endShort}\\b|\\b${start}\\s*[\\/\u2013\u2014-]\\s*${end}\\b`, "i").test(comparableDateText(text));
 }
 
 function supportsMonth(text: string, year: number, month: number, sessionYears: string[]): boolean {
@@ -145,30 +218,37 @@ export function validateDocumentDate(value: unknown, document: DateSource): Date
         return { value: null, basis: "uncertain", evidence: [], reason };
     }
     if (typeof row.value !== "string" || !row.value.trim()) throw new Error("Missing date value");
-    const chosen = row.value.trim();
+    const chosen = canonicalDateValue(row.value);
+    if (!chosen) throw new Error(`Invalid calendar date or precision: ${row.value.trim()}`);
     if (row.basis === "session") {
         const expected = sessionYearsFor(document.sessionNumber);
         if (!expected || chosen !== expected) throw new Error("Date does not match the known session year range");
-        const source = [document.title, document.content, document.folderPath].join("\n");
-        if (archiveDateCandidates(document.title, document.content).length || conflictingYearRange(source, expected)) {
+        // Nested archive folders record where a file was stored, not when it was written.
+        const stated = [document.title, document.content].join("\n");
+        if (archiveDateCandidates(document.title, document.content).length || conflictingYearRange(stated, expected)) {
             throw new Error("Session year range refused because the source states a date");
         }
         return { value: expected, basis: "session", evidence: [], reason };
     }
     const evidence = row.evidence.map((quote) => quote.trim());
-    const sources = [document.title, document.content, document.folderPath];
-    if (!evidence.length || evidence.some((quote) => !sources.some((source) => source.includes(quote)))) {
+    const sources = [document.title, document.content, document.folderPath].map(looseDateText);
+    if (!evidence.length || evidence.some((quote) => !sources.some((source) => source.includes(looseDateText(quote))))) {
         throw new Error("Date lacks exact source evidence");
     }
-    const text = evidence.join("\n");
+    const text = looseDateText(evidence.join("\n"));
     const sessionYears = sessionYearsFor(document.sessionNumber)?.split("/") ?? [];
+    const range = /^(\d{4})\/(\d{4})$/.exec(chosen);
+    if (range) {
+        if (!supportsRange(text, Number(range[1]), Number(range[2]))) throw new Error("Year range is not supported by the evidence");
+        return { value: chosen, basis: "source", evidence, reason };
+    }
     const day = normalizedDateDay(chosen);
     const month = normalizedDateMonth(chosen);
     const year = Number(chosen.slice(0, 4));
-    if (!day && !month && !/^\d{4}$/.test(chosen)) throw new Error("Invalid calendar date or precision");
+    if (!day && !month && !/^\d{4}$/.test(chosen)) throw new Error(`Invalid calendar date or precision: ${row.value.trim()}`);
     if (year < 1800 || year > 2100) throw new Error("Date year is outside the archive range");
     if (day && !supportsDay(text, day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), sessionYears)) {
-        throw new Error("Exact date is not supported by the evidence");
+        throw new Error(`Exact date is not supported by the evidence (${chosen})`);
     }
     if (!day && month && !supportsMonth(text, month.year, month.month, sessionYears)) {
         throw new Error("Month is not supported by the evidence");

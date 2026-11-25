@@ -40,7 +40,7 @@ export function normalizedDateMachine(value?: string | null): string | null {
 
 export function normalizedDateNote(value?: string | null): string | null {
     if (!value) return null;
-    if (/^\d{4}\/\d{4}$/.test(value)) return "No date is stated in the document. This is the academic year of its known session.";
+    if (/^\d{4}\/\d{4}$/.test(value)) return "Academic year; the exact day is unknown.";
     if (/^\d{4}$/.test(value)) return "Source establishes the year only; the exact day is unknown.";
     if (normalizedDateMonth(value)) return "Source establishes the month; the exact day is unknown.";
     return null;

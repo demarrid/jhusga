@@ -56,6 +56,27 @@ async function main() {
     assert.throws(() => validateDocumentDate(proposal("2015-05-04", "source", ["Invented: May 4, 2015"]), constitution), /exact source evidence/);
 
     assert.equal(validateDocumentDate(proposal("2024/2025", "session", []), source({ content: "A filed copy with no date.", title: "Copy" })).value, "2024/2025");
+    assert.equal(validateDocumentDate(proposal("2017/2018", "session", []), source({
+        content: "A filed copy with no date.",
+        title: "Expectations and Civic Discourse",
+        folderPath: "Historical Documents/2019-2020/Archives/2018-2019/Archives/JHU SGA (2017-2018)/Workshops",
+        sessionNumber: 105,
+    })).value, "2017/2018", "archive folders are not the document date");
+    const handbook = source({
+        title: "The SGA Handbook, V1",
+        content: "Best Regards, Dean Chien SGA Executive President, 2K19-2K20",
+        sessionNumber: 107,
+        folderPath: "Historical Documents/2019-2020/Executive Board/President/Retreats",
+    });
+    assert.equal(validateDocumentDate(proposal("2019-2020", "source", ["2K19-2K20"]), handbook).value, "2019/2020");
+    assert.equal(validateDocumentDate(proposal("2K19-2K20", "source", ["SGA Executive President, 2K19-2K20"]), handbook).value, "2019/2020");
+    const clause = "AND CONSIDERED THIS DAY OF \u200b19TH\u200b     \u200bSEPTEMBER\u200b IN THE YEAR \u200b2017 THESPONSORED";
+    const resolution = source({ title: "Ban the Box Resolution", content: clause, sessionNumber: 105, folderPath: "Passed Legislation" });
+    assert.equal(validateDocumentDate(proposal("2017-09-19", "source", [clause]), resolution).value, "2017-09-19");
+    assert.equal(validateDocumentDate(proposal("September 19, 2017", "source", ["19TH SEPTEMBER IN THE YEAR 2017"]), resolution).value, "2017-09-19");
+    assert.equal(validateDocumentDate(proposal("2019-09-26", "source", ["9.26.19 PILOT Meeting"]), source({
+        title: "9.26.19 PILOT Meeting", content: "Agenda", sessionNumber: 107,
+    })).value, "2019-09-26");
     assert.throws(() => validateDocumentDate(proposal("2023/2024", "session", []), source({ content: "A filed copy with no date.", title: "Copy" })), /known session/);
     assert.throws(() => validateDocumentDate(proposal("2024/2025", "session", []), constitution), /source states a date/);
     assert.throws(() => validateDocumentDate(proposal("2024/2025", "session", []), source({ content: "Covering 2016-2017.", title: "Span" })), /source states a date/);
