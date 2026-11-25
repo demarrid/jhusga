@@ -1,4 +1,5 @@
 import archivePrecision from "@/config/archive-date-precision.json";
+import { normalizedDateDay, normalizedDateLabel, normalizedDateMachine, normalizedDateNote } from "@/lib/document-date-value";
 /**
  * Dates as the site shows them.
  *
@@ -131,3 +132,42 @@ export function formatDateTime(date: Date | null | undefined): string | null {
 export const ARCHIVE_DATE_PRECISION: Record<string, {label:string;precision:string;date:string;sourceKey:string}> = archivePrecision;
 export const DOCUMENT_DATE_LABELS: Record<string,string> = Object.fromEntries(Object.entries(ARCHIVE_DATE_PRECISION).map(([id,value])=>[id,value.label]));
 export function archivePartialDateISO(id:string):string|undefined {const value=ARCHIVE_DATE_PRECISION[id];return value?.date.slice(0,value.precision==='year'?4:7);}
+
+export type ShownDate = { text: string; dateTime: string; note: string | null };
+
+/**
+ * The date a reader should see.
+ *
+ * An applied AI value keeps its precision: a year stays a year, and a session
+ * filing stays that academic-year range. Reviewed archive labels do the same.
+ * Only an exact day is formatted as a calendar date.
+ */
+export function documentDateText(
+    document: { id: string; datedAt?: Date | null; aiDateValue?: string | null },
+    style: "long" | "short" = "long",
+): ShownDate | null {
+    const value = document.aiDateValue?.trim() ?? "";
+    const day = value ? normalizedDateDay(value) : null;
+    const partial = value && !day ? normalizedDateLabel(value) : null;
+    if (day || partial) {
+        return {
+            text: day ? (style === "short" ? formatDateShort(day) : formatDate(day))! : partial!,
+            dateTime: normalizedDateMachine(value) ?? day?.toISOString() ?? value,
+            note: normalizedDateNote(value),
+        };
+    }
+    const archived = DOCUMENT_DATE_LABELS[document.id];
+    if (archived) {
+        return {
+            text: archived,
+            dateTime: archivePartialDateISO(document.id) ?? document.datedAt?.toISOString() ?? archived,
+            note: "Source gives only a partial date; exact day unknown",
+        };
+    }
+    if (!document.datedAt) return null;
+    return {
+        text: (style === "short" ? formatDateShort(document.datedAt) : formatDate(document.datedAt))!,
+        dateTime: document.datedAt.toISOString(),
+        note: null,
+    };
+}

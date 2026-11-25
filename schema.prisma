@@ -36,6 +36,8 @@ model Document {
     // rewritten into one house style so a list of them reads consistently.
     // Derived in lib/titles.ts; falls back to `title` when empty.
     displayTitle String @default("")
+    aiNormalizedTitle String @default("")
+    aiTitleSourceHash String @default("")
 
     description String @default("")
 
@@ -107,6 +109,11 @@ model Document {
     // Null when the document says nothing about when it happened, which is
     // when Drive's timestamps stand in; see listedDate in lib/dates.ts.
     datedAt DateTime?
+    // Applied by `npm run dates:ai`. A year, month, exact day, or session
+    // year range. Partial values use datedAt only as a sort anchor; readers
+    // see aiDateValue. Sync clears both fields when the source changes.
+    aiDateValue String @default("")
+    aiDateSourceHash String @default("")
 
     // Who Drive says owns and last touched the file. This is provenance, not
     // authorship: SGA files are frequently owned by whichever personal account

@@ -431,7 +431,10 @@ function Match({ match }: { match: MatchedDocument }) {
 
     return (
         <li>
-            <DocumentSearchLink href={`/documents/${match.id}`}>{match.title}</DocumentSearchLink>
+            <DocumentSearchLink href={`/documents/${match.id}`} target="_blank" rel="noopener noreferrer">
+                {match.title}
+                <span className={styles.visuallyHidden}> (opens in a new tab)</span>
+            </DocumentSearchLink>
             <span className={styles.matchMetadata}>
                 {" — "}
                 {[

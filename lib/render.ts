@@ -177,16 +177,19 @@ export function renderDocument(
     const resolved = resolveSpans(content, spans);
     const anchored = new Set<string>();
     const slides = presentationSections(content);
+    const pdfBylaws = /^BYLAWS OF THE SENATE$/m.test(content) && /^ARTICLE \d+, SECTION \d+\./m.test(content) && /^1\n/.test(content);
     // This report's PDF export has column-width wraps and running page titles.
     // Recognize its structure narrowly; minutes and tables keep authored breaks.
     const report = /^TEN FOR ON E\s*:/m.test(content) && /^Introduction \| 0[12]$/m.test(content);
     const oieReport = /^Office of Institutional Equity \| \d{4} Annual Report$/m.test(content);
     const inline: Inline = (ranges, mode) => {
         const runs = inlineRuns(content, ranges, resolved, anchored, mode, options.navigationTargets, options.images?.filter(image => image.inline));
-        return slides.length || report ? runs.map(run => ({ ...run, text: run.text.replace(/\n/g, " ") })) : runs;
+        return slides.length || report || pdfBylaws ? runs.map(run => ({ ...run, text: run.text.replace(/\n/g, " ") })) : runs;
     };
 
-    const lines = toLines(content);
+    // Standalone page numbers interrupt clauses in this historical PDF.
+    // Filter source lines without rewriting the stored text or its offsets.
+    const lines = toLines(content).filter(line => !pdfBylaws || !/^\d+$/.test(line.text.trim()));
     // Same keys the outline links to. Stamping them here, rather than wrapping
     // the stored text, leaves citation offsets where they were.
     const { anchors, minutesEntries } = indexSections(content);

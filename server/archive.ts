@@ -59,6 +59,7 @@ export type LineageMember = {
     kind: DocumentKind;
     sessionNumber: number | null;
     datedAt: Date | null;
+    aiDateValue?: string | null;
     driveModifiedTime: Date | null;
 };
 
@@ -75,6 +76,7 @@ function toMember(document: {
     kind: string;
     sessionNumber: number | null;
     datedAt?: Date | null;
+    aiDateValue?: string | null;
     driveCreatedTime?: Date | null;
     driveModifiedTime: Date | null;
 }): LineageMember {
@@ -83,6 +85,7 @@ function toMember(document: {
         title: document.displayTitle || document.title,
         kind: isDocumentKind(document.kind) ? document.kind : "unknown",
         sessionNumber: document.sessionNumber,
+        aiDateValue: document.aiDateValue,
         datedAt: listedDate({
             datedAt: document.datedAt ?? null,
             driveCreatedTime: document.driveCreatedTime ?? null,
@@ -99,6 +102,7 @@ const lineageSelect = {
     kind: true,
     sessionNumber: true,
     datedAt: true,
+    aiDateValue: true,
     driveCreatedTime: true,
     driveModifiedTime: true,
 } as const;
@@ -301,6 +305,7 @@ export type AmendmentLink = {
     kind: DocumentKind;
     sessionNumber: number | null;
     datedAt: Date | null;
+    aiDateValue?: string | null;
 };
 
 /**
@@ -359,6 +364,7 @@ export async function getAmendmentsBetween(
             kind: true,
             sessionNumber: true,
             datedAt: true,
+            aiDateValue: true,
             driveCreatedTime: true,
             driveModifiedTime: true,
         },
@@ -371,6 +377,7 @@ export async function getAmendmentsBetween(
             kind: isDocumentKind(bill.kind) ? bill.kind : "unknown",
             sessionNumber: bill.sessionNumber,
             datedAt: listedDate(bill),
+            aiDateValue: bill.aiDateValue,
         }))
         .filter((bill) => {
             const time = bill.datedAt?.getTime();

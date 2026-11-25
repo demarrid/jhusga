@@ -1,3 +1,4 @@
+import DocumentSearchHighlight from "@/app/(components)/DocumentSearchHighlight";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -19,7 +20,7 @@ import { documentReturnPath } from "@/lib/document-navigation";
 import { largeRemoval } from "@/lib/integrity";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
-import { DOCUMENT_DATE_LABELS, formatDate } from "@/lib/dates";
+import { documentDateText, formatDate } from "@/lib/dates";
 import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
 import { documentSections } from "@/lib/outline";
 import { meetingOutline } from "@/lib/meeting-outline";
@@ -70,14 +71,14 @@ function describeDocument(document: DocumentDetail): string {
 
     if (document.description.trim()) return document.description;
 
-    const when = document.datedAt ?? document.driveCreatedTime;
+    const stated = documentDateText(document);
     const parts = [
         isSecondaryKind(document.kind)
             ? `${documentKindLabel(document.kind, document.meetingRole)} about the SGA at Johns Hopkins`
             : `${documentKindLabel(document.kind, document.meetingRole)} of the SGA at Johns Hopkins`,
         document.sessionNumber !== null &&
             `${sessionOrdinal(document.sessionNumber)} session`,
-        when && formatDate(when),
+        stated?.text ?? (document.driveCreatedTime && formatDate(document.driveCreatedTime)),
     ].filter(Boolean);
 
     return `${parts.join(" · ")}.`;
@@ -139,7 +140,7 @@ export default async function DocumentPage({
                     document.sessionNumber !== null &&
                     `${sessionOrdinal(document.sessionNumber)} session`,
                     document.datedAt
-                        ? `dated ${DOCUMENT_DATE_LABELS[document.id] ?? formatDate(document.datedAt)}`
+                        ? `dated ${documentDateText(document)?.text ?? formatDate(document.datedAt)}`
                         : document.driveCreatedTime &&
                         `created ${formatDate(document.driveCreatedTime)}`,
                     document.driveModifiedTime &&
@@ -293,7 +294,7 @@ export default async function DocumentPage({
                         </> : <p>This is the earliest saved version; there is no previous version to compare.</p>}
                     </section>
                     </DocumentVersionSelector>}
-                    <DocumentViewer key={`viewer-${view.selected.id}`} blocks={document.blocks} />
+                    <DocumentSearchHighlight key={`search-${view.selected.id}`}><DocumentViewer key={`viewer-${view.selected.id}`} blocks={document.blocks} /></DocumentSearchHighlight>
                 </article>
                 )}
 

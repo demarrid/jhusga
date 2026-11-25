@@ -85,7 +85,7 @@ export default function DocumentSearch({
                         type="text"
                         name="q"
                         defaultValue={query}
-                        placeholder="Title, keyword, or person"
+                        placeholder='Keywords, "exact phrase", OR, +required, -excluded'
                         autoComplete="off"
                         autoCorrect="off"
                         autoCapitalize="off"

@@ -11,7 +11,7 @@ import {
 } from "@/server/archive";
 import DocumentDiff from "@/app/(components)/DocumentDiff";
 import { sessionOrdinal } from "@/config/session";
-import { formatMonthYear } from "@/lib/dates";
+import { documentDateText } from "@/lib/dates";
 import { documentKindLabel } from "@/lib/kinds";
 import { pageMetadata } from "@/lib/seo";
 import { documentEdition } from "@/lib/titles";
@@ -179,7 +179,7 @@ export default async function ComparePage({
                                 <span>
                                     {` — ${[
                                         documentKindLabel(amendment.kind),
-                                        formatMonthYear(amendment.datedAt),
+                                        documentDateText(amendment)?.text,
                                         amendment.sessionNumber !== null &&
                                             `${sessionOrdinal(amendment.sessionNumber)} session`,
                                     ]
@@ -196,9 +196,9 @@ export default async function ComparePage({
     );
 }
 
-function versionLabel(member: Pick<LineageMember, "title" | "datedAt" | "sessionNumber">): string {
+function versionLabel(member: Pick<LineageMember, "id" | "title" | "datedAt" | "sessionNumber" | "aiDateValue">): string {
     const edition = documentEdition(member.title);
-    const when = edition ?? formatMonthYear(member.datedAt);
+    const when = edition ?? documentDateText(member)?.text ?? null;
     const session =
         member.sessionNumber !== null ? `${sessionOrdinal(member.sessionNumber)} session` : null;
 

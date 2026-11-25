@@ -1,0 +1,2 @@
+ALTER TABLE "Document" ADD COLUMN "aiDateValue" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "aiDateSourceHash" TEXT NOT NULL DEFAULT '';

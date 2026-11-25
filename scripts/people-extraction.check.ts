@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { extractDocumentPeople, parseExtractedPeople, peopleChunks, peopleFingerprint } from '../lib/people-extraction';
 import { documentPeople } from '../lib/people-extraction-cache';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { logPeopleRejections, type PeopleRejection } from '../lib/people-rejections';
 import { PGlite } from '@electric-sql/pglite';
 
 async function main() {
@@ -10,10 +13,38 @@ async function main() {
     const parsed = parseExtractedPeople({ people: [person, { name: 'Rain', role: 'interlocutor', evidence: 'Rain: I can help.' }] }, document.content);
     assert.equal(parsed[0].onlyIfKnown, false);
     assert.equal(parsed[1].onlyIfKnown, true, 'first names must resolve conservatively');
-    for (const value of [null, {}, { people: [null] }, { people: [{ ...person, name: 'Invented Name' }] },
-        { people: [{ ...person, role: 'author' }] }, { people: [{ ...person, evidence: 'Invented quote' }] }]) {
+    for (const value of [null, {}, { people: null }]) {
         assert.throws(() => parseExtractedPeople(value, document.content));
     }
+    const rejected: PeopleRejection[] = [];
+    const mixed = parseExtractedPeople({ people: [null, person, { ...person, name: 'Invented Name' },
+        { ...person, role: 'author' }, { ...person, evidence: 'Invented quote' }, { ...person, name: '' },
+        { ...person, evidence: '' }] }, document.content, row => rejected.push(row));
+    assert.deepEqual(mixed, [parsed[0]], 'bad entries do not discard the valid person');
+    assert.equal(rejected.length, 6);
+    assert.deepEqual(rejected.map(row => row.reason), ['Candidate is not an object', 'Name is absent from the supporting quote',
+        'Unsupported or missing role', 'Evidence is not an exact source quote', 'Missing or empty name', 'Missing or empty evidence']);
+    const logs: PeopleRejection[] = [];
+    const partial = await extractDocumentPeople({ ...document, id: 'fixture' }, async () => ({ model: 'test',
+        value: { people: [person, { ...person, evidence: 'Made up' }] } }), async (context, entries) => {
+        assert.equal(context.documentId, 'fixture');
+        assert.equal(context.chunk, 1);
+        logs.push(...entries);
+    });
+    assert.deepEqual(partial.people, [parsed[0]]);
+    assert.equal(logs.length, 1);
+    const directory = await mkdtemp(path.join(tmpdir(), 'people-rejections-'));
+    try {
+        const destination = path.join(directory, 'rejections.jsonl');
+        const context = { documentId: 'fixture', title: document.title, chunk: 1, model: 'test' };
+        await logPeopleRejections(context, rejected, destination);
+        await logPeopleRejections(context, logs, destination);
+        const rows = (await readFile(destination, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+        assert.equal(rows.length, 7, 'diagnostics append instead of overwriting');
+        assert.equal(rows[0].documentId, 'fixture');
+        assert.equal(rows[6].candidate.evidence, 'Made up');
+        await logPeopleRejections(context, logs, directory); // unwritable destination must not fail extraction
+    } finally { await rm(directory, { recursive: true, force: true }); }
     assert.deepEqual(parseExtractedPeople({ people: [] }, document.content), []);
     const long = document.content + 'x'.repeat(45000) + '\nZainab Ali reviewed this.';
     const chunks = peopleChunks(long);

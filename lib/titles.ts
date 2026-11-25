@@ -1,3 +1,4 @@
+import { acceptedMinuteTitle } from "./minute-title-ai";
 /**
  * The name the site shows for a document.
  *
@@ -212,6 +213,8 @@ const ROLE_SUFFIX: Record<MeetingRole | 'combined', string> = {
 };
 
 export type TitleInput = {
+    aiNormalizedTitle?: string;
+    aiTitleSourceHash?: string;
     meetingRole?: string;
     datedAt?: Date | null;
     driveFileId?: string;
@@ -670,7 +673,7 @@ export function standardTitles(documents: TitleInput[]): Map<string, string> {
     const usage = new Map<string, string[]>();
 
     for (const document of documents) {
-        const canonical = canonicalTitle(document, dates);
+        const canonical = acceptedMinuteTitle(document) ?? canonicalTitle(document, dates);
         if (!canonical) continue;
         usage.set(canonical, [...(usage.get(canonical) ?? []), document.id]);
     }

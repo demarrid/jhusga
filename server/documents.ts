@@ -1,3 +1,4 @@
+import { documentQueryFilter } from "@/lib/document-query-filter";
 import { oldestAgenda } from "@/lib/meeting-agenda";
 import { amendmentReviewMessage } from "@/lib/amendment-clearance";
 import type { DocumentSection } from "@/lib/outline";
@@ -71,6 +72,11 @@ export type DocumentListing = {
     createdAt: Date | null;
     /** The date the document itself states, in its body or in its title. */
     datedAt: Date | null;
+    /**
+     * Applied AI date, when one has been reviewed. A year, month, exact day,
+     * or session year range. Empty when the parser date is what readers see.
+     */
+    aiDateValue?: string | null;
     /** People this document names, for the listing. */
     contributors: { id: string; name: string; role: string }[];
 };
@@ -137,27 +143,7 @@ function documentWhere(filters: DocumentFilters) {
         ...contributorWhere,
         // Postgres LIKE is case-sensitive, so the mode is required here --
         // without it, searching "constitution" would miss "Constitution".
-        ...(query
-            ? {
-                OR: [
-                    { title: { contains: query, mode: "insensitive" } },
-                    { displayTitle: { contains: query, mode: "insensitive" } },
-                    { description: { contains: query, mode: "insensitive" } },
-                    { content: { contains: query, mode: "insensitive" } },
-                    // A name typed into the search box should find the
-                    // documents that name that person.
-                    {
-                        contributors: {
-                            some: {
-                                hopkinsAffiliate: {
-                                    name: { contains: query, mode: "insensitive" },
-                                },
-                            },
-                        },
-                    },
-                ],
-            }
-            : {}),
+        ...documentQueryFilter(query ?? ""),
     } satisfies Prisma.DocumentWhereInput;
 }
 
@@ -176,6 +162,7 @@ const listingSelect = {
     driveModifiedTime: true,
     createdAt: true,
     datedAt: true,
+    aiDateValue: true,
     summary: { select: { content: true, status: true } },
     contributors: {
         select: {
@@ -206,6 +193,7 @@ function toListing(document: ListingRow): DocumentListing {
             name: entry.hopkinsAffiliate.name,
             role: entry.role,
         })),
+        aiDateValue: document.aiDateValue,
     };
 }
 
@@ -592,6 +580,8 @@ export type DocumentDetail = {
     driveModifiedTime: Date | null;
     /** The date the document itself states, in its body or in its title. */
     datedAt: Date | null;
+    /** Applied AI date. Partial values explain the precision of `datedAt`. */
+    aiDateValue?: string | null;
     lastSyncedAt: Date | null;
     revisionCount: number;
     /** Set when this document is one half of an agenda/minutes pair. */
@@ -676,7 +666,7 @@ function normaliseStatus(status: string): SectionStatus {
 
 const cachedDocument = unstable_cache(
     loadDocument,
-    ["document-detail-v3"],
+    ["document-detail-v4"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
@@ -729,6 +719,7 @@ export async function loadDocument(
             driveCreatedTime: true,
             driveModifiedTime: true,
             datedAt: true,
+            aiDateValue: true,
             lastSyncedAt: true,
             meetingRole: true,
             meetingKey: true,
@@ -971,6 +962,7 @@ export async function loadDocument(
         driveCreatedTime: document.driveCreatedTime,
         driveModifiedTime: document.driveModifiedTime,
         datedAt: document.datedAt,
+        aiDateValue: document.aiDateValue,
         lastSyncedAt: document.lastSyncedAt,
         revisionCount: document._count.revisions,
         // A spreadsheet is rendered as a table rather than as the raw export.

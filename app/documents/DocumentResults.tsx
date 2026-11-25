@@ -11,7 +11,7 @@ import Select from "@/app/(components)/Select";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel } from "@/lib/contributors";
-import { archivePartialDateISO, DOCUMENT_DATE_LABELS, formatDateShort, formatDateTime } from "@/lib/dates";
+import { documentDateText, formatDateShort, formatDateTime } from "@/lib/dates";
 import {
     DOCUMENT_PAGE_SIZE,
     DOCUMENT_SORT_LABELS,
@@ -265,9 +265,12 @@ function DocumentCard({
                 <h3>
                     <DocumentSearchLink
                         href={`/documents/${document.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         title={renamed ? `Filed in Drive as “${document.driveTitle}”` : undefined}
                     >
                         {document.title}
+                        <span className={styles.visuallyHidden}> (opens in a new tab)</span>
                     </DocumentSearchLink>
                 </h3>
 
@@ -338,20 +341,25 @@ function DocumentDates({ document, sort }: { document: DocumentListing; sort: Do
     candidates.push(["Updated", document.driveModifiedTime]);
     if (sort.replace(/-asc$/, "") === "added") candidates.unshift(["Added", document.createdAt]);
 
-    const shown: { label: string; date: Date }[] = [];
+    const dated = documentDateText(document, "short");
+    const shown: { label: string; date: Date; text: string; dateTime: string; note: string | null }[] = [];
     for (const [label, date] of candidates) {
-        if (!date || shown.some((entry) => formatDateShort(entry.date) === formatDateShort(date))) continue;
-        shown.push({ label, date });
+        if (!date) continue;
+        const text = label === "Dated" && dated ? dated.text : formatDateShort(date)!;
+        const dateTime = label === "Dated" && dated ? dated.dateTime : date.toISOString();
+        const note = label === "Dated" && dated ? dated.note : null;
+        if (shown.some((entry) => entry.text === text)) continue;
+        shown.push({ label, date, text, dateTime, note });
     }
     if (shown.length === 0) return null;
 
     return (
         <p className={styles.documentDates}>
-            {shown.map(({ label, date }, index) => (
+            {shown.map(({ label, date, text, dateTime, note }, index) => (
                 <span key={label}>
                     {index > 0 && " · "}
-                    <time dateTime={label === "Dated" && DOCUMENT_DATE_LABELS[document.id] ? archivePartialDateISO(document.id) : date.toISOString()} title={label === "Dated" && DOCUMENT_DATE_LABELS[document.id] ? "Source gives only a partial date; exact day unknown" : formatDateTime(date) ?? undefined}>
-                        {`${label} ${label === "Dated" && DOCUMENT_DATE_LABELS[document.id] ? DOCUMENT_DATE_LABELS[document.id] : formatDateShort(date)}`}
+                    <time dateTime={dateTime} title={note ?? formatDateTime(date) ?? undefined}>
+                        {`${label} ${text}`}
                     </time>
                 </span>
             ))}

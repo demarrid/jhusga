@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { renderDocument, runsText } from '../lib/render';
+const text = '1\nBYLAWS OF THE SENATE\nARTICLE 3, SECTION 1. STRUCTURE\n3.1.1 The Senate shall retain\n2\noversight of the commission.\n3.1.2 The next clause remains separate.';
+const quote = 'oversight of the commission.';
+const blocks = renderDocument(text, [{id:'quote',startOffset:text.indexOf(quote),endOffset:text.indexOf(quote)+quote.length}]);
+const runs = blocks.flatMap(b=>'runs' in b?b.runs:[]);
+assert(runsText(runs).includes('The Senate shall retain oversight of the commission.'));
+assert.equal(runs.filter(r=>r.annotationId==='quote'&&r.anchor).length,1);
+assert(blocks.some(b=>b.kind==='paragraph'&&b.clause&&runsText(b.runs).startsWith('3.1.2')));
+assert(!runsText(runs).includes('\n'));
+console.log('Historical PDF bylaws reflow and citations passed');

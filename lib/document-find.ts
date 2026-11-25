@@ -1,3 +1,4 @@
+import { documentQueryHighlights } from "./document-query";
 /**
  * Ranking document-finder results by how closely they match the query.
  *
@@ -12,10 +13,11 @@ export function documentFindRank(
     fields: { title: string; description?: string; summary?: string },
     query: string,
 ): number {
-    const phrase = query.trim().toLowerCase();
+    const terms = documentQueryHighlights(query).map(term => term.toLowerCase());
+    const phrase = terms.join(" ");
     if (!phrase) return 0;
 
-    const terms = phrase.split(/\s+/).filter(Boolean);
+
     const title = fields.title.toLowerCase();
     const blurb = `${fields.description ?? ""}\n${fields.summary ?? ""}`.toLowerCase();
 

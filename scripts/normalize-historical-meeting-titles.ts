@@ -2,10 +2,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { prisma } from '../lib/prisma';
 import { canonicalTitle, standardTitles } from '../lib/titles';
+import { acceptedMinuteTitle } from '../lib/minute-title-ai';
 import { SESSION_NUMBER } from '../config/sga';
 async function main() {
     const meetings = await prisma.document.findMany({ where: { kind: { startsWith: 'minutes.' } }, select: {
-        id: true, driveFileId: true, title: true, displayTitle: true, kind: true, folderPath: true,
+        aiNormalizedTitle: true, aiTitleSourceHash: true, id: true, driveFileId: true, title: true, displayTitle: true, kind: true, folderPath: true,
         sessionNumber: true, datedAt: true, driveCreatedTime: true, content: true, contentHash: true,
         discoveredVia: true, meetingRole: true, updatedAt: true,
     } });
@@ -14,11 +15,17 @@ async function main() {
     const changes: { document: typeof meetings[number]; proposed: string }[] = [];
     const deferred = [];
     for (const document of meetings) {
-        if (document.discoveredVia !== 'archive' && (document.sessionNumber === null || document.sessionNumber >= SESSION_NUMBER)) continue;
+        if (!process.argv.includes('--all-minutes') && document.discoveredVia !== 'archive' && (document.sessionNumber === null || document.sessionNumber >= SESSION_NUMBER)) continue;
+        if (acceptedMinuteTitle(document)) continue;
         const canonical = canonicalTitle(document);
         const proposed = titles.get(document.id);
         if (!canonical || !proposed || proposed !== canonical || otherTitles.has(canonical)) {
             deferred.push({ id: document.id, title: document.title, reason: !canonical ? 'No unambiguous meeting title' : 'Title collision; preserve original distinction' });
+            continue;
+        }
+        if ((/\bagenda\b/i.test(document.title) && !/\bminutes\b/i.test(document.title) && /— Minutes\b/.test(proposed)) ||
+            !/meeting|minut|agenda|\bGBM\b|council|committee|\bexec\b|senate|caucus/i.test(document.title)) {
+            deferred.push({ id: document.id, title: document.title, reason: 'Preserve document purpose; source title needs review' });
             continue;
         }
         if (proposed !== document.displayTitle) changes.push({ document, proposed });
@@ -27,7 +34,7 @@ async function main() {
     await writeFile('.archive-local/historical-meeting-title-preview.json', JSON.stringify({ changes: changes.map(({ document, proposed }) => ({ id: document.id, original: document.title, before: document.displayTitle, after: proposed })), deferred }, null, 2));
     console.log({ changes: changes.length, deferred: deferred.length });
     if (!process.argv.includes('--apply')) return;
-    await writeFile('.archive-local/historical-meeting-title-backup.json', JSON.stringify(changes, null, 2));
+    await writeFile(`.archive-local/historical-meeting-title-backup-${Date.now()}.json`, JSON.stringify(changes, null, 2));
     await prisma.$transaction(async tx => {
         for (const { document, proposed } of changes) {
             const result = await tx.document.updateMany({ where: { id: document.id, updatedAt: document.updatedAt }, data: { displayTitle: proposed } });

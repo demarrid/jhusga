@@ -3,7 +3,6 @@ import { saveDocumentMedia } from "@/lib/document-media";
 import { recordDocumentVersion } from "@/lib/document-version-history";
 import { type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
-import { hasUnverifiedMeetingDate } from "@/config/document-corrections";
 import { createHash } from "node:crypto";
 
 import { SESSION_NUMBER } from "@/config/sga";
@@ -21,7 +20,8 @@ import { findReviewedMentions, loadReviewedRoster, REVIEWED_SOURCE } from "@/lib
 import { standardTitles } from "@/lib/titles";
 import { isAttendanceSheetName } from "@/lib/attendance";
 import { isDirectorySheetName } from "@/lib/directory";
-import { documentDate, linkedSession } from "@/lib/identity";
+import { linkedSession } from "@/lib/identity";
+import { resolveRecordedDate } from "@/lib/document-date-ai";
 import {
     GOOGLE_DOC_MIME,
     GOOGLE_SHEET_MIME,
@@ -272,6 +272,8 @@ export async function recordTitles(): Promise<number> {
             driveFileId: true,
             title: true,
             displayTitle: true,
+            aiNormalizedTitle: true,
+            aiTitleSourceHash: true,
             folderPath: true,
             sessionNumber: true,
             meetingRole: true,
@@ -331,6 +333,8 @@ export async function recordDates(): Promise<number> {
             kind: true,
             folderPath: true,
             sessionNumber: true,
+            aiDateValue: true,
+            aiDateSourceHash: true,
         },
     });
 
@@ -339,17 +343,26 @@ export async function recordDates(): Promise<number> {
 
     for (const document of documents) {
         const final = LEGISLATION_EDITIONS.find(edition => edition.finalFileId === document.driveFileId && findQuote(document.content, edition.passageQuote));
-        const datedAt = hasUnverifiedMeetingDate(document.driveFileId) ? null : final ? new Date(`${final.passedOn}T12:00:00Z`) : reconciled.get(document.id)?.date ?? documentDate(document) ?? (document.kind.startsWith("minutes.") ? document.datedAt : null);
-        if (datedAt !== null) dated += 1;
+        const reconciledDate = reconciled.get(document.id);
+        const next = resolveRecordedDate({
+            ...document,
+            passageOn: final?.passedOn ?? null,
+            reconciledAt: reconciledDate?.date ?? null,
+        });
+        if (next.datedAt !== null) dated += 1;
 
-        if (datedAt?.getTime() === document.datedAt?.getTime()) continue;
+        const sameTime = (next.datedAt?.getTime() ?? null) === (document.datedAt?.getTime() ?? null);
+        if (sameTime && !next.clearAi) continue;
 
         await prisma.document.update({
             where: { id: document.id },
-            data: { datedAt },
+            data: {
+                datedAt: next.datedAt,
+                ...(next.clearAi ? { aiDateValue: "", aiDateSourceHash: "" } : {}),
+            },
         });
-        if (reconciled.has(document.id)) {
-            console.log(`Reconciled ${document.title}: ${reconciled.get(document.id)!.statedDate.toISOString().slice(0, 10)} → ${datedAt!.toISOString().slice(0, 10)} (earlier record ${reconciled.get(document.id)!.evidenceId})`);
+        if (reconciledDate && next.datedAt?.getTime() === reconciledDate.date.getTime()) {
+            console.log(`Reconciled ${document.title}: ${reconciledDate.statedDate.toISOString().slice(0, 10)} → ${next.datedAt!.toISOString().slice(0, 10)} (earlier record ${reconciledDate.evidenceId})`);
             await prisma.documentSummary.updateMany({ where: { documentId: document.id, status: { in: ["fresh", "empty"] } }, data: { status: "stale" } });
         }
     }

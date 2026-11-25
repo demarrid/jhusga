@@ -110,7 +110,8 @@
   padding-top: 0.15rem;
 }
 
-.readingAnnouncement {
+.readingAnnouncement,
+.visuallyHidden {
   position: absolute;
   width: 1px;
   height: 1px;

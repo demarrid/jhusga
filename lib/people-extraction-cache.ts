@@ -7,7 +7,7 @@ export async function documentPeople(documentId: string, document: PeopleDocumen
     if (cached?.fingerprint === fingerprint) {
         return { fingerprint, people: parseExtractedPeople({ people: cached.people }, document.content) };
     }
-    const result = await extract(document);
+    const result = await extract({ ...document, id: documentId });
     const data = { fingerprint, promptVersion: PEOPLE_VERSION, model: result.model, people: result.people, appliedAt: null };
     await prisma.documentPeopleExtraction.upsert({ where: { documentId }, create: { documentId, ...data }, update: data });
     return { fingerprint, people: result.people };

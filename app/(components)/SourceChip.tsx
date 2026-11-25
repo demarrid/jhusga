@@ -25,6 +25,7 @@ export default function SourceChip({
     className?: string;
 }) {
     const quote = truncateAtWord(citation.quote, 220);
+    const linkProps = { target: "_blank" as const, rel: "noopener noreferrer" };
 
     const tooltip = (
         <span className={styles.tooltip}>
@@ -37,9 +38,9 @@ export default function SourceChip({
         // Keep the tooltip outside the clipped circle so the custom panel can show.
         return (
             <span className={`${styles.miniChipWrap} ${className ?? ""}`}>
-                <Link href={citation.href} className={`${styles.chip} ${styles.miniChip}`}>
+                <Link href={citation.href} className={`${styles.chip} ${styles.miniChip}`} {...linkProps}>
                     <span className={styles.visuallyHidden}>
-                        {`Source: ${citation.documentTitle}`}
+                        {`Source: ${citation.documentTitle} (opens in a new tab)`}
                     </span>
                     <svg aria-hidden="true" fill="currentColor" viewBox="0 0 16 16">
                         <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588Z" />
@@ -52,12 +53,13 @@ export default function SourceChip({
     }
 
     return (
-        <Link href={citation.href} className={styles.chip}>
+        <Link href={citation.href} className={styles.chip} {...linkProps}>
             <span className={styles.label}>
                 {citation.orphaned
                     ? "Source changed"
                     : truncateAtWord(citation.documentTitle, 28)}
             </span>
+            <span className={styles.visuallyHidden}> (opens in a new tab)</span>
             {tooltip}
         </Link>
     );

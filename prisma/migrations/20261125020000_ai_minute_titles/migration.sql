@@ -1,0 +1,2 @@
+ALTER TABLE "Document" ADD COLUMN "aiNormalizedTitle" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "aiTitleSourceHash" TEXT NOT NULL DEFAULT '';
