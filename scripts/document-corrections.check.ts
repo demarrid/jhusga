@@ -17,6 +17,14 @@ assert.equal(documentDate({...minutes, driveFileId: 'unreviewed'})?.getUTCDate()
 const bill = { id: 'bill', driveFileId: '1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM', title: 'Theta_TEMPLATE: Funding Bill', folderPath: '', sessionNumber: 114 };
 assert.equal(classifyDocument({...bill, name: bill.title}), 'bill.funding');
 assert.equal(canonicalTitle(bill), 'Take Back The Night Rally Funding Bill');
+const chew = { id: 'chew', driveFileId: '1le-nVHzhSp1NDlYhiIyW2IE7KgWPCGTQ', title: '2_14 CHEW Meeting', folderPath: 'Historical Documents/2019-2020/Committees/Health, Safety, and Sustainability/Spring 2020', sessionNumber: 107, kind: 'minutes.committee' };
+assert.equal(canonicalTitle(chew), 'CHEW Meeting — Minutes (02/14/20)');
+assert.equal(documentDate(chew)?.toISOString(), '2020-02-14T12:00:00.000Z');
+assert.equal(classifyDocument({ ...chew, name: chew.title, displayTitle: canonicalTitle(chew)! }), 'minutes.committee');
+const hsa = { id: 'hsa', driveFileId: '1sxgP5wX58n_yB4zTfFM7SBjMMMdP-zQs', title: '9_13 Exec _ HSA Meeting', folderPath: 'Historical Documents/2019-2020/Executive Board/President/Meeting Minutes/VP and HSA Meetings', sessionNumber: 107, kind: 'minutes.executive' };
+assert.equal(canonicalTitle(hsa), 'Executive Board × HSA Meeting — Minutes (09/13/19)');
+assert.equal(documentDate(hsa)?.toISOString(), '2019-09-13T12:00:00.000Z');
+assert.equal(classifyDocument({ ...hsa, name: hsa.title, displayTitle: canonicalTitle(hsa)! }), 'minutes.executive');
 assert.equal(classifyDocument({...bill, driveFileId: 'blank-template', name: bill.title}), 'template');
 assert.equal(presentBill(renderDocument('Senate\nStudent Government Association\nAn SGA Funding Bill\nUnfinished template', [])).header.length, 0);
 console.log('Reviewed document correction checks passed.');

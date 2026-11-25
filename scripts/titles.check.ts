@@ -64,6 +64,11 @@ check(
     cleanTitle("Questions for SHWB"),
 );
 check(
+    "CHEW stays an acronym",
+    cleanTitle("2_14 CHEW Meeting") === "2 14 CHEW Meeting",
+    cleanTitle("2_14 CHEW Meeting"),
+);
+check(
     // Two short acronyms hyphenated together are not one long shout.
     "a hyphenated acronym is not un-shouted",
     cleanTitle("Important Changes to SGA-FC guidelines") ===

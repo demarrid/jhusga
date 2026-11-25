@@ -202,7 +202,7 @@ export function renderDocument(
     const parse = (segment: Line[]) => report
         ? parseReport(segment, inline, anchors)
         : oieReport ? parseOieReport(segment, inline, anchors, content)
-        : parseBlocks(segment, inline, anchors, minutesEntries, slides);
+        : parseBlocks(segment, inline, anchors, minutesEntries, slides, Boolean(markdownSheet));
     // Recovered images sit at verified paragraph boundaries. Parse each segment
     // with the original source offsets and shared citation/section anchors.
     const blocks: Block[] = [];
@@ -624,7 +624,14 @@ function withoutHeadingId(line: Line): Line {
     return { ...line, text: line.text.replace(/\s+\{#[^}\n]+\}\s*$/, "") };
 }
 
-function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>, minutesEntries?: ReadonlyMap<number, string>, slides: ReturnType<typeof presentationSections> = []): Block[] {
+function parseBlocks(
+    lines: Line[],
+    inline: Inline,
+    anchors: Map<number, string>,
+    minutesEntries?: ReadonlyMap<number, string>,
+    slides: ReturnType<typeof presentationSections> = [],
+    spreadsheet = false,
+): Block[] {
     const blocks: Block[] = [];
     let index = 0;
 
@@ -635,7 +642,7 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
             blocks.push({ kind: "heading", level: 2, sectionId: anchors.get(line.start), runs: inline([{ start: slide.textStart ?? slide.start, end: slide.end }]) });
             if (slide.textStart !== undefined && slide.textStart > slide.start) {
                 const body = lines.filter(part => part.start >= slide.start && part.start < slide.textStart!);
-                blocks.push(...parseBlocks(body, inline, new Map()));
+                blocks.push(...parseBlocks(body, inline, new Map(), undefined, [], spreadsheet));
             }
             while (index < lines.length && lines[index].start < slide.end) index++;
             continue;
@@ -696,7 +703,7 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
                 quoted.push(afterMarker(lines[index], marker[0].length));
                 index += 1;
             }
-            blocks.push({ kind: "quote", blocks: parseBlocks(quoted, inline, anchors) });
+            blocks.push({ kind: "quote", blocks: parseBlocks(quoted, inline, anchors, minutesEntries, slides, spreadsheet) });
             continue;
         }
 
@@ -706,12 +713,12 @@ function parseBlocks(lines: Line[], inline: Inline, anchors: Map<number, string>
                 rows.push(lines[index]);
                 index += 1;
             }
-            blocks.push(parseTable(rows, inline));
+            blocks.push(parseTable(rows, inline, spreadsheet));
             continue;
         }
 
         if (itemMarker(line.text)) {
-            const list = parseList(lines, index, inline, anchors);
+            const list = parseList(lines, index, inline, anchors, null, false, spreadsheet);
             blocks.push(list.block);
             index = list.next;
             continue;
@@ -777,7 +784,7 @@ function joinedRanges(lines: Line[]): Range[] {
     }));
 }
 
-function parseTable(rows: Line[], inline: Inline): Block {
+function parseTable(rows: Line[], inline: Inline, spreadsheet = false): Block {
     const toRow = (line: Line): TableRow => ({
         cells: cellRanges(line).map((range) => inline([range], "cell")),
     });
@@ -789,6 +796,14 @@ function parseTable(rows: Line[], inline: Inline): Block {
     // goes, and the first run of a citation is the one that carries it.
     const header = headed ? toRow(rows[0]) : null;
     const body = (headed ? rows.slice(2) : rows).map(toRow);
+
+    // An archived workbook is a grid even when its first cell is a long note
+    // and most exported columns are empty. The minutes heuristic would print
+    // those columns as an unlabeled aside.
+    if (spreadsheet) {
+        const compacted = compactSheetColumns(header, body);
+        return { kind: "table", header: compacted.header, rows: compacted.rows };
+    }
 
     if (isValueGrid(header ? [header, ...body] : body)) {
         // Docs marks the first row of every table as a header, including a
@@ -803,6 +818,40 @@ function parseTable(rows: Line[], inline: Inline): Block {
     // The delimiter row is syntax, so it is dropped; the header row is not,
     // and in a layout table it is the first agenda item.
     return { kind: "layout", rows: header ? [header, ...body] : body };
+}
+
+function blankCell(): InlineRun[] {
+    return [{ text: "", bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }];
+}
+
+function cellHasContent(cell: InlineRun[] | undefined): boolean {
+    if (!cell) return false;
+    return runsText(cell).trim().length > 0 || cell.some((run) => run.image || run.annotationId);
+}
+
+/**
+ * Drop columns and rows an Excel export left blank.
+ *
+ * The cells that remain are the runs already built, so a citation stays on
+ * the text it quotes. A kept column that a short row never had is empty
+ * padding and has no source of its own.
+ */
+function compactSheetColumns(
+    header: TableRow | null,
+    rows: TableRow[],
+): { header: TableRow | null; rows: TableRow[] } {
+    const all = header ? [header, ...rows] : rows;
+    const width = all.reduce((widest, row) => Math.max(widest, row.cells.length), 0);
+    const keep: number[] = [];
+    for (let column = 0; column < width; column += 1) {
+        if (all.some((row) => cellHasContent(row.cells[column]))) keep.push(column);
+    }
+    const columns = keep.length > 0 ? keep : [...Array(width).keys()];
+    const pick = (row: TableRow): TableRow => ({
+        cells: columns.map((column) => row.cells[column] ?? blankCell()),
+    });
+    const compactedRows = rows.map(pick).filter((row) => row.cells.some((cell) => cellHasContent(cell)));
+    return { header: header ? pick(header) : null, rows: compactedRows };
 }
 
 /**
@@ -996,6 +1045,7 @@ function parseList(
     anchors: Map<number, string>,
     agenda: AgendaContext | null = null,
     nested = false,
+    spreadsheet = false,
 ): { block: Block; next: number } {
     const isAgenda = !nested && isAgendaItem(lines[from].text);
     const bare = isAgenda || agenda !== null;
@@ -1045,7 +1095,7 @@ function parseList(
 
     const sublist = () => {
         const context = isAgenda ? { indent: first.indent, next: last + 1 } : agenda;
-        const child = parseList(lines, index, inline, anchors, context, true);
+        const child = parseList(lines, index, inline, anchors, context, true, spreadsheet);
         if (current) current.blocks.push(child.block);
         else items.push({ runs: [], blocks: [child.block] });
         index = child.next;
@@ -1112,7 +1162,7 @@ function parseList(
                     note.push(lines[index]!);
                     index += 1;
                 }
-                current.blocks.push(...parseBlocks(note, inline, anchors));
+                current.blocks.push(...parseBlocks(note, inline, anchors, undefined, [], spreadsheet));
                 continue;
             }
             // A wrapped line continues the item above it. A section does not:

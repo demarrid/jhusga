@@ -27,6 +27,23 @@ const literalSheet = renderDocument("Name\tNotes\nExample\t| A | B |\nOther\t| -
 check("native spreadsheets keep pipe syntax inside literal cells",
     literalSheet.length === 1 && literalSheet[0].kind === "table" &&
     runsText(literalSheet[0].rows[0].cells[1]) === "| A | B |");
+const wideSheet = "## Projects\n\n| 2020-2021 SGA NON-LEGISLATIVE PROJECTS - SEE OTHER TAB FOR LEGISLATION |  | Project |  | Entry |\n| --- | --- | --- | --- | --- |\n| President Sam Mollin |  |  |  | 2020-05-05 00:00:00 |\n| FSL OIE Investigation Team - attending meetings |  |  |  |  |\n|  |  |  |  |  |\n\n## Sources\n\n[Original workbook](https://example.com/work-log.xlsx)";
+const wideQuote = findQuote(wideSheet, "FSL OIE Investigation Team - attending meetings")!;
+const wideBlocks = renderDocument(wideSheet, [{ id: "work-log", ...wideQuote }], { sheetDelimiter: "\t" });
+const wideTable = wideBlocks.find(block => block.kind === "table");
+check("a wide archived workbook stays a table and drops empty columns",
+    wideTable?.kind === "table" &&
+    wideTable.header?.cells.length === 3 &&
+    wideTable.rows.length === 2 &&
+    runsText(wideTable.header.cells[1]) === "Project" &&
+    runsText(wideTable.rows[0].cells[2]) === "2020-05-05 00:00:00" &&
+    wideBlocks.filter(block => block.kind === "heading").length === 2 &&
+    allRuns(wideBlocks).some(run => run.href === "https://example.com/work-log.xlsx"),
+    wideTable?.kind === "table" ? { columns: wideTable.header?.cells.length, rows: wideTable.rows.length } : wideTable);
+check("a wide archived workbook keeps the citation in its cell",
+    wideTable?.kind === "table" &&
+    highlighted(wideBlocks, "work-log") === "FSL OIE Investigation Team - attending meetings" &&
+    allRuns(wideBlocks).filter(run => run.annotationId === "work-log" && run.anchor).length === 1);
 function check(label: string, condition: boolean, detail?: unknown) {
     if (condition) {
         console.log(`  ok   ${label}`);

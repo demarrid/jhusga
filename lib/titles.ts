@@ -49,6 +49,9 @@ const ACRONYMS = new Map(
         // Four letters, so without this a shouted "CSAC" is read as a word
         // and comes back "Csac".
         "CSAC",
+        // Center for Health Education and Wellness. Four letters, so a shouted
+        // "CHEW Meeting" was being read as a word and coming back "Chew".
+        "CHEW",
         // Student groups and events the SGA funds, which reach the archive
         // only through the bills that fund them: "JHUMA Funding Bill Fall
         // 2026" is the Muslim Association, not somebody called Jhuma.

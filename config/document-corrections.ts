@@ -1,5 +1,18 @@
 /** Reviewed archive metadata; original filenames and source text remain intact. */
 export const DOCUMENT_CORRECTIONS: Record<string, { displayTitle: string; datedOn?: string | null }> = {
+    // Spring 2020 HSS folder, filename 2_14, and notes that still treat April
+    // as upcoming. The meeting is with CHEW, so the committee folder must not
+    // replace that name.
+    "1le-nVHzhSp1NDlYhiIyW2IE7KgWPCGTQ": {
+        displayTitle: "CHEW Meeting — Minutes (02/14/20)",
+        datedOn: "2020-02-14",
+    },
+    // 2019-2020 executive folder, filename 9_13, and notes still looking ahead
+    // to October. HSA is the body named in the file and the opening line.
+    "1sxgP5wX58n_yB4zTfFM7SBjMMMdP-zQs": {
+        displayTitle: "Executive Board × HSA Meeting — Minutes (09/13/19)",
+        datedOn: "2019-09-13",
+    },
     // The junior council agenda includes attendance, discussion, and a recorded vote.
     "1hKbdFVvA1kSHzMjb5wcT3Dbkqot232cc": {
         displayTitle: "Junior Class Council Meeting — Agenda and Minutes (12/02/18)",
