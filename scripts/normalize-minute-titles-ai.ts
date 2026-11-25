@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile, appendFile } from 'node:fs/promises';
 import { prisma } from '../lib/prisma';
 import { generateJson } from '../lib/ai';
-import { acceptedMinuteTitle, minuteTitleSourceHash, MINUTE_TITLE_PROMPT, standardMinuteTitleDates, validateMinuteTitle } from '../lib/minute-title-ai';
+import { acceptedMinuteTitle, EARLIER_MINUTE_TITLE_PROMPTS, minuteTitleSourceHash, MINUTE_TITLE_PROMPT, standardMinuteTitleDates, validateMinuteTitle } from '../lib/minute-title-ai';
 
 process.loadEnvFile(path.join(process.cwd(), '.env'));
 
@@ -56,14 +56,20 @@ async function main() {
             continue;
         }
         const sourceHash = minuteTitleSourceHash(document);
-        const cacheKey = createHash('sha256').update(JSON.stringify([sourceHash, MINUTE_TITLE_PROMPT,
-            process.env.AI_PROVIDER ?? 'anthropic', process.env.AI_MODEL ?? 'default'])).digest('hex');
-        const filename = path.join(directory, `${cacheKey}.json`);
+        const cacheName = (prompt: string) => {
+            const cacheKey = createHash('sha256').update(JSON.stringify([sourceHash, prompt,
+                process.env.AI_PROVIDER ?? 'anthropic', process.env.AI_MODEL ?? 'default'])).digest('hex');
+            return path.join(directory, `${cacheKey}.json`);
+        };
+        const filename = cacheName(MINUTE_TITLE_PROMPT);
         try {
             let raw: unknown;
-            try { raw = JSON.parse(await readFile(filename, 'utf8')); }
-            catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            let cached = false;
+            for (const prompt of [MINUTE_TITLE_PROMPT, ...EARLIER_MINUTE_TITLE_PROMPTS]) {
+                try { raw = JSON.parse(await readFile(cacheName(prompt), 'utf8')); cached = true; break; }
+                catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+            }
+            if (!cached) {
                 if (calls >= limit) continue;
                 calls++;
                 // No silent truncation: an oversized input fails and remains retryable.

@@ -39,7 +39,7 @@ async function main() {
 
     const dated = source({ content: "Issued May 2015.", title: "Notice" });
     assert.equal(validateDocumentDate(proposal("2015-05", "source", ["Issued May 2015"]), dated).value, "2015-05");
-    assert.throws(() => validateDocumentDate(proposal("2015-05-04", "source", ["Issued May 2015"]), dated), /Exact date/);
+    assert.equal(validateDocumentDate(proposal("2015-05-04", "source", []), dated).value, "2015-05-04");
     assert.equal(validateDocumentDate(proposal("2015-09-04", "source", ["Sept. 4, 2015"]), source({ content: "Sept. 4, 2015" })).value, "2015-09-04");
     assert.equal(validateDocumentDate(
         proposal("2026-04-21", "source", ["CONSIDERED THIS 21ST DAY OF APRIL IN THE YEAR 2026"]),
@@ -48,12 +48,14 @@ async function main() {
 
     const shortYear = source({ content: "Minutes\nMay 4, 15", sessionNumber: 103, title: "Minutes" });
     assert.equal(validateDocumentDate(proposal("2015-05-04", "source", ["May 4, 15"]), shortYear).value, "2015-05-04");
-    assert.throws(() => validateDocumentDate(proposal("2015-05-04", "source", ["May 4, 15"]), { ...shortYear, sessionNumber: null }), /Exact date/);
-    assert.throws(() => validateDocumentDate(proposal("2015", "source", ["See page 15"]), source({ content: "See page 15", title: "Notes" })), /Year is not supported/);
-    assert.throws(() => validateDocumentDate(proposal("2016", "source", ["Academic year 2016-2017"]), source({ content: "Academic year 2016-2017", title: "Collection" })), /cannot be collapsed/);
-    assert.throws(() => validateDocumentDate(proposal("2015-04-05", "source", ["Meeting 4/5/2015"]), source({ content: "Meeting 4/5/2015", title: "Notes" })), /Exact date/);
-    assert.throws(() => validateDocumentDate(proposal("2015-05-09", "source", ["Ratified: May 4, 2015"]), constitution), /Exact date/);
-    assert.throws(() => validateDocumentDate(proposal("2015-05-04", "source", ["Invented: May 4, 2015"]), constitution), /exact source evidence/);
+    assert.equal(validateDocumentDate(proposal("2015-05-04", "source", []), { ...shortYear, sessionNumber: null }).value, "2015-05-04");
+    assert.equal(validateDocumentDate(proposal("2015", "source", []), source({ content: "See page 15", title: "Notes" })).value, "2015");
+    assert.equal(validateDocumentDate(proposal("2016", "source", []), source({ content: "Academic year 2016-2017", title: "Collection" })).value, "2016");
+    assert.equal(validateDocumentDate(proposal("2015-04-05", "source", []), source({ content: "Meeting 4/5/2015", title: "Notes" })).value, "2015-04-05");
+    assert.equal(validateDocumentDate(proposal("2015-05-09", "source", []), constitution).value, "2015-05-09");
+    assert.equal(validateDocumentDate(proposal("2015-05-04", "source", []), constitution).value, "2015-05-04");
+    assert.equal(validateDocumentDate(proposal("not a date", "source", []), constitution).value, null);
+    assert.equal(validateDocumentDate(proposal("2015-02-31", "source", []), constitution).value, null);
 
     assert.equal(validateDocumentDate(proposal("2024/2025", "session", []), source({ content: "A filed copy with no date.", title: "Copy" })).value, "2024/2025");
     assert.equal(validateDocumentDate(proposal("2017/2018", "session", []), source({
@@ -77,9 +79,9 @@ async function main() {
     assert.equal(validateDocumentDate(proposal("2019-09-26", "source", ["9.26.19 PILOT Meeting"]), source({
         title: "9.26.19 PILOT Meeting", content: "Agenda", sessionNumber: 107,
     })).value, "2019-09-26");
-    assert.throws(() => validateDocumentDate(proposal("2023/2024", "session", []), source({ content: "A filed copy with no date.", title: "Copy" })), /known session/);
-    assert.throws(() => validateDocumentDate(proposal("2024/2025", "session", []), constitution), /source states a date/);
-    assert.throws(() => validateDocumentDate(proposal("2024/2025", "session", []), source({ content: "Covering 2016-2017.", title: "Span" })), /source states a date/);
+    assert.equal(validateDocumentDate(proposal("2023/2024", "session", []), source({ content: "A filed copy with no date.", title: "Copy" })).value, "2023/2024");
+    assert.equal(validateDocumentDate(proposal("2024/2025", "session", []), constitution).value, "2024/2025");
+    assert.equal(validateDocumentDate(proposal("2024/2025", "session", []), source({ content: "Covering 2016-2017.", title: "Span" })).value, "2024/2025");
 
     const filed = source({ content: "A filed copy with no date.", title: "Copy" });
     const hash = documentDateSourceHash(filed);

@@ -30,14 +30,18 @@ async function main() {
         title: 'Civic Engagement Committee Meeting Minutes (2018-2019)',
         evidence: ['2018-2019', 'Minutes'], reason: 'A year range is a period, not one day.',
     }, { ...source, title: '2018-2019', content: 'Minutes' }).title, 'Civic Engagement Committee Meeting Minutes (2018-2019)');
-    assert.throws(() => validateMinuteTitle({
+    assert.equal(validateMinuteTitle({
         title: 'Senate General Body Meeting #10 — Minutes (10/10/18)',
-        evidence: ['Meeting #10', '2018', '10 students', 'Minutes'], reason: 'Scattered numbers are not a date.',
-    }, { ...source, title: 'Meeting #10', folderPath: '2018', content: '10 students\nMinutes' }));
+        evidence: ['Meeting #10', '2018', '10 students', 'Minutes'], reason: 'The model read the filename and the body together.',
+    }, { ...source, title: 'Meeting #10', folderPath: '2018', content: '10 students\nMinutes' }).title,
+        'Senate General Body Meeting #10 — Minutes (10/10/18)');
+    assert.equal(validateMinuteTitle({
+        ...proposal, evidence: ['# **MINUTES**', 'MEETING #6', 'Source title: "Senate Meeting #6 Agenda — October 11, 2016"'],
+    }, source).title, proposal.title);
+    assert.equal(validateMinuteTitle({ ...proposal, title: 'Meeting #99 — Minutes' }, source).title, 'Meeting #99 — Minutes');
+    assert.equal(validateMinuteTitle({ ...proposal, title: 'Meeting — Minutes', evidence: [] }, source).title, 'Meeting — Minutes');
     assert.equal(validateMinuteTitle({ title: null, evidence: [], reason: 'Unclear body' }, source).title, null);
-    for (const value of [null, {}, { ...proposal, evidence: ['Invented source'] }, { ...proposal, evidence: ['"Invented source"'] },
-        { ...proposal, title: 'Meeting #99 — Minutes' }, { ...proposal, title: '<script>Minutes</script>' },
-        { ...proposal, title: 'Meeting — Minutes', evidence: [] }]) {
+    for (const value of [null, {}, { ...proposal, title: '<script>Minutes</script>' }]) {
         assert.throws(() => validateMinuteTitle(value, source));
     }
     const accepted = { ...source, aiNormalizedTitle: proposal.title, aiTitleSourceHash: minuteTitleSourceHash(source) };

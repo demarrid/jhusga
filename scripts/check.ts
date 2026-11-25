@@ -50,6 +50,7 @@ const SUITES = [
     "cite",
     "contributors",
     "people-extraction",
+    "short-names",
     "person-validation",
     "person-validation-sync",
     "directory",

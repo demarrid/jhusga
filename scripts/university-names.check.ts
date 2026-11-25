@@ -8,13 +8,17 @@ const julia = { id: "julia", name: "Julia Lee", nameKey: "julia lee", documentCo
     positions: ["Senator"], bodies: ["senate"] } satisfies RegularPerson;
 const jackson = { id: "jackson", name: "Jackson Morris", nameKey: "jackson morris", documentCount: 5,
     positions: ["Senator"], bodies: ["senate"] } satisfies RegularPerson;
-const people = new Map<string, {id:string;name:string;nameKey:string;positions?:string[]}>([
+const people = new Map<string, {id:string;name:string;nameKey:string;positions?:string[];contributions?:{documentId:string}[]}>([
     ["kai martin", kai], ["julia lee", julia], ["jackson morris", jackson],
 ]);
 (globalThis as unknown as {prisma:unknown}).prisma = {
     hopkinsAffiliate: {
-        findMany: async () => [...people.values()].map(p => ({...p, contributions: [],
-            hopkinsRelationships: (p.positions ?? []).map(name => ({hopkinsCategory:{name}}))})),
+        findMany: async () => [...people.values()].map(p => ({...p, contributions: "contributions" in p ? p.contributions : [],
+            hopkinsRelationships: (p.positions ?? []).map(name => ({
+                startedAt: new Date("2020-06-01T12:00:00.000Z"),
+                endedAt: null,
+                hopkinsCategory:{name},
+            }))})),
         findUnique: async ({where}:{where:{nameKey:string}}) => people.get(where.nameKey) ?? null,
         upsert: async ({create}:{create:{name:string;nameKey:string}}) => {
             const p = people.get(create.nameKey) ?? {...create,id:create.nameKey};
@@ -132,6 +136,13 @@ async function main() {
         "undated historical minutes do not use current officers");
     assert.deepEqual(await resolveAffiliates(crossBranch, {body:"senate", asOf:new Date("2026-11-03")}),
         officers.map(p => nameKey(p.name)), "dated minutes use the dated office roster");
+    people.set("sophia baleeiro", { id: "baleeiro", name: "Sophia Baleeiro", nameKey: "sophia baleeiro",
+        positions: ["Student Athletes Caucus Senator"], contributions: [{ documentId: "later" }] });
+    resetNameResolverCache();
+    assert.deepEqual(await resolveAffiliates(
+        [{ name: "Sophia", role: "mentioned", evidence: "Peabuddies - Sophia" }],
+        { text: "Peabuddies - Sophia", asOf: new Date("2018-10-13T12:00:00.000Z"), body: "executive" },
+    ), [null], "a 2018 Sophia is not a person whose dated seat starts in 2020");
     console.log("University name safeguards passed");
 }
 main().catch(error => {console.error(error);process.exitCode=1;});

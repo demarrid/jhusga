@@ -257,23 +257,29 @@ async function loadRegularsAt(asOf: Date | undefined): Promise<RegularPerson[]> 
                     hopkinsCategory: { type: "position" },
                     ...(asOf
                         ? {
-                            AND: [
-                                { OR: [{ startedAt: null }, { startedAt: { lte: asOf } }] },
-                                { OR: [{ endedAt: null }, { endedAt: { gt: asOf } }] },
-                            ],
+                            startedAt: { lte: asOf },
+                            OR: [{ endedAt: null }, { endedAt: { gt: asOf } }],
                         }
                         : { endedAt: null }),
                 },
-                select: { hopkinsCategory: { select: { name: true } } },
+                select: {
+                    startedAt: true,
+                    endedAt: true,
+                    hopkinsCategory: { select: { name: true } },
+                },
             },
         },
     });
 
     return affiliates
         .map((person) => {
-            const positions = person.hopkinsRelationships.map(
-                (row) => row.hopkinsCategory.name,
-            );
+            // A missing start date is not evidence that the seat existed on a
+            // historical document date. "Sophia" in 2018 cannot be someone
+            // whose only dated offices begin in 2025.
+            const positions = person.hopkinsRelationships
+                .filter((row) => !asOf || (row.startedAt && row.startedAt <= asOf &&
+                    (!row.endedAt || row.endedAt > asOf)))
+                .map((row) => row.hopkinsCategory.name);
             return {
                 id: person.id,
                 name: person.name,
@@ -871,6 +877,7 @@ Rules:
 Reply with a single JSON object:
 {"matches": [{"name": string, "affiliateId": string | null}]}`,
             user: [
+                context.asOf ? `Document date: ${context.asOf.toISOString().slice(0, 10)}. A person is eligible only if they were around then.` : "",
                 context.body ? `This document records a meeting of: ${context.body}` : "",
                 "Known people:",
                 ...regulars.map((person) => {
@@ -1097,12 +1104,19 @@ export async function resolveAffiliates(
             // An archive-wide near-match is not evidence that this person attended.
             // Speakers may address another branch (for example, executive
             // reports to Senate). Attendance remains scoped to the meeting body.
-            const eligible = mention.onlyIfKnown ? regulars.filter(person =>
+            // Historical short names are matched only against people who held a
+            // dated seat then, or who are written in full in this document.
+            // The undated remainder of the archive is not a candidate list.
+            const roster = asOf
+                ? regulars.filter(person => person.positions.length > 0 ||
+                    (context.text && namedInFull(context.text, person)))
+                : regulars;
+            const eligible = mention.onlyIfKnown ? roster.filter(person =>
                 (context.text && namedInFull(context.text, person)) ||
                 ((context.isCurrentSession || asOf) && context.body &&
                     (person.bodies.includes(context.body) ||
                         (mention.role === "interlocutor" && person.bodies.length > 0)))
-            ) : regulars;
+            ) : roster;
             const given = givenNameCandidates(mention.name, eligible);
             const surname = surnameCandidates(mention.name, eligible);
             // Shape is the last resort, so it is only consulted once nobody
@@ -1152,7 +1166,10 @@ export async function resolveAffiliates(
             // caller wanted a person the archive already knows, and this is
             // not one. Answering here is also what stops every "Venue:" and
             // "Timeline:" in the archive from costing a model call.
-            if (candidates.length === 0 && mention.onlyIfKnown) continue;
+            if (candidates.length === 0 && (mention.onlyIfKnown || asOf)) {
+                unresolved.add(index);
+                continue;
+            }
 
             const pool =
                 candidates.length > 0
