@@ -1,4 +1,19 @@
-import { formatDate } from "@/lib/dates";
+import { DOCUMENT_DATE_LABELS, formatDate } from "@/lib/dates";
+import { normalizedDateDay } from "@/lib/document-date-value";
+
+/**
+ * The stated day versions are chosen against, or null when the document has
+ * none. A partial AI date (a year, month, or session range such as 2026/2027)
+ * keeps datedAt only as a sort anchor, as do reviewed partial archive labels;
+ * treating that anchor as a day would pick an early version, or the earliest
+ * when every edit came after it.
+ */
+export function versionCutoffDate(document: { id: string; datedAt?: Date | null; aiDateValue?: string | null }): Date | null {
+    if (!document.datedAt) return null;
+    const value = document.aiDateValue?.trim();
+    if (value) return normalizedDateDay(value) ? document.datedAt : null;
+    return DOCUMENT_DATE_LABELS[document.id] ? null : document.datedAt;
+}
 
 export type DocumentVersionOption = {
     id: string;

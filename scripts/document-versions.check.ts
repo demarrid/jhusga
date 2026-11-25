@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import assert from "node:assert/strict";
-import { selectDocumentVersion, versionDay, versionOptions } from "../lib/document-versions";
+import { selectDocumentVersion, versionCutoffDate, versionDay, versionOptions } from "../lib/document-versions";
 
 import type { Prisma } from "@prisma/client";
 
@@ -26,6 +26,12 @@ assert.equal(versionDay("2026-03-09T04:00:00Z"), "2026-03-09");
 const unknownTime = versionOptions([{ id: "saved", modifiedAt: null, observedAt: "2026-10-31T16:00:00Z" }]);
 assert.match(unknownTime[0].label, /first saved/);
 assert.equal(selectDocumentVersion(unknownTime, dated)?.missingDatedVersion, false);
+const anchor = new Date("2026-06-01T12:00:00Z");
+assert.equal(versionCutoffDate({ id: "session", datedAt: anchor, aiDateValue: "2026/2027" }), null, "a session range is not a day");
+assert.equal(versionCutoffDate({ id: "year", datedAt: anchor, aiDateValue: "2026" }), null);
+assert.equal(versionCutoffDate({ id: "day", datedAt: anchor, aiDateValue: "2026-06-01" }), anchor);
+assert.equal(versionCutoffDate({ id: "stated", datedAt: anchor }), anchor);
+assert.equal(selectDocumentVersion(options, versionCutoffDate({ id: "session", datedAt: anchor, aiDateValue: "2026/2027" }))?.selected.id, "after");
 
 type Occurrence = { id: string; revisionId: string; sourceModifiedTime: Date | null; observedAt: Date; status: string };
 async function main() {

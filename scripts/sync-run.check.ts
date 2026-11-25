@@ -49,7 +49,7 @@ async function main() {
         findUniqueOrThrow: async ({ where }: { where: { id: string } }) => clone(rows.get(where.id)!),
     } } });
 
-    const { activeSyncRun, isAbandoned, isStalled, runSyncSlice, startSyncRun } = await import("../lib/sync-run");
+    const { activeSyncRun, continuationOrigin, isAbandoned, isStalled, runSyncSlice, startSyncRun } = await import("../lib/sync-run");
     type Step = import("../lib/sync-run").Step;
     type Slice = import("../lib/sync-run").Slice;
     type Cursor = { ingest?: { pending: string[]; at: number } };
@@ -203,6 +203,13 @@ async function main() {
     assert.ok(isAbandoned({ ...quiet, heartbeatAt: new Date(at - 4 * 60 * 60_000) }, at));
     assert.ok(!isAbandoned({ ...quiet, step: "model", heartbeatAt: new Date(at - 24 * 60 * 60_000) }, at),
         "the next daily cron must resume summary progress instead of restarting the queue");
+
+    // Production hand-offs avoid the protected *.vercel.app deployment hostname.
+    const deployment = "https://jhusga-abc123.vercel.app";
+    assert.equal(continuationOrigin(deployment, { VERCEL_ENV: "production", VERCEL_PROJECT_PRODUCTION_URL: "www.jhusga.org" }), "https://www.jhusga.org");
+    assert.equal(continuationOrigin(deployment, { VERCEL_ENV: "preview", VERCEL_PROJECT_PRODUCTION_URL: "www.jhusga.org" }), deployment, "a preview keeps its own continue route");
+    assert.equal(continuationOrigin(deployment, { VERCEL_ENV: "production" }), deployment);
+    assert.equal(continuationOrigin("http://localhost:3000", {}), "http://localhost:3000");
 
     console.log("all sync run checks passed");
 }

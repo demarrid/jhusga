@@ -18,7 +18,12 @@ Each invocation claims the run with a lease, starts new work for 40 seconds
 (`SYNC_SLICE_BUDGET_MS`), checkpoints after every file or pass, and leaves the
 rest of its limit for the unit already under way. If work remains it hands the
 run on by POSTing to `/api/sync/continue` with `Authorization: Bearer
-$CRON_SECRET`; that route answers at once and does its slice after responding. The hand-off
+$CRON_SECRET`; that route answers at once and does its slice after responding.
+In production the hand-off goes to `VERCEL_PROJECT_PRODUCTION_URL`, not the
+origin the slice was invoked on: Vercel Cron arrives on the deployment's
+`*.vercel.app` hostname, where Deployment Protection answers the function's own
+POST with 401 (runs of November 24–25, 2026 stalled after one slice this way).
+Previews and local runs keep their own origin. The hand-off
 follows only same-origin or apex/www HTTPS redirects, explicitly retaining
 authentication; automatic cross-origin redirects drop the bearer header.
 

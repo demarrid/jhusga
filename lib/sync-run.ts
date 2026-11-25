@@ -653,6 +653,24 @@ export async function requestSyncContinuation(runId: string, origin: string, sec
     throw new Error("Too many sync hand-off redirects");
 }
 
+/**
+ * Where a production slice hands the run on to. Vercel Cron reaches the
+ * deployment's own *.vercel.app hostname, which Deployment Protection guards:
+ * the cron itself is let through, but a POST from the function back to that
+ * hostname is answered 401 before the route runs. The production domain is
+ * not protected, so production hand-offs go there. Previews and local runs
+ * keep their own origin, so a preview never drives production's continue route.
+ */
+export function continuationOrigin(origin: string, env: Record<string, string | undefined> = process.env): string {
+    const host = env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+    if (env.VERCEL_ENV !== "production" || !host) return origin;
+    try {
+        return new URL(`https://${host.replace(/^https?:\/\//, "")}`).origin;
+    } catch {
+        return origin;
+    }
+}
+
 /** Keep a lost hand-off resumable, but never report it as a successful dispatch. */
 export async function dispatchSyncContinuation(runId: string, origin: string, secret: string): Promise<void> {
     let failure = "";
@@ -695,7 +713,7 @@ export async function continueSyncRun(runId: string, origin: string): Promise<Sl
         return continueSyncRun(runId, origin);
     }
 
-    await dispatchSyncContinuation(runId, origin, secret);
+    await dispatchSyncContinuation(runId, continuationOrigin(origin), secret);
     return outcome;
 }
 

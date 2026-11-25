@@ -197,7 +197,7 @@ function InboxRow({ inbox }: { inbox: GroupInbox }) {
 function FinanceYourClub() {
   return (
     <section id="funding" className={`${styles.chapter} ${styles.funding}`}>
-      <SectionLabel number="01" title="Finance your club" />
+      <SectionLabel number="01" title="Finance your organization" />
       <div className={styles.chapterContent}>
         <p className={styles.lead}>
           Registered Student Organizations (RSOs) request funding through Hopkins Groups.

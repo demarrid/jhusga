@@ -2,7 +2,7 @@
 
 The reader has an inline version selector below the masthead. The URL stores the selected occurrence (`?version=<id>`); `?version=latest` always requests the latest published text. The newest option is labelled “latest”.
 
-Undated documents default to the latest published occurrence. Dated documents (including minutes) default to the last available occurrence at or before the end of their stated day in America/New_York. If none exists, the earliest available version is shown with a history-gap note. Source modification timestamps date versions when available; otherwise the selector explicitly says “first saved” and uses the observation timestamp. A capture cannot reconstruct edits between syncs.
+Undated documents, and documents with only a partial date (a year, month, or session range from AI dating or a reviewed archive label), default to the latest published occurrence. Documents dated to a day (including minutes) default to the last available occurrence at or before the end of their stated day in America/New_York. If none exists, the earliest available version is shown with a history-gap note. Source modification timestamps date versions when available; otherwise the selector explicitly says “first saved” and uses the observation timestamp. A capture cannot reconstruct edits between syncs.
 
 `DocumentRevision` continues to store complete, deduplicated snapshots. `DocumentVersion` records separate source occurrences and their publication status, so A → B → A retains three entries. Sync writes the document, snapshot and occurrence together. Review approval/rejection changes the occurrence status in the same transaction. Held, rejected and unknown legacy versions are never public, including through the revision comparison page.
 

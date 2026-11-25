@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { demoDocument } from "@/lib/demo-data";
 import { renderDocument } from "@/lib/render";
-import { selectDocumentVersion, versionOptions } from "@/lib/document-versions";
+import { selectDocumentVersion, versionCutoffDate, versionOptions } from "@/lib/document-versions";
 import { loadDocument, hydrateDocumentDetail, type DocumentDetail } from "@/server/documents";
 
 const cachedVersionedDocument = unstable_cache(loadVersionedDocument,
@@ -44,7 +44,7 @@ export async function loadVersionedDocument(documentId: string, requested?: stri
         observedAt: (current.lastSyncedAt ?? current.driveCreatedTime ?? new Date()).toISOString() }]);
     // Archive revisions are transcription corrections, not historical source edits.
     // A historical document date must not select the earliest, uncorrected OCR.
-    const selection = selectDocumentVersion(options, current.discoveredVia === "archive" ? null : current.datedAt, requested);
+    const selection = selectDocumentVersion(options, current.discoveredVia === "archive" ? null : versionCutoffDate(current), requested);
     if (!selection) return null;
     const { selected } = selection;
     const document = selected.id === "latest" ? current : demo ? demoVersion(current, selected.id)
