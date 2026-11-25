@@ -38,7 +38,35 @@ function linesFromItems(items: PdfTextItem[]): Line[] {
     return lines.filter(line => line.text);
 }
 
-const BULLET = /^([•▪◦●○■‣⁃\-*+])\s+(\S.*)$/;
+/** Slashed pairs people really type; never read as a lost "ti". */
+const REAL_SLASHES = /^(?:and\/or|or\/and|he\/she|she\/he|s\/he|his\/her|her\/his|him\/her|her\/him|they\/them|w\/o?|c\/o|n\/a|y\/n|a\/c|i\/o|on\/off|yes\/no|either\/or|pass\/fail|p\/f)$/i;
+
+/**
+ * Undo the broken glyph map some PDF printers (Outlook's "Print to PDF" of a
+ * Calibri email is the usual one) write for ligatures: "ti" comes out as "/",
+ * "tt" as "X", and "fi"/"ffi" as presentation-form ligature characters --
+ * "mee/ng", "aXend", "oﬃce".
+ *
+ * The "/" and "X" repairs only run when the text plainly has the fault (a
+ * few "-/on" or "-/ng" word endings), so a document that merely says
+ * "and/or" or "OpenX" is left alone.
+ */
+export function repairPdfGlyphs(text: string): string {
+    text = text.replace(/[ﬀ-ﬆ]/g, ligature => ligature.normalize("NFKC"));
+    const faults = text.match(/[a-z]\/(?:ons?|ngs?|ve[sd]?|ves|tude|tu[a-z]*)\b/g)?.length ?? 0;
+    if (faults < 2) return text;
+    // Token by token, so a link or path is never touched.
+    return text.replace(/\S+/g, token => {
+        if (/:\/\/|^www\.|@/i.test(token)) return token;
+        return token
+            .replace(/(?<![\w/])[A-Za-z]*\/[a-z][A-Za-z/]*/g, word =>
+                REAL_SLASHES.test(word) ? word : word.replace(/\//g, "ti"))
+            // Lower-case letter, capital X, then a letter or the word's end: "aXend", "HewiX".
+            .replace(/(?<=[a-z])X(?=[a-z]|\b)/g, "tt");
+    });
+}
+
+const BULLET =/^([•▪◦●○■‣⁃\-*+])\s+(\S.*)$/;
 
 function marker(line: Line): { body: string; bodyX: number } | null {
     const match = BULLET.exec(line.text);

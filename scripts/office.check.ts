@@ -11,6 +11,7 @@
 import { deflateRawSync } from "node:zlib";
 import { csvCellRanges, formatDelimited, parseCsvLine } from "../lib/csv";
 import { docxToMarkdown, docxToText, xlsxSheets, xlsxToText } from "../lib/office";
+import { relocateQuote, sameWords, splitSources } from "../lib/docx-refresh";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -308,6 +309,30 @@ check("Word headings and paragraph breaks survive", markdown.startsWith("# Acces
 check("Word list nesting survives", markdown.includes("   - First item"), markdown);
 check("Word hyperlinks survive", markdown.includes("[Source](https://example.org/source?a=1&b=2)"), markdown);
 check("Word table cells survive", markdown.includes("| Name | Role |\n| --- | --- |"), markdown);
+
+// Senate Meeting #11 (12/4/18): the archive importer stored the agenda as
+// plain paragraphs, so its [Link]s were never links.
+const plainAgenda = "Agenda\n\nNew Business I (40 min)\n\nHomewood Outreach Programs Tour [Link] — Salem Reiner (25 min)\n\nMotion to vote\n\nMotion approved\n\n## Sources\n\n[Senate Meeting #11.docx](https://docs.google.com/document/d/x/edit)";
+const formattedAgenda = "**Agenda**\n\n1. **New Business I (40 min)**\n\n   1. Homewood Outreach Programs Tour \\[[Link](https://drive.google.com/file/d/1W6/view?usp=sharing)\\] — *Salem Reiner* (25 min)\n\n- Motion to vote\n\n- Motion approved";
+const stored = splitSources(plainAgenda);
+check("an archive record's Sources footer is set apart from its body",
+    stored.body.endsWith("Motion approved") && stored.sources.startsWith("## Sources\n"), stored);
+check("a fresh Word conversion with the same words is a formatting-only change", sameWords(stored.body, formattedAgenda));
+check("a changed word is not formatting-only", !sameWords(stored.body.replace("Salem", "Sam"), formattedAgenda));
+const tour = relocateQuote(formattedAgenda, "Homewood Outreach Programs Tour [Link] — Salem Reiner (25 min)");
+check("a citation broken by a new link moves onto the same words",
+    tour?.quote === "Homewood Outreach Programs Tour \\[[Link](https://drive.google.com/file/d/1W6/view?usp=sharing)\\] — *Salem Reiner* (25 min)"
+        && formattedAgenda.slice(tour.startOffset, tour.startOffset + tour.quote.length) === tour.quote, tour);
+check("a citation across list items moves with its markers",
+    relocateQuote(formattedAgenda, "Motion to vote\n\nMotion approved")?.quote === "Motion to vote\n\n- Motion approved");
+check("a repeated quote with no offset to go by is not moved", relocateQuote("Yes\n\n- Yes", "Yes") === null);
+// The agenda restates its petition item in Addendum A: the citation was the first copy.
+const twice = "Petition [Link] — Bannister\n\nAddendum A\n\nPetition [Link] — Bannister";
+const twiceFormatted = "1. Petition \\[[Link](https://a.example/p)\\] — Bannister\n\n**Addendum A**\n\n- Petition \\[[Link](https://a.example/p)\\] — Bannister";
+const second = relocateQuote(twiceFormatted, "Petition [Link] — Bannister", { content: twice, startOffset: twice.lastIndexOf("Petition") });
+check("a repeated quote keeps the copy its old offset pointed at",
+    relocateQuote(twiceFormatted, "Petition [Link] — Bannister", { content: twice, startOffset: 0 })?.startOffset === 3
+        && second?.startOffset === twiceFormatted.lastIndexOf("Petition"), second);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

@@ -25,6 +25,10 @@ const BODY_START = new RegExp(SECTION.source + "|" + RESOLUTION_CLAUSE.source, "
 const BILL_NUMBER = /\{?\s*S[. -]*(?:Bill|B|Resolution|Res)[.\s-]/i;
 const matchingText = (text: string) => text.replace(/[\u200b-\u200d\ufeff]/g, "");
 const BILL_PURPOSE = /^(?:A (?:Bill|Resolution)\b|An?\s+(?:SGA\s+)?(?:Funding )?Bill\b|An?\s+Act\b|Act\s+to\b)/i;
+// "Introduced by:", "Introduced & Composed By:", "Co-Sponsored By:", "Authored by:".
+// Older templates also break "Co-" and "Sponsored By:" onto separate lines.
+const CREDIT_LABEL = /^(?:(?:Introduced|Composed|Authored|Written)(?:\s*(?:&|and)\s*(?:Composed|Authored|Written|Introduced))?|(?:Co-?\s*)?Sponsored)\s+by\s*:/i;
+const CREDIT_SPLIT = /(?=(?:Introduced(?:\s*(?:&|and)\s*\w+)?|(?<!Co-?\s*)Sponsored|Co-?\s*Sponsored)\s+by\s*:)/;
 
 export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks: Block[] } {
     blocks = presentPagedBill(blocks);
@@ -49,6 +53,7 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
     let consumed = 0;
     let purposeSeen = false;
     let numberSeen = false;
+    let carry: { runs: InlineRun[]; sectionId?: string } | null = null;
     for (const block of blocks) {
         // Empty export furniture is not a boundary, and must retain any IDs.
         if (block.kind === "rule" || ((block.kind === "table" || block.kind === "layout") &&
@@ -61,12 +66,23 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
         const text = runsText(block.runs);
         // Older resolutions export each sponsor as a separate paragraph.
         if (consumed >= 64) break;
-        const starts = [0, ...Array.from(text.matchAll(/\n|(?=(?:Introduced by:|Sponsored by:|Presented for|Referred to the senate\b|\{[\s\u200b-\u200d]*S[. -]*(?:Bill|B|Resolution|Res)\b|An? (?:Act|Bill|Resolution)\b))/gi), match => match.index!).filter(at => at > 0), text.length];
+        const starts = [0, ...Array.from(text.matchAll(new RegExp(String.raw`\n|` + CREDIT_SPLIT.source + String.raw`|(?=(?:Presented for|Referred to the senate\b|\{[\s\u200b-\u200d]*S[. -]*(?:Bill|B|Resolution|Res)\b|An? (?:Act|Bill|Resolution)\b))`, "gi")), match => match.index!).filter(at => at > 0), text.length];
         for (let index = 0; index < starts.length - 1; index++) {
             const start = starts[index], end = starts[index + 1];
             const value = matchingText(text.slice(start, end)).trim();
             if (!value) continue;
-            const kind = /^(Introduced|Sponsored) by:/i.test(value) ? "credit"
+            // "Co-" typed on its own line (or paragraph) before "Sponsored By:"
+            // is one label; hold it and print it at the front of that line.
+            const nextBlock = blocks[consumed + 1];
+            const following = index + 2 < starts.length ? text.slice(end, starts[index + 2])
+                : nextBlock && "runs" in nextBlock ? runsText(nextBlock.runs) : "";
+            if (/^Co-?$/i.test(value) && /^\s*Sponsored\s+by\s*:/i.test(matchingText(following))) {
+                const leading = text.slice(start, end).length - text.slice(start, end).trimStart().length;
+                carry = { runs: sliceRuns(block.runs, start + leading, start + leading + value.length),
+                    sectionId: index === 0 ? block.sectionId : undefined };
+                continue;
+            }
+            const kind = CREDIT_LABEL.test(value) ? "credit"
                 : /^(?:Presented for|Referred to the senate\b)/i.test(value) ? "reading"
                 : BILL_PURPOSE.test(value) ? "purpose"
                 : new RegExp("^" + BILL_NUMBER.source, "i").test(value) ? "number"
@@ -75,7 +91,17 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
                 : purposeSeen ? "title" : numberSeen ? "purpose" : "institution";
             if (kind === "purpose") purposeSeen = true;
             if (kind === "number") numberSeen = true;
-            header.push({ kind, runs: sliceRuns(block.runs, start, end), ...(index === 0 ? { sectionId: block.sectionId } : {}) });
+            const runs = sliceRuns(block.runs, start, end);
+            const sectionId = carry?.sectionId ?? (index === 0 ? block.sectionId : undefined);
+            if (carry) {
+                // Drop the break between "Co-" and "Sponsored" so it reads as one word.
+                const first = runs.findIndex(run => run.text.trim() || run.navigationId || run.anchor);
+                if (first > 0) runs.splice(0, first);
+                if (runs[0] && !runs[0].navigationId) runs[0] = { ...runs[0], text: runs[0].text.trimStart() };
+                runs.unshift(...carry.runs);
+                carry = null;
+            }
+            header.push({ kind, runs, ...(sectionId ? { sectionId } : {}) });
         }
         consumed++;
     }
@@ -117,6 +143,67 @@ export function signatureCards(cards: { runs: InlineRun[]; sectionId?: string }[
     const text = runsText(runs);
     const starts = [0, ...Array.from(text.matchAll(/^\s*_{3,}/gm), match => match.index!).filter(at => at > 0), text.length];
     return starts.slice(0, -1).map((start, index) => ({ runs: sliceRuns(runs, start, starts[index + 1]) }));
+}
+
+/**
+ * Signers whose template separates them with horizontal rules, not "____"
+ * lines: rule, name, office (one or more short paragraphs), rule, name, ...
+ * Reads from `start` (the first block after the signatures heading) and
+ * returns one card per ruled group and the index after the last one taken.
+ */
+export function ruledSignatureCards(blocks: Block[], start: number): { cards: { runs: InlineRun[] }[]; end: number } {
+    const cards: { runs: InlineRun[] }[] = [];
+    let index = start;
+    while (blocks[index]?.kind === "rule") {
+        const group: Extract<Block, { kind: "paragraph" }>[] = [];
+        let next = index + 1;
+        for (let block = blocks[next]; block?.kind === "paragraph" && !block.clause; block = blocks[++next]) {
+            const text = runsText(block.runs).trim();
+            if (!text || text.length > 160 || /^(?:SECTION\b|Signatures?\b|Sources\b)/i.test(text) || group.length >= 4) break;
+            group.push(block);
+        }
+        if (!group.length) break;
+        cards.push({ runs: group.flatMap((block, position): InlineRun[] => [
+            ...(position ? [{ text: "\n", bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] : []),
+            ...(block.sectionId ? [{ text: "", navigationId: block.sectionId, bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] : []),
+            ...trimRunsEnd(block.runs),
+        ]) });
+        index = next;
+    }
+    // The rule closing the last signer belongs to the block, not the page.
+    if (cards.length && blocks[index]?.kind === "rule") index++;
+    return { cards, end: index };
+}
+
+/**
+ * The officials "a copy of this resolution be transmitted to:" names, one per
+ * paragraph. `start` is the block after that line; returns the recipient
+ * paragraphs (none unless at least two) and the index after the last one.
+ */
+export function transmittalRecipients(blocks: Block[], start: number): { items: Extract<Block, { kind: "paragraph" }>[]; end: number } {
+    const items: Extract<Block, { kind: "paragraph" }>[] = [];
+    let index = start;
+    for (let block = blocks[index]; block?.kind === "paragraph" && !block.clause; block = blocks[++index]) {
+        const text = runsText(block.runs).trim();
+        if (!text || text.length > 160 || /[.;:]$/.test(text) ||
+            /^(?:The\s+(?:Resolution|Bill|Act)\b|Be\s+It\b|Upon\b|Signatures?\b|SECTION\b|Whereas\b)/i.test(text)) break;
+        items.push(block);
+    }
+    return items.length >= 2 ? { items, end: index } : { items: [], end: start };
+}
+
+export const TRANSMITTAL = /\b(?:transmitted|sent|forwarded|delivered|addressed)\s+to:\s*$/i;
+
+function trimRunsEnd(runs: InlineRun[]): InlineRun[] {
+    const result = [...runs];
+    for (let last = result.length - 1; last >= 0; last--) {
+        const run = result[last]!;
+        if (run.navigationId || run.image) break;
+        const text = run.text.replace(/\s+$/, "");
+        if (text || run.anchor) { result[last] = { ...run, text }; break; }
+        result.pop();
+    }
+    return result;
 }
 
 export function signatureIdentity(runs: InlineRun[]): { rule: InlineRun[]; name: InlineRun[]; separator: InlineRun[]; position: InlineRun[] } {

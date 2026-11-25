@@ -8,7 +8,7 @@ import {
     isDocxFile,
     isPdfFile,
 } from "../lib/drive";
-import { pdfItemsToText, type PdfTextItem } from "../lib/pdf-text";
+import { pdfItemsToText, repairPdfGlyphs, type PdfTextItem } from "../lib/pdf-text";
 import { renderDocument } from "../lib/render";
 
 let failures = 0;
@@ -49,6 +49,10 @@ check("extracted PDF bullets render as three nested lists", thirdList?.kind === 
 check("PDF text without bullets retains reading order and page breaks",
     pdfItemsToText([[pdfLine(72, 700, "First")], [pdfLine(72, 700, "Second")]]) === "First\n\nSecond");
 check("empty PDF text layers remain empty", pdfItemsToText([[]]) === "");
+const brokenGlyphs = "Subject: Re: Follow up OIE Mee/ng. I’d like to put this on the record before I leave oﬃce: the mee/ng is when most cannot aXend. Vice Provost HewiX announced the changes, which cons/tute a paXern of /mely administra/on. Use and/or, w/ notes, and http://a.b/c/d.";
+check("PDF ligature glyphs are restored when the fault is present", repairPdfGlyphs(brokenGlyphs)
+    === "Subject: Re: Follow up OIE Meeting. I’d like to put this on the record before I leave office: the meeting is when most cannot attend. Vice Provost Hewitt announced the changes, which constitute a pattern of timely administration. Use and/or, w/ notes, and http://a.b/c/d.", repairPdfGlyphs(brokenGlyphs));
+check("slashes are left alone without the ligature fault", repairPdfGlyphs("Bring a pen and/or pencil; 9/12 meeting; MaX and Pri/ka.") === "Bring a pen and/or pencil; 9/12 meeting; MaX and Pri/ka.");
 
 /**
  * A one-page PDF whose only content is `phrase`, using Helvetica so PDF.js

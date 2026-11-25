@@ -681,9 +681,9 @@ export async function extractPdfText(bytes: Uint8Array): Promise<string> {
     if (bytes.byteLength === 0) return "";
 
     const { extractTextItems } = await import("unpdf");
-    const { pdfItemsToText } = await import("./pdf-text");
+    const { pdfItemsToText, repairPdfGlyphs } = await import("./pdf-text");
     const { items } = await extractTextItems(bytes);
-    return sanitizeExport(pdfItemsToText(items));
+    return sanitizeExport(repairPdfGlyphs(pdfItemsToText(items)));
 }
 
 /**

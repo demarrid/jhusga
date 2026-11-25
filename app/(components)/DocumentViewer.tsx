@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { runsText, type Block, type InlineRun, type TableRow } from "@/lib/render";
 import styles from "@/app/documents/document-detail.module.css";
-import { presentBill, signatureCards, signatureIdentity } from "@/lib/bill-presentation";
+import { presentBill, ruledSignatureCards, signatureCards, signatureIdentity, TRANSMITTAL, transmittalRecipients } from "@/lib/bill-presentation";
 
 /**
  * Renders a parsed document with its cited passages highlighted.
@@ -64,6 +64,22 @@ function renderBlocks(blocks: Block[]): ReactNode {
             ? /^\s*Signatures? of (?:Enactment|Ceremony):?\s*(?:\n|$)/i.exec(runsText(block.runs)) : null;
         if (!heading || !(block.kind === "paragraph" || block.kind === "heading")) {
             result.push(<BlockView key={index} block={block} />);
+            // "...be transmitted to:" followed by one official per paragraph.
+            if (block.kind === "paragraph" && !block.clause && TRANSMITTAL.test(runsText(block.runs))) {
+                const recipients = transmittalRecipients(blocks, index + 1);
+                if (recipients.items.length) {
+                    result.push(
+                        <ul key={`${index}-recipients`} className={styles.recipientList}>
+                            {recipients.items.map((item, itemIndex) => (
+                                <li key={itemIndex} id={item.sectionId} className={item.sectionId ? styles.sectionAnchor : undefined}>
+                                    {renderRuns(item.runs)}
+                                </li>
+                            ))}
+                        </ul>,
+                    );
+                    index = recipients.end - 1;
+                }
+            }
             continue;
         }
         const [label, remainder] = splitTypedMarker(block.runs, heading[0].length);
@@ -84,12 +100,19 @@ function renderBlocks(blocks: Block[]): ReactNode {
             cards.push(next);
             index += 1;
         }
+        // Templates that separate signers with horizontal rules instead.
+        const ruled = ruledSignatureCards(blocks, index + 1);
+        const groupKey = index;
+        if (ruled.cards.length) index = ruled.end - 1;
+        // A ruled card's offices are separate source paragraphs, so their breaks are kept.
+        const signers = [...(cards.length ? signatureCards(cards) : []), ...ruled.cards.map(card => ({ ...card, stacked: true }))]
+            .filter(card => runsText(card.runs).trim() || card.runs.some(run => run.navigationId));
         result.push(
-            <section key={index} className={styles.signatureGroup}>
+            <section key={groupKey} className={styles.signatureGroup}>
                 <h3 id={block.sectionId} className={styles.sectionAnchor}>{renderRuns(label, false)}</h3>
                 <div className={styles.signatureGrid}>
-                    {signatureCards(cards).map((card, cardIndex) => (
-                        <div key={cardIndex} className={styles.signatureCard}>
+                    {signers.map((card, cardIndex) => (
+                        <div key={cardIndex} className={"stacked" in card ? `${styles.signatureCard} ${styles.signatureCardStacked}` : styles.signatureCard}>
                             <Signature runs={card.runs} />
                         </div>
                     ))}

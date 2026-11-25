@@ -1,7 +1,7 @@
 import { indexSections } from "../lib/outline";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { presentBill } from "../lib/bill-presentation";
+import { presentBill, ruledSignatureCards, signatureIdentity, TRANSMITTAL, transmittalRecipients } from "../lib/bill-presentation";
 import { renderDocument, runsText, blockSectionIds, type Block, type InlineRun } from "../lib/render";
 import { canonicalTitle } from "../lib/titles";
 import { extractContributors } from "../lib/contributors";
@@ -29,6 +29,45 @@ const header = presentBill(renderDocument(clerpa, [])).header;
 for (const name of ["Jazzlyn Fernandez", "Sumire Sumi"]) {
     assert.equal(header.find(line => runsText(line.runs).includes(name))?.kind, "credit");
 }
+// SGA-R-1819.11: "Introduced & Composed By:" and a "Co-" broken from "Sponsored By:".
+const councilLines = ["Senate", "of the", "Student Government Association", "of", "The Johns Hopkins University",
+    "{ S. Resolution 18-19, 11 }", "A Resolution Recommending:",
+    "The Creation of a University-wide Council or other entity of Students, Faculty, and Staff",
+    "Introduced & Composed By:", "Executive President AJ Tsang and considered this 30th day of April in the Year 2019",
+    "Co-", "Sponsored By:", "Executive Vice President Miranda Bannister of the Executive Board",
+    "Senator Ash Panakam of the Senior Class",
+    "Referred to the senate by THE COMMITTEE ON CIVIC ENGAGEMENT which recommends its PASSAGE by a vote of 6 to 0."];
+const councilBody = "Whereas the Johns Hopkins Student Government Association (SGA) serves; and\n\n";
+for (const separator of ["\n", "\n\n"]) {
+    const council = presentBill(renderDocument(councilLines.join(separator) + "\n\n" + councilBody, [])).header;
+    const kinds = (kind: string) => council.filter(line => line.kind === kind).map(line => runsText(line.runs).trim());
+    assert.deepEqual(kinds("title"), [councilLines[7]], "only the bill's name is set as its title");
+    assert.deepEqual(kinds("credit"), ["Introduced & Composed By:", councilLines[9], "Co-Sponsored By:", councilLines[12], councilLines[13]]);
+    assert.equal(kinds("reading").length, 1);
+}
+assert.equal(runsText(presentBill(renderDocument("Senate\nof the\nStudent Government Association\nof\nThe Johns Hopkins University\n{ S. Resolution 18-19, 11 }\nA Resolution Recommending:\nA Council\nCo-Sponsored By: Senator Ash Panakam\n\n" + councilBody, [])).header.at(-1)!.runs).trim(),
+    "Co-Sponsored By: Senator Ash Panakam", "a typed Co-Sponsored label is not split");
+// SGA-R-2021.04: recipients one per paragraph; signers separated by rules.
+const grievance = renderDocument([
+    "Be it further resolved that a copy of this resolution be transmitted to:",
+    "Provost and Senior Vice President of Academic Affairs, Sunil Kumar",
+    "Dean of the Whiting School of Engineering, Ed Schlesinger",
+    "The resolution hereby passes by a vote of 25 - 0 with 0 abstentions. ",
+    "Signatures of Enactment:", "---",
+    "Mehak Ali ", "President of the Senate ", "Executive Vice President of the Johns Hopkins SGA", "---",
+    "Sam Mollin ", "Executive President of the Johns Hopkins SGA", "---",
+    "## Sources",
+].join("\n\n"), []);
+const transmittal = grievance.findIndex(block => "runs" in block && TRANSMITTAL.test(runsText(block.runs)));
+assert.deepEqual(transmittalRecipients(grievance, transmittal + 1).items.map(item => runsText(item.runs)),
+    ["Provost and Senior Vice President of Academic Affairs, Sunil Kumar", "Dean of the Whiting School of Engineering, Ed Schlesinger"]);
+const signaturesAt = grievance.findIndex(block => "runs" in block && /^Signatures of Enactment/.test(runsText(block.runs)));
+const ruled = ruledSignatureCards(grievance, signaturesAt + 1);
+assert.deepEqual(ruled.cards.map(card => runsText(card.runs)),
+    ["Mehak Ali\nPresident of the Senate\nExecutive Vice President of the Johns Hopkins SGA", "Sam Mollin\nExecutive President of the Johns Hopkins SGA"]);
+assert.equal(grievance[ruled.end]?.kind, "heading", "the closing rule is taken with the signers");
+assert.equal(signatureIdentity(ruled.cards[0]!.runs).name.map(run => run.text).join(""), "Mehak Ali");
+assert.equal(transmittalRecipients(renderDocument("Sent to:\n\nOne person", []), 1).items.length, 0, "one line is not a list");
 const people = extractContributors(slides, "Ceramics", "presentation");
 assert(people.some(person => person.name === "Andrei Espelien" && person.role === "introducer"));
 assert.equal(people.filter(person => person.role === "sponsor").length, 2);

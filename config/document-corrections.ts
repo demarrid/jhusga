@@ -34,6 +34,11 @@ export const DOCUMENT_CORRECTIONS: Record<string, { displayTitle: string; datedO
         displayTitle: "Senate General Body Meeting #9 — Minutes (10/20/26)",
         datedOn: "2026-10-20",
     },
+    // Drive filename "Miranda_s complaint OIE": Miranda Bannister's May 5, 2019
+    // email to the incoming Executive Board about the late OIE follow-up meeting.
+    "1OMUZGqKDGp0uCWUwes5BwoYN5OzuZ8hc": {
+        displayTitle: "Miranda Bannister's Complaint About the Late OIE Meeting",
+    },
     // The completed bill retains its template filename in Drive.
     "1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM": {
         displayTitle: "Take Back The Night Rally Funding Bill",

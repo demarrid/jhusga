@@ -578,6 +578,15 @@
   min-width: 24rem;
 }
 
+/* The officials a resolution is transmitted to: one per line, no gaps. */
+.recipientList {
+  margin: -0.5rem 0 1.5rem;
+}
+
+.recipientList li + li {
+  margin-top: 0.15rem;
+}
+
 .signatureGroup {
   margin: 2.5rem 0;
 }
@@ -608,6 +617,10 @@
   color: #16365e;
   font-size: 1.08rem;
   font-weight: 650;
+}
+
+.signatureCardStacked .signaturePosition {
+  white-space: pre-line;
 }
 
 .signatureSeparator {
