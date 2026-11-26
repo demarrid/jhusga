@@ -25,7 +25,8 @@ export type RedactionKind =
     | "home address"
     | "date of birth";
 
-export type SensitiveSpan = { start: number; end: number; kind: RedactionKind };
+/** `rule` says, in words, why the range was removed; it never quotes the value. */
+export type SensitiveSpan = { start: number; end: number; kind: RedactionKind; rule: string };
 
 const placeholder = (kind: RedactionKind) => `[REDACTED: ${kind}]`;
 const PLACEHOLDER = /\[REDACTED: [a-z ]+\]/;
@@ -104,9 +105,11 @@ const PHONE = /(?<![\d\w-])(?:\+?1[-.\s])?(?:\(([2-9]\d{2})\)\s?|([2-9]\d{2})[-.
 /** Exchanges the University publishes for its offices, and toll-free lines. */
 const INSTITUTIONAL_EXCHANGES = new Set(["410-516", "443-997", "410-955", "410-614", "410-502", "410-735", "443-287", "667-208", "410-338", "410-235"]);
 const TOLL_FREE = new Set(["800", "833", "844", "855", "866", "877", "888"]);
-const BUSINESS_CONTEXT = /\b(?:inc\.?|llc|ltd|company|co\.|restaurant|hotel|cater(?:ing|er)|stadium|arena|park|yards|theat(?:re|er)|museum|church|synagogue|consulting|tickets|box office|reservations)\b|www\.|https?:\/\/|\binfo@/i;
+const BUSINESS_CONTEXT = /\b(?:inc\.?|llc|ltd|company|co\.|restaurant|hotel|cater(?:ing|er)|stadium|arena|ballpark|yards|theat(?:re|er)|museum|church|synagogue|consulting|tickets|box office|reservations|rentals?|showroom|invoice|remit to)\b|www\.|https?:\/\/|\binfo@|\bfax\b|fax\s*[:#.]/i;
+/** Text naming a business, venue or website, so an address or number in it is the business's. */
+export const isBusinessContext = (text: string) => BUSINESS_CONTEXT.test(text);
 const PERSONAL_PHONE_CONTEXT = /\b(?:cell|mobile|home phone|personal|my (?:number|phone)|text me|call me)\b/i;
-const OFFICE_PHONE_CONTEXT = /\b(?:fax|facsimile|office|department|dept|university|hopkins|cent(?:er|re)|suite|ext\.?|extension|hotline|helpline|main line|services|police|security|switchboard|reservations|box office|tickets|restaurant|hotel|cater(?:ing|er)|inc\.?|llc|company|co\.|zoom|dial|meeting id|for (?:more )?information|for details|directions)\b|www\.|https?:\/\/|\binfo@|fax\s*[:#.]/i;
+const OFFICE_PHONE_CONTEXT = /\b(?:fax|facsimile|office|department|dept|university|hopkins|cent(?:er|re)|suite|ext\.?|extension|hotline|helpline|main line|services|police|security|switchboard|reservations|box office|tickets|restaurant|hotel|cater(?:ing|er)|inc\.?|llc|company|co\.|zoom|dial|meeting id|for (?:more )?information|for details|directions|rentals?|showroom|invoice|remit to)\b|www\.|https?:\/\/|\binfo@|fax\s*[:#.]/i;
 
 /** A street address carrying an apartment or unit, anywhere in the text. */
 const RESIDENTIAL_STREET = new RegExp(
@@ -153,13 +156,15 @@ function institutionalPhone(area: string, exchange: string, line: string, nearby
  */
 export function findSensitiveSpans(text: string): SensitiveSpan[] {
     const spans: SensitiveSpan[] = [];
-    const add = (start: number, end: number, kind: RedactionKind, anyValue = false) => {
+    const add = (start: number, end: number, kind: RedactionKind, rule: string, anyValue = false) => {
         if (end <= start) return;
         // A value that is already a placeholder, or only blanks, is not one.
         const value = text.slice(start, end).replace(/\[REDACTED: [a-z ]+\]/g, "");
         if (anyValue ? !value.trim() : !/\d/.test(value)) return;
-        spans.push({ start, end, kind });
+        spans.push({ start, end, kind, rule });
     };
+    // A label is printed form text; only digits in it (a line number) are masked.
+    const labelled = (label: string) => `the value after the label “${label.replace(/[*_:=]+/g, " ").replace(/\d/g, "#").replace(/\s+/g, " ").trim()}”`;
 
     for (const rule of LABEL_RULES) {
         for (const match of text.matchAll(rule.label)) {
@@ -169,28 +174,30 @@ export function findSensitiveSpans(text: string): SensitiveSpan[] {
             if (rule.keep?.(value, text.slice(...lineBounds(text, match.index)))) continue;
             if (rule.value) {
                 const part = rule.value.exec(value);
-                if (part) add(from + part.index, from + part.index + part[0].length, rule.kind);
+                if (part) add(from + part.index, from + part.index + part[0].length, rule.kind, `the number after the label “${match[0].replace(/[*_:]+/g, " ").trim()}”`);
                 continue;
             }
-            add(from, end, rule.kind, rule.anyValue);
+            add(from, end, rule.kind, labelled(match[0]), rule.anyValue);
         }
     }
 
     for (const match of text.matchAll(LOOSE_IDENTIFIER)) {
         const start = match.index + match[0].length - match[1].length;
-        add(start, start + match[1].length, "financial identifier");
+        add(start, start + match[1].length, "financial identifier", "a nine-digit number following an SSN, TIN or EIN label");
     }
-    for (const match of text.matchAll(BARE_SSN)) add(match.index, match.index + match[0].length, "personal identifier");
+    for (const match of text.matchAll(BARE_SSN)) add(match.index, match.index + match[0].length, "personal identifier", "a number in Social Security shape (###-##-####)");
     for (const match of text.matchAll(RESIDENTIAL_STREET)) {
         // "30 W. Pennsylvania Ave. #1" under a shop's name is the shop.
         if (BUSINESS_CONTEXT.test(nearbyLines(text, match.index))) continue;
-        add(match.index, match.index + match[0].length, "home address");
+        add(match.index, match.index + match[0].length, "home address", "a street address with an apartment or unit number, not under a business name");
     }
     for (const match of text.matchAll(PHONE)) {
         const area = match[1] ?? match[2];
         const line = text.slice(...lineBounds(text, match.index));
         if (institutionalPhone(area, match[3], line, nearbyLines(text, match.index))) continue;
-        add(match.index, match.index + match[0].length, "phone number");
+        add(match.index, match.index + match[0].length, "phone number", PERSONAL_PHONE_CONTEXT.test(line)
+            ? "a phone number on a line that calls it a cell, mobile or personal number"
+            : "a phone number with no University exchange, office, business, fax or toll-free context around it");
     }
 
     // Widest first at each start, then drop anything inside an earlier range.

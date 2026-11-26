@@ -51,7 +51,8 @@ Its report (`.archive-local/purge-progress.json`) holds counts only.
 
 A document whose stored text carries a placeholder gets no Drive link. Its
 page says the original is withheld until a redacted copy is approved; then
-"view source" opens that copy from `/api/documents/[documentId]/source`. Links
+its "Open source (personal details blacked out)" link opens that copy from
+`/api/documents/[documentId]/source`. Links
 to the same Drive files inside the text (an archive record's `## Sources`
 footer) are pointed at the copy, or dropped.
 
@@ -63,6 +64,7 @@ npm run redact:sources -- --flagged          # every document with a placeholder
 npm run redact:sources -- --document ID --upload
 npm run redact:sources -- --approve ID       # after reviewing every page
 npm run redact:sources -- --withdraw ID
+npm run redact:sources -- --explain ID       # rationale.html: every box and why
 ```
 
 For each document, `scripts/source-redact.ts`:
@@ -74,13 +76,20 @@ For each document, `scripts/source-redact.ts`:
    OCR (RapidOCR, upright and turned a quarter each way, for margin notes) on
    scanned pages and pages carrying images;
 3. places boxes (`lib/source-redaction.ts`):
-   - over any word the text filter would remove, and over handwriting OCR
-     reads as an SSN or a street;
+   - over any word the text filter would remove, judged with the lines stacked
+     above and below it in the same column (so a "Tel:" under a rental
+     company's name and showroom stays);
+   - over anything OCR reads in SSN shape, and over a house number and street
+     on a short line, unless that line or its neighbours name a campus
+     building, office or business (run-together OCR such as
+     "MattinCenterSuite210" is split back into words first). A price, a
+     word that merely ends in "st", and an address named in a sentence are
+     not streets;
    - over the field beside and below a form label such as "SSN" or "Address
      (Home address is required...)", read or not, since handwriting is often
      unreadable and often written above the line;
-   - over the whole page for a W-9, W-4 or direct deposit form, with a notice
-     printed on it;
+   - over the whole page for a W-9, W-4 or direct deposit form, which then
+     reads "This is a W-9." (or W-4, or direct deposit form) in white;
    - wherever `config/source-redactions.json` says (see below);
 4. burns the boxes in with PyMuPDF redaction, which deletes the text, drawing
    and image pixels underneath, then flattens every page to an image, so the
@@ -93,6 +102,12 @@ For each document, `scripts/source-redact.ts`:
 Work files, previews (`preview/page-NNN.png`) and `report.json` stay in
 `.archive-local/redacted/<document id>/`, outside Git. Reports hold counts and
 page numbers, never values.
+
+Every box records a reason. `--explain ID` writes `rationale.html` there: each
+box cut from the built copy (outlined in red, so it shows nothing it hides),
+with what triggered it, quoting the line read with the covered value as ▇▇▇
+and other digits as #. It refuses if the rules now place boxes differently from
+the built copy; rebuild first.
 
 **Review before approving.** OCR cannot read every hand, and the re-read check
 uses the same OCR. A stored copy is `pending` and is never served until
@@ -107,13 +122,15 @@ uses the same OCR. A stored copy is `pending` and is never served until
   "DOCUMENT-ID": {
     "note": "Phone numbers written up the margin of page 15",
     "pages": [8],
-    "boxes": [{ "page": 15, "box": [0.78, 0.05, 1, 0.6] }]
+    "pageNotice": "This is a W-2.",
+    "boxes": [{ "page": 15, "box": [0.78, 0.05, 1, 0.6], "note": "phone number up the margin" }]
   }
 }
 ```
 
-`pages` withholds whole pages; `boxes` are `[left, top, right, bottom]` as
-fractions of the page, pages counted from 1. Rebuild after editing; OCR is
+`pages` withholds whole pages, which read `pageNotice` (default "This page is
+withheld."); `boxes` are `[left, top, right, bottom]` as fractions of the page,
+pages counted from 1, and each box's `note` is its reason in the rationale. Rebuild after editing; OCR is
 cached while the source is unchanged.
 
 ### Limits

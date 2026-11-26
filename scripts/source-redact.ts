@@ -10,6 +10,9 @@
  *       Serve a stored copy, after a person has looked at every preview page.
  *   node --import tsx scripts/source-redact.ts --withdraw ID
  *       Stop serving it; the page withholds the original again.
+ *   node --import tsx scripts/source-redact.ts --explain ID
+ *       Write rationale.html: every box, cut from the built copy, with why it
+ *       was placed. Uses the cached OCR; rebuilds and stores nothing.
  *
  * `--flagged` is every document whose stored text the personal-data filter
  * changed (it carries a "[REDACTED: ...]" placeholder), News-Letter articles
@@ -136,8 +139,56 @@ async function build(doc: Doc, manual: ManualRedactions | undefined): Promise<Bu
     await writeFile(path.join(dir, "report.json"), JSON.stringify(report, null, 2));
     return {
         bytes: Uint8Array.from(await readFile(out)), sourceIds: ids, sourceSha256: hash, pageCount: applied.pages, report,
-        redactions: boxes.map(({ page, kind, method }) => ({ page: page + 1, kind, method })),
+        redactions: boxes.map(({ page, kind, method, reason }) => ({ page: page + 1, kind, method, reason })),
     };
+}
+
+const escapeHtml = (text: string) => text.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+/**
+ * Every box of a built copy with its reason, as one self-contained page. The
+ * pictures are cut from the redacted copy itself, so they show the black box
+ * (outlined in red), never what is under it; quoted lines mask the value.
+ */
+async function explain(doc: Doc, manual: ManualRedactions | undefined): Promise<string> {
+    const dir = path.join(WORK, doc.id);
+    const pages = (JSON.parse(await readFile(path.join(dir, "lines.json"), "utf8")) as { pages: SourcePage[] }).pages;
+    const boxes = planRedactions(pages, manual);
+    // Explain only the boxes actually drawn: same pages, same places.
+    const built = JSON.parse(await readFile(path.join(dir, "plan.json"), "utf8")) as { boxes: { page: number; box: number[] }[] };
+    const where = (list: { page: number; box: number[] }[]) => JSON.stringify(list.map(b => [b.page, b.box.map(n => Math.round(n * 10))]));
+    if (where(built.boxes) !== where(boxes)) {
+        throw new Error(`The rules now place boxes differently from the built copy (${built.boxes.length} drawn, ${boxes.length} now); rebuild before explaining`);
+    }
+    await writeFile(path.join(dir, "explain-plan.json"), JSON.stringify({ boxes }));
+    py("crops", path.join(dir, "redacted.pdf"), path.join(dir, "explain-plan.json"), path.join(dir, "explain"));
+
+    const label = { value: "Detected value", field: "Form field", manual: "Placed by hand" } as const;
+    const counts = boxes.reduce<Record<string, number>>((all, box) => ({ ...all, [box.kind]: (all[box.kind] ?? 0) + 1 }), {});
+    const entries = await Promise.all(boxes.map(async (box, index) => {
+        const png = await readFile(path.join(dir, "explain", `box-${String(index + 1).padStart(3, "0")}.png`));
+        return `<article><img src="data:image/png;base64,${png.toString("base64")}" alt="Box ${index + 1}">
+<div><h3>#${index + 1} · page ${box.page + 1} · ${escapeHtml(box.kind)} <span class="m ${box.method}">${box.kind === "withheld page" ? "Whole page" : label[box.method]}</span></h3>
+<p>${escapeHtml(box.reason)}</p></div></article>`;
+    }));
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Why each box: ${escapeHtml(doc.title)}</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#1d1d1f}
+h1{font-size:1.4rem;margin-bottom:.2rem}.sub{color:#555;margin-top:0}article{display:grid;grid-template-columns:minmax(0,420px) 1fr;gap:1.2rem;
+padding:1rem 0;border-top:1px solid #ddd;align-items:start}img{max-width:100%;border:1px solid #ccc}h3{font-size:1rem;margin:0 0 .4rem}
+.m{font-size:.75rem;font-weight:600;padding:.1rem .45rem;border-radius:.3rem;margin-left:.4rem;vertical-align:middle}
+.value{background:#e3efff;color:#0b4a9e}.field{background:#fff1d6;color:#7a4b00}.manual{background:#f1e6ff;color:#5b2a9e}
+ul{padding-left:1.2rem}code{background:#f3f3f3;padding:0 .25rem}</style></head><body>
+<h1>Why each box: ${escapeHtml(doc.title)}</h1>
+<p class="sub">${boxes.length} boxes on ${new Set(boxes.map(b => b.page)).size} of ${pages.length} pages ·
+<a href="https://www.jhusga.org/documents/${doc.id}">document page</a> · <a href="https://www.jhusga.org/api/documents/${doc.id}/source">published redacted PDF</a></p>
+<ul><li>Pictures are cut from the published copy: the red outline marks the box being explained, and what is under it is already gone.</li>
+<li>Quoted lines are what the text layer or OCR read there, with the covered value as ▇▇▇ and other digits as #.</li>
+<li>Kinds: ${Object.entries(counts).map(([kind, count]) => `${escapeHtml(kind)} ${count}`).join(", ")}.</li></ul>
+${entries.join("\n")}
+</body></html>`;
+    const out = path.join(dir, "rationale.html");
+    await writeFile(out, html);
+    return path.resolve(out);
 }
 
 async function main() {
@@ -149,6 +200,15 @@ async function main() {
                     data: { status, approvedAt: status === "approved" ? new Date() : null } });
                 console.log(JSON.stringify({ documentId: id, status: updated.count ? status : "no stored copy" }));
             }
+        }
+
+        const explainIds = argValues("--explain");
+        if (explainIds.length) {
+            const manual = existsSync(MANUAL) ? JSON.parse(await readFile(MANUAL, "utf8")) as Record<string, ManualRedactions> : {};
+            const docs = await prisma.document.findMany({ where: { id: { in: explainIds } },
+                select: { id: true, title: true, driveFileId: true, mimeType: true, content: true } });
+            for (const doc of docs) console.log(JSON.stringify({ documentId: doc.id, rationale: await explain(doc, manual[doc.id]) }));
+            return;
         }
 
         const ids = argValues("--document");

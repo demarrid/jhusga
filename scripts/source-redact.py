@@ -146,11 +146,11 @@ def apply(path, plan_path, out_path, preview_dir):
     plan = json.loads(Path(plan_path).read_text())
     dpi, quality = int(plan.get('dpi', 150)), int(plan.get('quality', 75))
     doc = pymupdf.open(path)
-    boxes, withheld = {}, set()
+    boxes, withheld = {}, {}
     for item in plan['boxes']:
         boxes.setdefault(item['page'], []).append(pymupdf.Rect(item['box']))
         if item.get('kind') == 'withheld page':
-            withheld.add(item['page'])
+            withheld[item['page']] = item.get('notice') or 'This page is withheld.'
     for number, rects in boxes.items():
         page = doc[number]
         for rect in rects:
@@ -159,10 +159,10 @@ def apply(path, plan_path, out_path, preview_dir):
                               text=pymupdf.PDF_REDACT_TEXT_REMOVE)
         if number in withheld:
             # Drawn before flattening, so it becomes pixels like everything else.
-            note = pymupdf.Rect(40, page.rect.height / 2 - 30, page.rect.width - 40, page.rect.height / 2 + 30)
-            page.insert_textbox(note, 'Page withheld: a personal tax or banking form.\n'
-                                'The archive transcription keeps what it says that is not personal.',
-                                fontsize=11, color=(1, 1, 1), align=pymupdf.TEXT_ALIGN_CENTER)
+            # It names the form ("This is a W-9."), so a reader knows what is missing.
+            note = pymupdf.Rect(40, page.rect.height / 2 - 40, page.rect.width - 40, page.rect.height / 2 + 40)
+            page.insert_textbox(note, withheld[number], fontsize=26, fontname='hebo',
+                                color=(1, 1, 1), align=pymupdf.TEXT_ALIGN_CENTER)
 
     out = pymupdf.open()
     preview = Path(preview_dir)
@@ -189,8 +189,34 @@ def apply(path, plan_path, out_path, preview_dir):
                       'textLayer': sum(len(p.get_text().strip()) for p in flat)}))
 
 
+def crops(path, plan_path, out_dir):
+    """One picture per box, cut from the finished copy, with the box outlined in red."""
+    from PIL import Image, ImageDraw
+    doc = pymupdf.open(path)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob('box-*.png'):
+        old.unlink()
+    for index, item in enumerate(json.loads(Path(plan_path).read_text())['boxes']):
+        page = doc[item['page']]
+        rect = pymupdf.Rect(item['box']) & page.rect
+        whole = rect.width > page.rect.width * 0.9 and rect.height > page.rect.height * 0.9
+        clip = page.rect if whole else pymupdf.Rect(rect.x0 - 60, rect.y0 - 45, rect.x1 + 60, rect.y1 + 45) & page.rect
+        dpi = 40 if whole else 110
+        pix = page.get_pixmap(dpi=dpi, clip=clip, alpha=False)
+        image = Image.frombytes('RGB', (pix.width, pix.height), pix.samples)
+        scale = dpi / 72
+        box = [(rect.x0 - clip.x0) * scale, (rect.y0 - clip.y0) * scale, (rect.x1 - clip.x0) * scale, (rect.y1 - clip.y0) * scale]
+        ImageDraw.Draw(image).rectangle(box, outline=(220, 30, 30), width=3)
+        image.save(out / f'box-{index + 1:03d}.png')
+    print(json.dumps({'crops': len(json.loads(Path(plan_path).read_text())['boxes'])}))
+
+
 if __name__ == '__main__':
     command, args = sys.argv[1], sys.argv[2:]
+    if command == 'crops':
+        crops(*args[:3])
+        raise SystemExit(0)
     if command == 'normalize':
         normalize(args[0], args[1:])
     elif command == 'lines':

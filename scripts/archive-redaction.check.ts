@@ -25,6 +25,7 @@ assert.equal(r('**Address (number, street, and apt. or suite no.):** 5678 PONTIA
 assert.equal(r('**City, state, and ZIP code:** College Park, MD 20740'),'**City, state, and ZIP code:** [REDACTED: home address]');
 assert.equal(r('3. **Address** *(Home address is required. If mailing address is different, please note.):*'),
     '3. **Address** *(Home address is required. If mailing address is different, please note.):*');
+assert.equal(r('Lives at 12 Elm Ct. Apt 4B, College Park, MD 20740'),'Lives at [REDACTED: home address]');
 assert.equal(r('Mail checks to 12 Elm Ct. Apt 4B, Towson, MD 21204 by Friday.'),'Mail checks to [REDACTED: home address] by Friday.');
 // An office's letterhead address is how readers find the office.
 assert.equal(r('**Address:** 3400 N. Charles St./ Mattin 210'),'**Address:** 3400 N. Charles St./ Mattin 210');

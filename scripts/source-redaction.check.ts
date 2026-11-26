@@ -24,6 +24,22 @@ assert.equal(valueBoxes(street, page([street]), 0)[0].kind, 'home address');
 assert.equal(valueBoxes({source: 'text', words: words('218-76-cc49')}, page([]), 0).length, 0);
 const office: PageLine = {source: 'ocr', words: words('Address:3400 N.Charles Street')};
 assert.equal(valueBoxes(office, page([office]), 0).length, 0);
+// Run-together OCR of a campus letterhead is still a campus address.
+const letterhead: PageLine = {source: 'ocr', words: words('OfficeofStudentActivities|3400N.CharlesStreet|MattinCenterSuite210')};
+assert.equal(valueBoxes(letterhead, page([letterhead]), 0).length, 0);
+// A price is not a house number; "Breakfast" is not a street.
+const price: PageLine = {source: 'ocr', words: words('$5 tickets; $25 Breakfast')};
+assert.equal(valueBoxes(price, page([price]), 0).length, 0);
+// A building named in a sentence is prose, not someone's address.
+const sentence: PageLine = {source: 'ocr', words: words('Whereas, JHU has space for private events in the Milton S. Eisenhower Library located at 3400 N. Charles Street, Baltimore,')};
+assert.equal(valueBoxes(sentence, page([sentence]), 0).length, 0);
+// A business letterhead: the lines above name the company, so its street and number stay.
+const shop = [words('PARTY PLUS RENTALS', 100, 100), words('One Beaver Court', 100, 112), words('Columbia showroom: 9000 Red Branch Road', 100, 124), words('Tel: 410-555-0123', 100, 136)]
+    .map(w => ({source: 'ocr' as const, words: w}));
+assert.deepEqual(shop.flatMap(line => valueBoxes(line, page(shop), 0)), []);
+// The same street and phone with no business around them are covered.
+const home = [words('5678 Pontiac Street', 100, 100), words('Cell: 240-555-0199', 100, 112)].map(w => ({source: 'ocr' as const, words: w}));
+assert.deepEqual(home.flatMap(line => valueBoxes(line, page(home), 0)).map(b => b.kind), ['home address', 'phone number']);
 
 // A short label covers its field, including handwriting written above it.
 const label: PageLine = {source: 'ocr', words: words('SSN:', 360, 194)};

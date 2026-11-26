@@ -21,16 +21,32 @@
  * review before a copy is published, and config/source-redactions.json adds
  * the boxes that review finds missing.
  */
-import { findSensitiveSpans, hasRedactions, isOfficeAddress, type RedactionKind } from "@/lib/archive-redaction";
+import { findSensitiveSpans, hasRedactions, isBusinessContext, isOfficeAddress, type RedactionKind } from "@/lib/archive-redaction";
 
 export type Box = [number, number, number, number];
 export type PageWord = { text: string; box: Box };
 export type PageLine = { source: "text" | "ocr"; words: PageWord[]; confidence?: number };
 export type SourcePage = { width: number; height: number; lines: PageLine[] };
-export type RedactionBox = { page: number; box: Box; kind: RedactionKind | "form field" | "withheld page"; method: "value" | "field" | "manual" };
+/**
+ * `reason` explains the box in words, quoting the line that triggered it with
+ * the covered value replaced by ▇▇▇ and any other digit by #, so a review of
+ * the reasons never republishes what the box hides.
+ */
+export type RedactionBox = {
+    page: number; box: Box; kind: RedactionKind | "form field" | "withheld page"; method: "value" | "field" | "manual";
+    reason: string;
+    /** Printed in white on a withheld page, saying what the page was ("This is a W-9."). */
+    notice?: string;
+};
 
 /** Manual boxes for one document. Pages are 1-based; boxes are fractions of the page. */
-export type ManualRedactions = { pages?: number[]; boxes?: { page: number; box: Box }[]; note?: string };
+export type ManualRedactions = {
+    pages?: number[];
+    /** What withheld `pages` say on the page; defaults to "This page is withheld." */
+    pageNotice?: string;
+    boxes?: { page: number; box: Box; note?: string }[];
+    note?: string;
+};
 
 const PAD = 2;
 
@@ -123,7 +139,30 @@ const OPENING_LABEL_LENGTH = 120;
  * to OCR lines, and only to cover, never to decide what the stored text says.
  */
 const OCR_SSN = /(?<![\w-])[\dOoIlSsBZ]{3}[-–—. ]{1,2}[\dOoIlSsBZ]{2}[-–—. ]{1,2}\w{4}(?![\w-])/g;
-const OCR_STREET = /(?<![\w-])\d{2,6}[ .]*(?:[NSEW][ .]+)?[A-Za-z]{3,}[ .]*(?:str\w{0,3}t|st\b\.?|ave\w*|road|rd\b|lane|ln\b|drive|dr\b|court|ct\b|blvd|place|pl\b|way\b)/gi;
+// A gap before the suffix ("Breakfast" ends in "st" but is not a street), no
+// dollar sign before the number (a price), and only on a short line or one
+// that says "address": a sentence naming a building's address is prose.
+const OCR_STREET = /(?<![\w$-])\d{2,6}[ .]*(?:[NSEW][ .]+)?[A-Za-z]{3,}(?:[ .]+(?:str\w{0,3}t|st\b\.?|ave\w*|road|rd\b|lane|ln\b|drive|dr\b|court|ct\b|blvd|place|pl\b|way\b)|street\b)/gi;
+const OCR_STREET_LINE = 60;
+
+/** OCR runs words together ("MattinCenterSuite210"); split them back for word-based rules. */
+export function spacedOcr(text: string): string {
+    return text.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Za-z])(\d)/g, "$1 $2").replace(/(\d)([A-Za-z]{2,})/g, "$1 $2")
+        .replace(/([.,:;|)])(?=[A-Za-z(])/g, "$1 ");
+}
+const officeLike = (text: string) => isOfficeAddress(text) || isOfficeAddress(spacedOcr(text));
+
+/** A line with the given ranges blanked and remaining digits masked. */
+export function maskedLine(text: string, ranges: { start: number; end: number }[]): string {
+    let out = "", at = 0;
+    for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
+        if (range.start < at) continue;
+        out += text.slice(at, range.start).replace(/\d/g, "#") + "▇▇▇";
+        at = range.end;
+    }
+    const masked = (out + text.slice(at).replace(/\d/g, "#")).trim();
+    return masked.length > 140 ? masked.slice(0, 137) + "…" : masked;
+}
 
 export function lineText(words: PageWord[]): { text: string; ranges: [number, number][] } {
     let text = "";
@@ -143,21 +182,56 @@ const union = (boxes: Box[]): Box => [
 const pad = ([x0, y0, x1, y1]: Box, page: SourcePage, by = PAD): Box =>
     [Math.max(0, x0 - by), Math.max(0, y0 - by), Math.min(page.width, x1 + by), Math.min(page.height, y1 + by)];
 
+const lineBox = (line: PageLine): Box => union(line.words.map(w => w.box));
+
+/**
+ * Up to three lines either side of this one that share its column, within a
+ * few line heights: a letterhead, an invoice's "Bill to" block, a form row.
+ * OCR words are split back apart so word-based context rules can see them.
+ */
+export function neighbours(line: PageLine, page: SourcePage): { before: string; after: string } {
+    const [x0, y0, x1, y1] = lineBox(line);
+    const reach = Math.max(12, (y1 - y0) * 4);
+    const near = page.lines
+        .filter(other => other !== line && other.words.length)
+        .map(other => ({ other, box: lineBox(other) }))
+        .filter(({ box }) => box[0] < x1 && box[2] > x0 && Math.abs((box[1] + box[3]) / 2 - (y0 + y1) / 2) <= reach)
+        .sort((a, b) => a.box[1] - b.box[1]);
+    const text = (other: PageLine) => other.source === "ocr" ? spacedOcr(lineText(other.words).text) : lineText(other.words).text;
+    return {
+        before: near.filter(({ box }) => box[1] < y0).slice(-3).map(({ other }) => text(other)).join("\n"),
+        after: near.filter(({ box }) => box[1] >= y0).slice(0, 3).map(({ other }) => text(other)).join("\n"),
+    };
+}
+
 /** Boxes over the words of one line that a detected span touches. A partly covered word is covered whole. */
 export function valueBoxes(line: PageLine, page: SourcePage, pageNumber: number): RedactionBox[] {
     const { text, ranges } = lineText(line.words);
-    const spans = findSensitiveSpans(text);
+    // Detect with the lines stacked above and below in the same column, as the
+    // text filter does in running text: "Tel:" under a rental company's name
+    // and showroom is the company's number, not a person's.
+    const { before, after } = neighbours(line, page);
+    const prefix = before ? before + "\n" : "";
+    const spans = findSensitiveSpans(prefix + text + (after ? "\n" + after : ""))
+        .filter(span => span.start >= prefix.length && span.end <= prefix.length + text.length)
+        .map(span => ({ ...span, start: span.start - prefix.length, end: span.end - prefix.length }));
     if (line.source === "ocr") {
         for (const match of text.matchAll(OCR_SSN)) {
-            if ((match[0].match(/\d/g) ?? []).length >= 5) spans.push({ start: match.index, end: match.index + match[0].length, kind: "personal identifier" });
+            if ((match[0].match(/\d/g) ?? []).length >= 5) spans.push({ start: match.index, end: match.index + match[0].length, kind: "personal identifier",
+                rule: "OCR read something in Social Security shape (###-##-####), allowing for misread digits" });
         }
-        for (const match of text.matchAll(OCR_STREET)) {
-            if (!isOfficeAddress(text)) spans.push({ start: match.index, end: match.index + match[0].length, kind: "home address" });
+        const addressLine = text.length <= OCR_STREET_LINE || /ad+r?[ce]ss/i.test(text);
+        const publicPlace = officeLike(text) || isBusinessContext(spacedOcr(`${before}\n${text}\n${after}`)) || officeLike(before) || officeLike(after);
+        for (const match of addressLine && !publicPlace ? text.matchAll(OCR_STREET) : []) {
+            spans.push({ start: match.index, end: match.index + match[0].length, kind: "home address",
+                rule: "OCR read a house number and street on a short line, with no campus, office or business name on it or the lines around it" });
         }
     }
+    const read = line.source === "ocr" ? (line.words.length === 1 && line.words[0].box[3] - line.words[0].box[1] > line.words[0].box[2] - line.words[0].box[0] ? "Sideways OCR" : "OCR") : "The text layer";
     return spans.flatMap(span => {
         const touched = line.words.filter((_, i) => ranges[i][1] > span.start && ranges[i][0] < span.end);
-        return touched.length ? [{ page: pageNumber, box: pad(union(touched.map(w => w.box)), page), kind: span.kind, method: "value" as const }] : [];
+        return touched.length ? [{ page: pageNumber, box: pad(union(touched.map(w => w.box)), page), kind: span.kind, method: "value" as const,
+            reason: `${read} read “${maskedLine(text, spans)}”. Covered: ${span.rule}.` }] : [];
     });
 }
 
@@ -177,11 +251,14 @@ export function fieldBoxes(line: PageLine, page: SourcePage, pageNumber: number)
     const [x0, y0, x1, y1] = union(line.words.map(w => w.box));
     const height = Math.max(6, y1 - y0);
     const right = page.width - 4;
+    const quoted = `the printed label “${maskedLine(text, [])}”`;
     // The lower box starts inside the label's own line: handwriting is taller
     // than print and sits on the label's baseline as often as under it.
     return [
-        { page: pageNumber, kind: label.kind, method: "field", box: pad([x1, y0 - height * label.above, right, y1 + height], page) },
-        { page: pageNumber, kind: label.kind, method: "field", box: pad([x0, y0 + height * 0.5, right, y1 + height * 1.8], page) },
+        { page: pageNumber, kind: label.kind, method: "field", box: pad([x1, y0 - height * label.above, right, y1 + height], page),
+            reason: `Form field beside ${quoted}: the rest of its row to the page edge${label.above > 1 ? `, reaching ${label.above} lines up because people write this value wherever there is room` : ""}. Covered whether or not the handwriting was readable.` },
+        { page: pageNumber, kind: label.kind, method: "field", box: pad([x0, y0 + height * 0.5, right, y1 + height * 1.8], page),
+            reason: `Form field below ${quoted}: the line where its answer is written. Covered whether or not the handwriting was readable.` },
     ];
 }
 
@@ -193,8 +270,24 @@ export function fieldBoxes(line: PageLine, page: SourcePage, pageNumber: number)
  */
 const PERSONAL_FORM = /request\s*for\s*taxpayer\s*identification|\bform\s*w-?\s?9\b|\bw-?4\b.*withholding|employee['’]?s\s*withholding|direct\s*deposit\s*(?:authorization|enrollment)/i;
 
+/** The sentence a withheld page carries, named for the form it was. */
+export function formNotice(heading: string): string {
+    if (/taxpayer|w-?\s?9/i.test(heading)) return "This is a W-9.";
+    if (/w-?4|withholding/i.test(heading)) return "This is a W-4.";
+    if (/direct\s*deposit/i.test(heading)) return "This is a direct deposit form.";
+    return "This page is withheld.";
+}
+
 export function isPersonalFormPage(page: SourcePage): boolean {
-    return page.lines.some(line => PERSONAL_FORM.test(lineText(line.words).text));
+    return personalFormHeading(page) !== null;
+}
+
+function personalFormHeading(page: SourcePage): string | null {
+    for (const line of page.lines) {
+        const match = PERSONAL_FORM.exec(lineText(line.words).text);
+        if (match) return match[0];
+    }
+    return null;
 }
 
 /** Every automatic box on every page, plus the manual ones. */
@@ -203,22 +296,27 @@ export function planRedactions(pages: SourcePage[], manual?: ManualRedactions): 
     const withheld = new Set((manual?.pages ?? []).map(number => number - 1));
     pages.forEach((page, index) => {
         if (withheld.has(index)) return;
-        if (isPersonalFormPage(page)) {
+        const heading = personalFormHeading(page);
+        if (heading) {
             withheld.add(index);
-            boxes.push({ page: index, box: [0, 0, page.width, page.height], kind: "withheld page", method: "field" });
+            boxes.push({ page: index, box: [0, 0, page.width, page.height], kind: "withheld page", method: "field", notice: formNotice(heading),
+                reason: `Whole page withheld: it reads “${heading.replace(/\s+/g, " ")}”, a form that is one person's tax or banking details (name, address, taxpayer number, signature). Boxing its fields one by one left pieces showing.` });
             return;
         }
         for (const line of page.lines) boxes.push(...valueBoxes(line, page, index), ...fieldBoxes(line, page, index));
     });
     for (const number of manual?.pages ?? []) {
         const page = pages[number - 1];
-        if (page) boxes.push({ page: number - 1, box: [0, 0, page.width, page.height], kind: "withheld page", method: "manual" });
+        if (page) boxes.push({ page: number - 1, box: [0, 0, page.width, page.height], kind: "withheld page", method: "manual",
+            notice: manual?.pageNotice ?? "This page is withheld.",
+            reason: `Whole page withheld by hand (config/source-redactions.json)${manual?.note ? `: ${manual.note}` : "."}` });
     }
     for (const item of manual?.boxes ?? []) {
         const page = pages[item.page - 1];
         if (!page) continue;
         const [x0, y0, x1, y1] = item.box;
-        boxes.push({ page: item.page - 1, box: [x0 * page.width, y0 * page.height, x1 * page.width, y1 * page.height], kind: "form field", method: "manual" });
+        boxes.push({ page: item.page - 1, box: [x0 * page.width, y0 * page.height, x1 * page.width, y1 * page.height], kind: "form field", method: "manual",
+            reason: `Placed by hand after review (config/source-redactions.json): ${item.note ?? manual?.note ?? "no note given"}` });
     }
     return boxes;
 }

@@ -221,7 +221,7 @@ export async function DocumentPageBody({ documentId, version, comparing = false 
                 )}
                 {document.sourceAccess.mode === "redacted" && (
                     <a href={document.source} target="_blank" rel="noreferrer">
-                        Open the original (personal details blacked out) ↗
+                        Open source (personal details blacked out) ↗
                     </a>
                 )}
                 {document.sourceAccess.mode === "withheld" && (
