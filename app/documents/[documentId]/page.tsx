@@ -207,9 +207,27 @@ export default async function DocumentPage({
             )}
 
             <div className={styles.actions}>
-                <a href={document.source} target="_blank" rel="noreferrer">
-                    {originalLabel(document.source)}{isSecondaryKind(document.kind) ? "" : " (latest source)"} ↗
-                </a>
+                {/*
+                  * The Drive original of a document whose text needed personal
+                  * data removed still holds that data, so it is never linked:
+                  * readers get the blacked-out copy once someone has approved
+                  * it, and a plain statement until then.
+                  */}
+                {document.sourceAccess.mode === "original" && (
+                    <a href={document.source} target="_blank" rel="noreferrer">
+                        {originalLabel(document.source)}{isSecondaryKind(document.kind) ? "" : " (latest source)"} ↗
+                    </a>
+                )}
+                {document.sourceAccess.mode === "redacted" && (
+                    <a href={document.source} target="_blank" rel="noreferrer">
+                        Open the original (personal details blacked out) ↗
+                    </a>
+                )}
+                {document.sourceAccess.mode === "withheld" && (
+                    <span className={styles.fileNote}>
+                        Original withheld: it contains personal details removed from this text.
+                    </span>
+                )}
                 {document.lineageKey && isComparableKind(document.kind) && (
                     <Link href={`/documents/${document.id}/compare`}>
                         Compare editions

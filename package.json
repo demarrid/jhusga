@@ -27,6 +27,8 @@
     "search": "tsx scripts/search.ts",
     "review": "tsx scripts/review.ts",
     "prune": "tsx scripts/prune.ts",
+    "redact:text": "tsx scripts/archive-purge.ts",
+    "redact:sources": "tsx scripts/source-redact.ts",
     "reprocess": "tsx scripts/reprocess.ts",
     "people": "tsx scripts/people.ts",
     "titles:minutes:ai": "tsx scripts/normalize-minute-titles-ai.ts",

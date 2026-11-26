@@ -3,6 +3,7 @@ import {classifyDocument} from '../lib/kinds';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {cleanArchiveTranscription} from '../lib/archive-transcription';
+import {redactPersonalData} from '../lib/archive-redaction';
 process.loadEnvFile('.env');process.env.AI_API_KEY='';process.env.ADMINISTRATOR_LOOKUP_ENABLED='false';
 const base='.archive-local/';
 type File={id:string;name:string;webViewLink:string;mimeType:string;folderPath:string};
@@ -71,6 +72,8 @@ async function main(){
  if(manifest)await writeFile(out('duplicates.json'),JSON.stringify(duplicates,null,2));
  await writeFile(out('format-input.json'),JSON.stringify(records));
  for(const r of records){try{const f=await readJson<{original:string;content:string}>('formatted/'+createHash('sha256').update(r.key).digest('hex')+'.json');if(f.original===r.content&&f.content.replace(/\s/g,'')===r.content.replace(/\s/g,''))r.content=f.content;}catch{}}
+ // After formatting, whose cache is keyed by the unredacted transcription.
+ for(const r of records)r.content=redactPersonalData(r.content);
  if(!apply){console.log({ready:records.length,pending:pending.length,duplicates:duplicates.length});if(manifest)await (await import('../lib/prisma')).prisma.$disconnect();return;}
  const {prisma}=await import('../lib/prisma');const {recordDocumentVersion}=await import('../lib/document-version-history');const {indexDocumentPassages}=await import('../lib/search');const {reanchorDocument}=await import('../lib/sync');
  const report:{key:string;title:string;status:string;id?:string;flags?:string[];quality?:string[];sourceIds?:string[];error?:string}[]=[];

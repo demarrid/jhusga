@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import type { Prisma } from "@prisma/client";
+import { redactedOffset, redactPersonalData } from "@/lib/archive-redaction";
 import { sanitizeExportWithOffsets } from "@/lib/markdown";
 import { prisma } from "@/lib/prisma";
 import type { DocumentImage } from "@/lib/document-images";
@@ -36,6 +37,13 @@ export async function captureDocumentMedia(markdown: string): Promise<CapturedDo
             alt: marker[1] || `Document image ${index + 1}`, offset: cleaned.offsets[index], inline: positions[index].inline });
     }
     return { content: cleaned.content, images };
+}
+
+/** The capture with personal data removed and image positions moved to match. */
+export function redactCapturedDocument(capture: CapturedDocument): CapturedDocument {
+    const content = redactPersonalData(capture.content);
+    if (content === capture.content) return capture;
+    return { content, images: capture.images.map(image => ({ ...image, offset: redactedOffset(capture.content, image.offset) })) };
 }
 
 /** Capture once; retries cannot rewrite the media of a saved source occurrence. */

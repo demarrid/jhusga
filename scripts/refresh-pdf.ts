@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { extractText } from "unpdf";
 import { extractPdfText, isPdfFile } from "../lib/drive";
 import { sanitizeExport, deriveDescription } from "../lib/markdown";
+import { redactPersonalData } from "../lib/archive-redaction";
 import { findQuote } from "../lib/anchor";
 import { prisma } from "../lib/prisma";
 import { recordContributors, reanchorDocument } from "../lib/sync";
@@ -29,8 +30,8 @@ async function main() {
     if (!isPdfFile({ name: document.title, mimeType: document.mimeType })
         || document.reviewState !== "published") throw new Error("Requires a published PDF.");
     const bytes = new Uint8Array(readFileSync(pdfPath));
-    const legacy = sanitizeExport((await extractText(bytes.slice(), { mergePages: true })).text);
-    const content = await extractPdfText(bytes.slice());
+    const legacy = redactPersonalData(sanitizeExport((await extractText(bytes.slice(), { mergePages: true })).text));
+    const content = redactPersonalData(await extractPdfText(bytes.slice()));
     if (document.content !== legacy && document.content !== content) {
         throw new Error("PDF differs from the published source; use the normal sync/review workflow.");
     }

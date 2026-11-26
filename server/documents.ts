@@ -27,6 +27,7 @@ import { compareNamesBySurname } from "@/lib/contributors";
 import { isMeetingRole, meetingForDocument, type MeetingRole } from "@/lib/meetings";
 import { prisma } from "@/lib/prisma";
 import { renderDocument, type Block } from "@/lib/render";
+import { linksToSource, protectSourceLinks, sourceAccess, type SourceAccess } from "@/lib/source-redaction";
 import type { SectionStatus } from "@/lib/sections";
 import { demoModeEnabled } from "@/lib/data-mode";
 import {
@@ -588,7 +589,13 @@ export type DocumentDetail = {
      * left for somebody to infer. Empty for anything the SGA wrote.
      */
     matchedPhrases: string;
+    /**
+     * What "view source" opens: the Drive file, the redacted copy, or "" when
+     * the original is withheld. See `sourceAccess`.
+     */
     source: string;
+    /** Whether the source is the original, a redacted copy, or withheld; lib/source-redaction.ts. */
+    sourceAccess: SourceAccess;
     content: string;
     sessionNumber: number | null;
     /** False for documents belonging to a prior session. */
@@ -749,6 +756,7 @@ export async function loadDocument(
             heldReason: true,
             heldRevisionId: true,
             anyoneCanEdit: true,
+            redactedSource: { select: { status: true } },
             documentAnnotations: {
                 where: { orphanedAt: null },
                 select: { id: true, startOffset: true, endOffset: true },
@@ -926,6 +934,7 @@ export async function loadDocument(
             orderBy: { checkedAt: "desc" }, select: { reason: true },
         }).catch(() => null)
         : null;
+    const access = sourceAccess({ ...document, redactedSourceStatus: document.redactedSource?.status ?? null });
 
     return {
         meetingRole,
@@ -944,7 +953,7 @@ export async function loadDocument(
         }) } : undefined,
         references: [...directReferences.values()].sort((a, b) => (a.sourceOffset ?? 0) - (b.sourceOffset ?? 0)),
         referencedBy: document.referencesIn.map((edge) => toRelated(edge.fromDocument)),
-        unresolvedLinks: unresolvedLinks.map((link) => ({
+        unresolvedLinks: unresolvedLinks.filter(link => !linksToSource(link.url, access.protectedIds)).map((link) => ({
             sourceOffset: link.offset,
             url: link.url,
             text: link.text,
@@ -972,7 +981,8 @@ export async function loadDocument(
         folderPath: document.folderPath,
         discoveredVia: document.discoveredVia,
         matchedPhrases: document.matchedPhrases,
-        source: document.source,
+        source: access.href ?? "",
+        sourceAccess: access,
         content: document.content,
         sessionNumber: document.sessionNumber,
         isCurrentSession: document.sessionNumber === SESSION_NUMBER,
@@ -987,11 +997,12 @@ export async function loadDocument(
         // A spreadsheet is rendered as a table rather than as the raw export.
         // The stored text is untouched -- citations still index into the CSV
         // exactly as it came out of Drive -- and only the parse differs.
-        blocks: renderDocument(document.content, document.documentAnnotations, {
+        // The "## Sources" footer of an archive record links the Drive file too.
+        blocks: protectSourceLinks(renderDocument(document.content, document.documentAnnotations, {
             images: await loadDocumentImages(document.id, document.content, versionId, imageVersionTime),
             navigationTargets: agendaMatches.map(match => ({ id: `minutes-${match.startOffset}`, offset: match.startOffset })),
             sheetDelimiter: sheetDelimiter(document.mimeType),
-        }),
+        }), access),
         contributors: document.contributors.map((entry) => ({
             id: entry.hopkinsAffiliate.id,
             name: entry.hopkinsAffiliate.name,

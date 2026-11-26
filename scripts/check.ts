@@ -44,6 +44,8 @@ const SUITES = [
     "archive-cache",
     "archive-owners",
     "archive-quality",
+    "archive-redaction",
+    "source-redaction",
     "accounts",
     "activity",
     "bill-votes",

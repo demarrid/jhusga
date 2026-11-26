@@ -1,0 +1,15 @@
+{
+  "6e7fe89f-e743-4541-b4f7-32ee3f6b0cd5": {
+    "note": "SGA Class of 2013. Page 5: end of the handwritten home address right of line 3. Page 15: phone number written up the right margin in green, which OCR does not read.",
+    "boxes": [
+      { "page": 5, "box": [0.8, 0.225, 1, 0.265] },
+      { "page": 15, "box": [0.88, 0.6, 1, 0.95] }
+    ]
+  },
+  "1dff0ed4-d232-414f-9a5a-26b442dac929": {
+    "note": "MSEE-YA Party '12. Page 3: yellow sticky note with a handwritten personal cell number, which OCR does not read.",
+    "boxes": [
+      { "page": 3, "box": [0.19, 0.38, 0.51, 0.67] }
+    ]
+  }
+}

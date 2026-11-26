@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { demoDocument } from "@/lib/demo-data";
 import { renderDocument } from "@/lib/render";
+import { redactPersonalData } from "@/lib/archive-redaction";
 import { selectDocumentVersion, versionCutoffDate, versionOptions } from "@/lib/document-versions";
 import { loadDocument, hydrateDocumentDetail, type DocumentDetail } from "@/server/documents";
 
@@ -80,7 +81,8 @@ const cachedVersionContent = unstable_cache(async (documentId: string, versionId
         where: { id: versionId, status: "published", revision: { documentId } },
         select: { revision: { select: { content: true } } },
     });
-    return version?.revision.content ?? null;
+    // Compared against filtered text, so an old snapshot shows no more than it.
+    return version ? redactPersonalData(version.revision.content) : null;
 }, ["version-content-v1"], { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS });
 
 

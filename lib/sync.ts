@@ -1,5 +1,6 @@
 import {manualArchiveIds} from "@/lib/manual-archive";
-import { saveDocumentMedia } from "@/lib/document-media";
+import { redactCapturedDocument, saveDocumentMedia } from "@/lib/document-media";
+import { redactPersonalData } from "@/lib/archive-redaction";
 import { recordDocumentVersion } from "@/lib/document-version-history";
 import { type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
@@ -1030,8 +1031,11 @@ export async function ingestFile(
         return true;
     }
 
-    const media = file.mimeType === GOOGLE_DOC_MIME ? await exportDocumentWithMedia(file.id) : null;
-    const content = media ? media.content : await exportIngestible(file);
+    // Personal data (SSNs, home addresses, personal phones) is removed before
+    // hashing, so a later export of the same source is recognised as unchanged.
+    const media = file.mimeType === GOOGLE_DOC_MIME ? redactCapturedDocument(await exportDocumentWithMedia(file.id)) : null;
+    const exported = media ? media.content : await exportIngestible(file);
+    const content = exported === null ? null : redactPersonalData(exported);
     // Do not attach images from a moving source to the timestamp listed earlier.
     if (media && (await getFile(file.id))?.modifiedTime !== file.modifiedTime) return false;
     // A SharePoint file we cannot flatten is not stored as an empty row.

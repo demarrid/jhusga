@@ -114,6 +114,7 @@ export function demoDocument(documentId: string) {
         // The demo fixtures are all SGA documents, which need no excuse to be
         // in an SGA archive; see matchedPhrases on DocumentDetail.
         matchedPhrases: "",
+        sourceAccess: { mode: "original" as const, href: document.source, protectedIds: [] },
         isCurrentSession: document.sessionNumber === SESSION_NUMBER,
         lineageKey: document.lineageKey,
         lastSyncedAt: date(document.driveModifiedTime),

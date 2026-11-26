@@ -698,6 +698,28 @@ async function downloadFile(fileId: string): Promise<Uint8Array | null> {
 }
 
 /**
+ * A source file's own bytes for scripts/source-redact.ts: a native upload as
+ * stored, a Google Doc, Sheet or Slides deck exported as PDF. Null when Drive
+ * will not serve it or it is past the size the archive holds.
+ */
+export async function downloadSourceFile(fileId: string, mimeType: string): Promise<{ bytes: Uint8Array; mimeType: string } | null> {
+    if (!mimeType.startsWith("application/vnd.google-apps.")) {
+        const bytes = await downloadFile(fileId);
+        return bytes && bytes.byteLength ? { bytes, mimeType } : null;
+    }
+    const params = new URLSearchParams({ mimeType: "application/pdf", supportsAllDrives: "true", key: apiKey() });
+    try {
+        const response = await driveFetch(`${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}/export?${params.toString()}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return bytes.byteLength && bytes.byteLength <= MAX_BINARY_BYTES ? { bytes, mimeType: "application/pdf" } : null;
+    } catch (cause) {
+        if (cause instanceof DriveKeyError) throw cause;
+        if (cause instanceof Error && (NOTHING_TO_EXPORT.test(cause.message) || /Drive API (403|404)\b/.test(cause.message))) return null;
+        throw cause;
+    }
+}
+
+/**
  * The words a PDF contains, as one string.
  *
  * Page breaks become blank lines. A scanned opinion with no text layer
