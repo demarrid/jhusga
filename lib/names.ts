@@ -40,13 +40,45 @@ export const REGULAR_MIN_DOCUMENTS = 1;
 const MANUAL_NAME_ALIASES = [
     { alias: "Tola Alaofin", canonical: "Omotola Alaofin" },
     { alias: "Nifemi Ajayi", canonical: "Oluwanifemi Ajayi" },
+    { alias: "Alexander (AJ) Tsang", canonical: "AJ Tsang" },
+    { alias: "Noh Membratu", canonical: "Noh Mebrahtu" },
+    // Both hold the same 114th seats over the same dates as the verified row.
+    { alias: "Shreemman Patel", canonical: "Shreemann Patel" },
+    { alias: "Kayla Marie Gonzalez", canonical: "Kayla Gonzalez" },
 ] as const;
 
+/**
+ * Notes a roll or a transcriber attached to a name, not part of it:
+ * "Veda Kommineni (LATE)", "KIRR ANGEL (?)", "Enis (sp?)", "Yash Gupta
+ * (Removed)", and pronunciation guides like "Kanami (KA-na-mee) Mori".
+ * Nicknames -- "Caitlin (Kate) Dwyer" -- are left alone; whether one is the
+ * same person as a row without it is a question for the archive, not the text.
+ */
+const NAME_STATUS_TAG =
+    /\s*\((?:late|early|left early|arrived late|\?+|sp\.?\s*\?*|maybe|removed|interim|absent|excused|proxy)\)/gi;
+const NAME_PRONUNCIATION = /\s*\([A-Za-z]+(?:-[A-Za-z]+)+\)/g;
+/** "Lauren Fuller (Chair of Halls)": the seat, written beside the name. */
+const NAME_ROLE_NOTE =
+    /\s*\([^)]*\b(?:chair|senator|president|director|secretary|treasurer|member|representative)\b[^)]*\)/gi;
+
+export function withoutNameAnnotations(name: string): string {
+    const stripped = name
+        .replace(NAME_STATUS_TAG, "")
+        .replace(NAME_PRONUNCIATION, "")
+        .replace(NAME_ROLE_NOTE, "")
+        // "Chesie Rider?" -- a doubt about the spelling, not the name.
+        .replace(/(?<=[A-Za-z])\?+$/, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    return stripped || name;
+}
+
 export function canonicalPersonName(name: string): string {
-    const key = nameKey(name);
+    const cleaned = withoutNameAnnotations(name);
+    const key = nameKey(cleaned);
     return (
         MANUAL_NAME_ALIASES.find(({ alias }) => nameKey(alias) === key)?.canonical ??
-        name
+        cleaned
     );
 }
 
@@ -640,6 +672,201 @@ export function looksMistyped(a: string, b: string): boolean {
     return struck > 0 && a[struck - 1] !== " ";
 }
 
+/** Name words that say nothing about who someone is: suffixes and degrees. */
+const NAME_SUFFIX_WORDS = new Set(["jr", "sr", "ii", "iii", "iv", "phd", "md", "esq"]);
+
+/**
+ * Whether two name keys are the same written name, differing only in
+ * spacing, a middle initial or a suffix.
+ *
+ * "AJ Tsang" and "A.J. Tsang", "Noel DeSantos" and "Noel de Santos",
+ * "Ronald Daniels" and "Ronald J. Daniels", "Calvin Smith, Jr." and
+ * "Calvin L. Smith Jr.". Initials only fill a gap: "Mitchell O. Smith" and
+ * "Mitchell D. Smith" disagree about the one thing they both state, so they
+ * stay two rows.
+ */
+export function writtenAlike(a: string, b: string): boolean {
+    if (a === b) return false;
+    if (a.replace(/ /g, "") === b.replace(/ /g, "")) return a.includes(" ") && b.includes(" ");
+
+    const left = nameWords(a);
+    const right = nameWords(b);
+    if (!left.last || !right.last) return false;
+    if (left.first !== right.first || left.last !== right.last) return false;
+    if (left.first.length < 2 || left.last.length < 2) return false;
+    // "Robert Miller" and "Robert Miller III" are, as often as not, father and son.
+    if (left.numeral !== right.numeral) return false;
+
+    // One side states middle initials the other leaves out, or both agree.
+    // An "O" in front of a surname is O'Connor, not an initial: Bill Connor
+    // and Bill O'Connor are two people.
+    const initialsOnly = (middle: string[]) =>
+        middle.every((word, at) =>
+            word.length === 1 && !(at === middle.length - 1 && word === "o"));
+    if (left.middle.length === 0) return initialsOnly(right.middle);
+    if (right.middle.length === 0) return initialsOnly(left.middle);
+    return left.middle.join(" ") === right.middle.join(" ");
+}
+
+function nameWords(key: string) {
+    const words = key.split(" ").filter(Boolean);
+    const numeral = words.find((word) => /^(?:ii|iii|iv)$/.test(word)) ?? "";
+    const all = words.filter((word) => !NAME_SUFFIX_WORDS.has(word));
+    return {
+        first: all[0] ?? "",
+        last: all.length > 1 ? all[all.length - 1] : undefined,
+        middle: all.slice(1, -1),
+        numeral,
+    };
+}
+
+/** Both names state middle initials, and the initials disagree. */
+function conflictingInitials(a: string, b: string): boolean {
+    const left = nameWords(a);
+    const right = nameWords(b);
+    if (left.numeral !== right.numeral) return true;
+    const initials = (middle: string[]) =>
+        middle.length > 0 && middle.every((word) => word.length === 1);
+    return (
+        left.first === right.first && left.last === right.last &&
+        initials(left.middle) && initials(right.middle) &&
+        left.middle.join(" ") !== right.middle.join(" ")
+    );
+}
+
+/** A surname and something before it, each more than an initial. */
+function fullyWritten(key: string): boolean {
+    const words = key.split(" ").filter((word) => word && !NAME_SUFFIX_WORDS.has(word));
+    const last = words.pop() ?? "";
+    return last.length > 1 && words.join("").length > 1;
+}
+
+/**
+ * Names one typo apart that belong to different people. Checked against the
+ * archive before the typo rule was allowed to fold them.
+ */
+const DISTINCT_PEOPLE: [string, string][] = [
+    ["Erin Yun", "Eric Yun"], // student affairs 2012-19; a 2019 senator
+    ["Chris Park", "Chris Pak"], // 2020 News-Letter reporter; 2018 CSE member
+    ["Christian Jimenez", "Christina Jimenez"],
+    ["Jackie Chan", "Jackie Chang"], // Class of 2004; a 2019 respondent
+    ["Tiffany Chen", "Tiffany Cohen"],
+    ["Alex Mo", "Alex Ma"],
+    ["Christine Hwang", "Christine Wang"],
+    ["Anna Gordon", "Ann Gordon"],
+    ["Robert E. Lee", "Robert Lee"], // the general; a 2015 freshman
+    ["Jamie Chen", "Jamie Chan"],
+    ["Michael Lan", "Michael Lin"],
+    ["John Hunt", "Jon Hunt"], // a junior in 2012 and a senior in 2014
+];
+
+function knownDistinct(a: string, b: string): boolean {
+    return DISTINCT_PEOPLE.some(
+        ([x, y]) =>
+            (nameKey(x) === a && nameKey(y) === b) || (nameKey(x) === b && nameKey(y) === a),
+    );
+}
+
+/** Two rows that the archive should treat as one person written twice. */
+export function samePersonWritten(a: string, b: string): boolean {
+    return looksMistyped(a, b) || writtenAlike(a, b);
+}
+
+/**
+ * How much a spelling deserves to be the one kept: text-extraction damage
+ * (mojibake, soft hyphens, zero-width spaces) and all-capitals lose.
+ */
+function spellingDamage(name: string): number {
+    let damage = 0;
+    if (/[ÃÂ]|­|[​-‍﻿]/.test(name)) damage += 2;
+    // "Mitchell D. SMITH": a word in capitals is a heading, not a spelling.
+    if (/\b[A-Z]{3,}\b/.test(name)) damage += 1;
+    // "tiara pitt", "Roger becks": lower-case words that are not particles.
+    const lowered = name.split(/\s+/).filter((word) =>
+        /^[a-z]/.test(word) && !/^(?:de|del|la|le|van|von|der|du|da|di|dit|bin|al|el)$/.test(word));
+    if (lowered.length > 0) damage += 1;
+    return damage;
+}
+
+type MergeCandidate = {
+    id: string;
+    name: string;
+    nameKey: string;
+    email: string | null;
+    userId: string | null;
+    _count: { contributions: number };
+};
+
+/**
+ * Group people that are one person written differently, and pick the row
+ * each group keeps. Pure, so the plan can be printed before anything moves.
+ */
+export function planPersonMerges<T extends MergeCandidate>(
+    people: T[],
+): { kept: T; folded: T[] }[] {
+    // Everyone reachable from everyone else by single typos, so that a name
+    // written three ways settles into one row rather than two.
+    const group = new Map<string, string>();
+    const findRoot = (id: string): string => {
+        let root = id;
+        while (group.get(root) !== root) root = group.get(root)!;
+        return root;
+    };
+    for (const person of people) group.set(person.id, person.id);
+
+    for (let i = 0; i < people.length; i += 1) {
+        for (let j = i + 1; j < people.length; j += 1) {
+            const left = people[i]!;
+            const right = people[j]!;
+            if (!left.nameKey.includes(" ") || !right.nameKey.includes(" ")) continue;
+            // "Jason Y" and "Kevin X." say too little to be anyone in particular.
+            if (!fullyWritten(left.nameKey) || !fullyWritten(right.nameKey)) continue;
+            if (!samePersonWritten(left.nameKey, right.nameKey)) continue;
+            if (knownDistinct(left.nameKey, right.nameKey)) continue;
+            if (left.email && right.email && left.email !== right.email) continue;
+            if (left.userId && right.userId) continue;
+            group.set(findRoot(left.id), findRoot(right.id));
+        }
+    }
+
+    const clusters = new Map<string, T[]>();
+    for (const person of people) {
+        const root = findRoot(person.id);
+        clusters.set(root, [...(clusters.get(root) ?? []), person]);
+    }
+
+    const plans: { kept: T; folded: T[] }[] = [];
+    for (const cluster of clusters.values()) {
+        if (cluster.length < 2) continue;
+
+        const ranked = [...cluster].sort(
+            (a, b) =>
+                spellingDamage(a.name) - spellingDamage(b.name) ||
+                b._count.contributions - a._count.contributions ||
+                b.name.length - a.name.length,
+        );
+
+        // The cleanest spelling the archive uses most. Only spellings a single
+        // step from *it* fold; one further out (Siddarth Dhahi, two letters
+        // from Siddharth Dhadi) is left for a person to decide, rather than
+        // letting a zero-document typo become the name everyone sees.
+        const kept = ranked[0]!;
+        const folded: T[] = [];
+        for (const other of ranked.slice(1)) {
+            if (!samePersonWritten(kept.nameKey, other.nameKey)) continue;
+            if (knownDistinct(kept.nameKey, other.nameKey)) continue;
+            // Mitchell O. Smith and Mitchell D. Smith can each be "Mitchell
+            // Smith"; they cannot both be.
+            if ([kept, ...folded].some((row) => conflictingInitials(row.nameKey, other.nameKey))) continue;
+            if (other.email && kept.email && other.email !== kept.email) continue;
+            if (other.userId && kept.userId) continue;
+            folded.push(other);
+        }
+        if (folded.length > 0) plans.push({ kept, folded });
+    }
+    return plans;
+}
+
 export type PersonMerge = {
     keptId: string;
     keptName: string;
@@ -668,7 +895,9 @@ export type PersonMerge = {
  * address is the one identity here that was verified rather than read, and two
  * of them are two people however alike the names look.
  */
-export async function mergePeopleOneTypoApart(): Promise<PersonMerge[]> {
+export async function mergePeopleOneTypoApart(
+    options: { dryRun?: boolean } = {},
+): Promise<PersonMerge[]> {
     const people = await prisma.hopkinsAffiliate.findMany({
         select: {
             id: true,
@@ -681,59 +910,19 @@ export async function mergePeopleOneTypoApart(): Promise<PersonMerge[]> {
         },
     });
 
-    // Everyone reachable from everyone else by single typos, so that a name
-    // written three ways settles into one row rather than two.
-    const group = new Map<string, string>();
-    const findRoot = (id: string): string => {
-        let root = id;
-        while (group.get(root) !== root) root = group.get(root)!;
-        return root;
-    };
-    for (const person of people) group.set(person.id, person.id);
-
-    for (let i = 0; i < people.length; i += 1) {
-        for (let j = i + 1; j < people.length; j += 1) {
-            const left = people[i]!;
-            const right = people[j]!;
-            if (!left.nameKey.includes(" ") || !right.nameKey.includes(" ")) continue;
-            if (!looksMistyped(left.nameKey, right.nameKey)) continue;
-            if (left.email && right.email && left.email !== right.email) continue;
-            if (left.userId && right.userId) continue;
-            group.set(findRoot(left.id), findRoot(right.id));
-        }
-    }
-
-    const clusters = new Map<string, typeof people>();
-    for (const person of people) {
-        const root = findRoot(person.id);
-        clusters.set(root, [...(clusters.get(root) ?? []), person]);
-    }
-
     const merged: PersonMerge[] = [];
 
-    for (const cluster of clusters.values()) {
-        if (cluster.length < 2) continue;
-
-        const ranked = [...cluster].sort(
-            (a, b) =>
-                b._count.contributions - a._count.contributions ||
-                b.name.length - a.name.length,
-        );
-
-        // The spelling the archive uses most, but only if every other spelling
-        // is a single typo of *it*. Caraline Sommer sits one typo from both
-        // Caroline Sommer and Caraline Sommers while those two are two apart,
-        // so the centre of the cluster is not always the busiest name in it.
-        const kept = ranked.find((candidate) =>
-            cluster.every(
-                (other) =>
-                    other.id === candidate.id ||
-                    looksMistyped(candidate.nameKey, other.nameKey),
-            ),
-        );
-        if (!kept) continue;
-
-        const folded = cluster.filter((person) => person.id !== kept.id);
+    for (const plan of planPersonMerges(people)) {
+        const { kept, folded } = plan;
+        if (options.dryRun) {
+            merged.push({
+                keptId: kept.id,
+                keptName: kept.name,
+                foldedNames: folded.map((person) => person.name),
+                documents: kept._count.contributions,
+            });
+            continue;
+        }
 
         for (const loser of folded) {
             await prisma.$transaction(async (tx) => {
@@ -1020,6 +1209,11 @@ export async function resolveAffiliates(
         if (isShortForm(mention.name) || mention.onlyIfKnown) continue;
         const name = canonicalPersonName(mention.name);
         if (regulars.some(person => person.nameKey === nameKey(name))) continue;
+        // A spelling already folded onto someone else must not come back as
+        // its own row; the alias lookup below sends it to the kept person.
+        if (await prisma.hopkinsAlias.findUnique({
+            where: { aliasKey: nameKey(mention.name) }, select: { id: true },
+        })) continue;
         const person = await prisma.hopkinsAffiliate.upsert({
             where: { nameKey: nameKey(name) }, create: { name, nameKey: nameKey(name) },
             update: {}, select: { id: true, name: true, nameKey: true },

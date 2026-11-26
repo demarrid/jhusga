@@ -6,6 +6,7 @@
  * given name and a surname in the same archive.
  */
 import { bodyForDocument, bodyForOffice } from "../lib/bodies";
+import { nameKey } from "../lib/contributors";
 import {
     canonicalPersonName,
     diminutiveCandidates,
@@ -14,6 +15,7 @@ import {
     misspellingCandidates,
     namedInFull,
     narrowByDocument,
+    planPersonMerges,
     surnameCandidates,
     tokenCandidates,
     type RegularPerson,
@@ -418,6 +420,51 @@ check(
 check(
     "a name is not a misspelling of itself",
     !looksMistyped("grace guan", "grace guan"),
+);
+
+const row = (id: string, name: string, contributions: number, email: string | null = null) => ({
+    id, name, nameKey: nameKey(name), email, userId: null, _count: { contributions },
+});
+const planned = (rows: ReturnType<typeof row>[]) =>
+    planPersonMerges(rows).map(({ kept, folded }) => [kept.name, ...folded.map((r) => r.name).sort()]);
+check(
+    "initials written with or without dots are one person",
+    JSON.stringify(planned([row("1", "AJ Tsang", 219), row("2", "A.J Tsang", 1), row("3", "A.J. TSang", 1)])) ===
+        JSON.stringify([["AJ Tsang", "A.J Tsang", "A.J. TSang"]]),
+);
+check(
+    "a middle initial only fills a gap",
+    JSON.stringify(planned([row("1", "Ronald J. Daniels", 273), row("2", "Ronald Daniels", 28)])) ===
+        JSON.stringify([["Ronald J. Daniels", "Ronald Daniels"]]) &&
+    planned([row("1", "Mitchell O. Smith", 1), row("2", "Mitchell D. Smith", 1)]).length === 0,
+);
+check(
+    "two initials that disagree are not both folded onto a bare name",
+    JSON.stringify(planned([row("1", "Mitchell Smith", 2), row("2", "Mitchell O. Smith", 1), row("3", "Mitchell D. Smith", 1)])) ===
+        JSON.stringify([["Mitchell Smith", "Mitchell D. Smith"]]),
+);
+check(
+    "O'Connor is not Connor with an initial, and III is not the father",
+    planned([row("1", "Bill Connor", 19), row("2", "Bill O'Connor", 5)]).length === 0 &&
+    planned([row("1", "Robert Miller", 3), row("2", "Robert Miller III", 1)]).length === 0,
+);
+check(
+    "a surname given as one letter is too little to fold",
+    planned([row("1", "Jason Yu", 86), row("2", "Jason Y", 1)]).length === 0,
+);
+check(
+    "the busiest clean spelling is kept, not a zero-document typo",
+    JSON.stringify(planned([row("1", "Siddharth Dhadi", 38, "s@jh.edu"), row("2", "Siddarth Dhadi", 0)])) ===
+        JSON.stringify([["Siddharth Dhadi", "Siddarth Dhadi"]]) &&
+    planned([row("1", "Amanda HernÃ¡ndez", 9), row("2", "Amanda Hernández", 4)])[0]?.[0] === "Amanda Hernández",
+);
+check(
+    "pairs checked against the archive stay two people",
+    planned([row("1", "Erin Yun", 48), row("2", "Eric Yun", 1)]).length === 0,
+);
+check(
+    "two verified addresses are two people",
+    planned([row("1", "Grace Guan", 72, "a@jh.edu"), row("2", "Gracee Guan", 1, "b@jh.edu")]).length === 0,
 );
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);

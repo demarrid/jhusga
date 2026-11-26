@@ -333,41 +333,60 @@ export async function getDocumentPage(
     };
 }
 
-/** People named anywhere in the archive, for the person filter. */
+/**
+ * People named in at least two documents, for the person filter.
+ *
+ * Someone named once is reached from that document's own chips; listing every
+ * one-off mention buried the people the filter is for. A person linked
+ * directly (a chip, the directory) is still added back by
+ * `getPersonFilterOption`, so their link keeps working.
+ */
+export const PERSON_FILTER_MIN_DOCUMENTS = 2;
+
 export async function getPeopleInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ id: string; name: string; count: number }[]> {
-    if (demoModeEnabled()) return demoPeople(session);
+    if (demoModeEnabled()) {
+        return demoPeople(session).filter((person) => person.count >= PERSON_FILTER_MIN_DOCUMENTS);
+    }
     return cachedPeopleInUse(session);
 }
 
 const cachedPeopleInUse = unstable_cache(
     loadPeopleInUse,
-    ["getPeopleInUse-v1"],
+    ["getPeopleInUse-v2"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
 async function loadPeopleInUse(
     session: SessionFilter = SESSION_NUMBER,
 ): Promise<{ id: string; name: string; count: number }[]> {
+    // Documents, not credits: one set of minutes can name someone as both
+    // present and reporting, and that is still one document.
+    const credits = await prisma.documentContributor.findMany({
+        where: { document: sessionWhere(session) },
+        select: { hopkinsAffiliateId: true, documentId: true },
+    });
+    const documents = new Map<string, Set<string>>();
+    for (const credit of credits) {
+        const held = documents.get(credit.hopkinsAffiliateId) ?? new Set<string>();
+        held.add(credit.documentId);
+        documents.set(credit.hopkinsAffiliateId, held);
+    }
+    const ids = [...documents]
+        .filter(([, held]) => held.size >= PERSON_FILTER_MIN_DOCUMENTS)
+        .map(([id]) => id);
+
     const people = await prisma.hopkinsAffiliate.findMany({
-        where: {
-            contributions: { some: { document: sessionWhere(session) } },
-        },
-        select: {
-            id: true,
-            name: true,
-            _count: {
-                select: { contributions: { where: { document: sessionWhere(session) } } },
-            },
-        },
+        where: { id: { in: ids } },
+        select: { id: true, name: true },
     });
 
     return people
         .map((person) => ({
             id: person.id,
             name: person.name,
-            count: person._count.contributions,
+            count: documents.get(person.id)?.size ?? 0,
         }))
         .sort((left, right) => compareNamesBySurname(left.name, right.name));
 }

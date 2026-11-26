@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { acceptedMinuteTitle, minuteTitleSourceHash, validateMinuteTitle } from '../lib/minute-title-ai';
+import { acceptedMinuteTitle, minuteTitleSourceHash, validateMinuteTitle, withoutOrganizationName } from '../lib/minute-title-ai';
 import { standardTitles } from '../lib/titles';
+
+// The organisation is every document's; meeting titles drop its name.
+assert.equal(withoutOrganizationName('114th Johns Hopkins Student Government Association Executive Meeting #11 — Minutes (11/20/26)'), '114th Executive Meeting #11 — Minutes (11/20/26)');
+assert.equal(withoutOrganizationName('Johns Hopkins Student Government Association Executive Meeting #10 — Agenda (11/13/26)'), 'Executive Meeting #10 — Agenda (11/13/26)');
+assert.equal(withoutOrganizationName('112th JHU Student Government Association Senate Meeting #8 — Agenda and Minutes (10/01/24)'), '112th Senate Meeting #8 — Agenda and Minutes (10/01/24)');
+assert.equal(withoutOrganizationName('Student Government Association General Body Meeting #7 — Agenda (10/18/16)'), 'General Body Meeting #7 — Agenda (10/18/16)');
+assert.equal(withoutOrganizationName('Johns Hopkins University Student Government Association Meeting — Agenda and Minutes (09/06/16)'), 'SGA Meeting — Agenda and Minutes (09/06/16)');
+assert.equal(withoutOrganizationName('Class of 2021 Sophomore Class Council Meeting — Minutes (10/10/18)'), 'Class of 2021 Sophomore Class Council Meeting — Minutes (10/10/18)');
 
 async function main() {
     const source = { id: 'fixture', title: 'HSS notes 09_09_18', kind: 'minutes.committee', folderPath: 'Health, Safety and Sustainability',
