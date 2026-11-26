@@ -63,6 +63,7 @@ export default function DocumentResults({
     sort,
     hasQuery,
     emptyMessage,
+    chipPeople,
 }: {
     initial: DocumentPage;
     /** The listing's own query string, sent with each request for a page. */
@@ -71,7 +72,10 @@ export default function DocumentResults({
     /** Whether a title or content search is typed, which makes relevance a choice. */
     hasQuery: boolean;
     emptyMessage: string;
+    /** Ids of the people named in enough documents to get a chip on a result. */
+    chipPeople: string[];
 }) {
+    const chipped = new Set(chipPeople);
     const { pending, apply } = useDocumentQuery();
     const [loaded, setLoaded] = useState<Loaded>({
         documents: initial.documents,
@@ -186,7 +190,13 @@ export default function DocumentResults({
                 ) : (
                     <ul className={styles.documentList}>
                         {loaded.documents.map((document, index) => (
-                            <DocumentCard key={document.id} document={document} index={index + 1} sort={sort} />
+                            <DocumentCard
+                                key={document.id}
+                                document={document}
+                                index={index + 1}
+                                sort={sort}
+                                chipped={chipped}
+                            />
                         ))}
                     </ul>
                 )}
@@ -221,14 +231,17 @@ function DocumentCard({
     document,
     index,
     sort,
+    chipped,
 }: {
     document: DocumentListing;
     index: number;
     sort: DocumentSort;
+    chipped: ReadonlySet<string>;
 }) {
     // One person chip lists every capacity in which that person appears.
     const byPerson = new Map<string, { name: string; roles: string[] }>();
     for (const contributor of document.contributors) {
+        if (!chipped.has(contributor.id)) continue;
         const entry = byPerson.get(contributor.id);
         if (entry) {
             entry.roles.push(contributor.role);

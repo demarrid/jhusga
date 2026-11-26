@@ -334,14 +334,14 @@ export async function getDocumentPage(
 }
 
 /**
- * People named in at least two documents, for the person filter.
+ * People named in at least ten documents: the person filter's options, and
+ * the only people given a name chip on a search result.
  *
- * Someone named once is reached from that document's own chips; listing every
- * one-off mention buried the people the filter is for. A person linked
- * directly (a chip, the directory) is still added back by
- * `getPersonFilterOption`, so their link keeps working.
+ * Listing every passing mention buried the people the filter is for. A person
+ * linked directly (the directory) is still added back to the filter by
+ * `getPersonFilterOption`, so the control names who the URL filters by.
  */
-export const PERSON_FILTER_MIN_DOCUMENTS = 2;
+export const PERSON_FILTER_MIN_DOCUMENTS = 10;
 
 export async function getPeopleInUse(
     session: SessionFilter = SESSION_NUMBER,
@@ -354,7 +354,7 @@ export async function getPeopleInUse(
 
 const cachedPeopleInUse = unstable_cache(
     loadPeopleInUse,
-    ["getPeopleInUse-v2"],
+    ["getPeopleInUse-v3"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 

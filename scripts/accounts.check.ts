@@ -2,7 +2,7 @@
  * Checks the Drive-account matcher against the handles that actually own files
  * in the master folder, and against the people the archive knows.
  */
-import { accountNameScore, accountStem, matchAccount } from "../lib/accounts";
+import { accountNameScore, accountStem, handleFitsName, inferAccountFromDocuments, matchAccount } from "../lib/accounts";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -96,8 +96,13 @@ check(
 );
 check(
     "the evidence records the account it came from",
-    matchAccount({ email: "spate249@jh.edu" }, people)?.evidence === "Drive account spate249@jh.edu",
-    matchAccount({ email: "spate249@jh.edu" }, people),
+    matchAccount({ email: "jmorr119@jh.edu" }, people)?.evidence === "Drive account jmorr119@jh.edu",
+    matchAccount({ email: "jmorr119@jh.edu" }, people),
+);
+check(
+    "a maintainer-confirmed JHED resolves with confirmed evidence",
+    matchAccount({ email: "spate249@jh.edu" }, people)?.evidence ===
+        "Drive account spate249@jh.edu (confirmed as Shreemann Patel)",
 );
 
 // The rule that keeps this from quietly mislabelling people.
@@ -110,9 +115,9 @@ check(
     // Two spellings of one person are two rows, and the matcher cannot know
     // that. Refusing is the right answer until the duplicate is merged.
     "a handle fitting two rows equally well resolves to nobody",
-    matchAccount({ email: "spate249@jh.edu" }, [
-        { id: "a", name: "Shreeman Patel" },
-        { id: "b", name: "Shreemann Patel" },
+    matchAccount({ email: "jmorr119@jh.edu" }, [
+        { id: "a", name: "Jackson Morris" },
+        { id: "b", name: "Jackson Morriss" },
     ]) === null,
 );
 check(
@@ -137,6 +142,40 @@ check(
 );
 check("display names can identify accounts without emails", matchAccount({ displayName: "Tyler Turner" }, people)?.person.id === "tyler");
 check("duplicate display names remain unresolved", matchAccount({ displayName: "Tyler Turner" }, [{ id: "a", name: "Tyler Turner" }, { id: "b", name: "Tyler Turner" }]) === null);
+
+console.log("\nco-occurrence");
+
+const roster = [
+    { id: "tim", name: "Tim Huang" }, { id: "tina", name: "Tina Huang" },
+    { id: "president", name: "Ronald J. Daniels" }, { id: "molly", name: "Molly Kuzma" },
+    { id: "peter", name: "Peter Tarpley" }, { id: "raven", name: "Raven McCoy" },
+    { id: "jason", name: "Jason Yu" },
+];
+check("initials fit a short handle", handleFitsName("Tim Huang", "th9435@gmail.com"));
+check("initials before a surname fit", handleFitsName("Molly Kuzma", "mekuzma1993@gmail.com"));
+check("a given name and the surname's opening fit", handleFitsName("Peter Tarpley", "petertcollege@gmail.com"));
+check("a shared surname alone does not fit", !handleFitsName("Raven McCoy", "racheltmccoy@gmail.com"));
+check("a given name before another surname does not fit", !handleFitsName("Jason Yu", "jasony.livingston@gmail.com"));
+check(
+    "an opaque handle resolves from who its documents name",
+    inferAccountFromDocuments({ email: "th9435@gmail.com" }, new Map([["tim", 10], ["president", 40]]), 55, roster)?.person.id === "tim",
+);
+check(
+    "the most-named person is not the owner unless the handle fits",
+    inferAccountFromDocuments({ email: "zz0000@gmail.com" }, new Map([["president", 40]]), 55, roster) === null,
+);
+check(
+    "two documents are not enough",
+    inferAccountFromDocuments({ email: "th9435@gmail.com" }, new Map([["tim", 2]]), 2, roster) === null,
+);
+check(
+    "a close runner-up whose name also fits leaves the account unresolved",
+    inferAccountFromDocuments({ email: "th9435@gmail.com" }, new Map([["tim", 5], ["tina", 4]]), 10, roster) === null,
+);
+check(
+    "a shared SGA inbox is never inferred",
+    inferAccountFromDocuments({ email: "jhusga1718@gmail.com" }, new Map([["tim", 14]]), 14, roster) === null,
+);
 
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

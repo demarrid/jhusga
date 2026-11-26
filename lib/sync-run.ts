@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { MASTER_FOLDER_ID, MAX_LINK_ROUNDS } from "@/config/sga";
 import {
+    REVISION_RETRIES_PER_RUN,
     SYNC_ABANDON_AFTER_MS,
     SYNC_LEASE_MS,
     SYNC_MAX_ATTEMPTS,
@@ -13,9 +14,10 @@ import {
 import { administratorLookupsLeft, beginAdministratorLookupRun } from "@/lib/administrator-lookup";
 import { recordAllDirectories } from "@/lib/directory";
 import { type WalkedFile, walkFolder } from "@/lib/drive";
-import { refreshRevisionAuthors, revisionOAuthConfigured } from "@/lib/drive-revisions";
+import { minutesMissingRevisionHistory, refreshRevisionAuthors, revisionOAuthConfigured } from "@/lib/drive-revisions";
 import { applyManualNameAliases, pruneStaleAliases, resetNameResolverCache } from "@/lib/names";
 import { prisma } from "@/lib/prisma";
+import { runAsBackgroundDatabaseWork } from "@/lib/database-priority";
 import { rebuildPassages } from "@/lib/search";
 import {
     type PendingLink,
@@ -29,6 +31,7 @@ import {
     prepareLinkRound,
     rebuildReferences,
     recordDates,
+    recordArchiveSourceOwners,
     recordDriveAccounts,
     recordKinds,
     recordMeetings,
@@ -74,7 +77,10 @@ type RunState = {
         /** Files this round ingested or found unchanged; none means no further round. */
         found: number;
     };
-    revisionAuthors?: { at: number };
+    /** `ids`: the files this run reads history for, changed files first. */
+    revisionAuthors?: { at: number; ids?: string[] };
+    /** Source files whose Drive owner this run already looked up for archive records. */
+    archiveOwners?: { checked: string[] };
     passages?: { afterId: string | null };
     summaries?: { considered: string[]; calls: number; quotaExhausted?: boolean };
 };
@@ -190,10 +196,14 @@ async function linksStep(slice: Slice): Promise<boolean> {
  * Classification must finish first: a new file does not have its minutes role
  * until recordMeetings runs. Never fetch history for an agenda, bill,
  * resolution, or an edit awaiting publication review.
+ *
+ * Besides the files this run changed, a few published minutes with no stored
+ * history are retried, so one failed import is not permanent. The queue is
+ * fixed once, on the run row, so later slices index the same list.
  */
 async function revisionAuthorsStep(slice: Slice): Promise<boolean> {
     const { state } = slice;
-    const ids = [...new Set(state.summary.revisionAuthorFileIds)];
+    const changed = [...new Set(state.summary.revisionAuthorFileIds)];
     state.revisionAuthors ??= { at: 0 };
     const cursor = state.revisionAuthors;
     const tally = (result: SyncSummary["revisionAuthors"]) => {
@@ -206,9 +216,16 @@ async function revisionAuthorsStep(slice: Slice): Promise<boolean> {
     try { configured = revisionOAuthConfigured(); } catch { /* refreshRevisionAuthors reports it */ }
     if (!configured) {
         // Answered without a network call, and said once rather than per file.
-        tally(await refreshRevisionAuthors(ids.slice(cursor.at)));
+        tally(await refreshRevisionAuthors(changed.slice(cursor.at)));
         return true;
     }
+
+    // A run checkpointed before the queue existed keeps indexing `changed`.
+    if (!cursor.ids && cursor.at === 0) {
+        cursor.ids = [...changed, ...await minutesMissingRevisionHistory(REVISION_RETRIES_PER_RUN, changed)];
+        await slice.checkpoint();
+    }
+    const ids = cursor.ids ?? changed;
 
     while (cursor.at < ids.length) {
         if (!slice.beforeDeadline()) return false;
@@ -355,6 +372,18 @@ const STEPS: Step[] = [
     {
         name: "references", label: "Linking documents together", needsMs: 10_000,
         run: once(async (state) => { state.summary.referencesLinked = await rebuildReferences(); }),
+    },
+    {
+        // Before driveAccounts, so an inherited owner is matched in the same run.
+        name: "archiveOwners", label: "Reading archive file owners", needsMs: 10_000,
+        run: async (slice) => {
+            const state = slice.state.archiveOwners ??= { checked: [] };
+            const checked = new Set(state.checked);
+            const result = await recordArchiveSourceOwners({ force: slice.state.force, deadline: slice.deadline, checked });
+            state.checked = [...checked];
+            if (!result.complete) await slice.checkpoint();
+            return result.complete;
+        },
     },
     {
         name: "driveAccounts", label: "Matching Drive accounts", needsMs: 10_000,
@@ -513,11 +542,17 @@ export type SliceOutcome = "finished" | "more" | "busy" | "failed";
  * "busy" means another invocation holds the run, which is how a duplicate
  * hand-off or a button press during a live slice is turned away.
  */
-export async function runSyncSlice(
+export function runSyncSlice(
     runId: string,
     budgetMs = SYNC_SLICE_BUDGET_MS,
     steps: Step[] = STEPS,
 ): Promise<SliceOutcome> {
+    // Sync shares the instance's single database session with page renders;
+    // let queued page reads go first. See lib/database-priority.ts.
+    return runAsBackgroundDatabaseWork(() => runSliceNow(runId, budgetMs, steps));
+}
+
+async function runSliceNow(runId: string, budgetMs: number, steps: Step[]): Promise<SliceOutcome> {
     const startedAt = Date.now();
     const deadline = startedAt + budgetMs;
     const leaseUntil = new Date(startedAt + (Number.isFinite(budgetMs) ? SYNC_LEASE_MS : 24 * 60 * 60_000));

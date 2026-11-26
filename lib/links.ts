@@ -71,7 +71,7 @@ function unescapeUrl(url: string): string {
     return url.replace(/\\([^A-Za-z0-9])/g, "$1");
 }
 
-function driveFileIdFrom(url: string): string | null {
+export function driveFileIdFrom(url: string): string | null {
     const cleaned = unescapeUrl(url);
     if (!DRIVE_HOST.test(cleaned)) return null;
 

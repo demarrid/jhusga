@@ -73,6 +73,18 @@ export function withoutNameAnnotations(name: string): string {
     return stripped || name;
 }
 
+/**
+ * Text that a roll or an extraction read as a person and that a maintainer
+ * removed: an action item, the mascot, a caucus. Never given a row again.
+ */
+const NOT_PEOPLE = new Set(
+    ["send follow-up to Jake", "Blue Jay", "Jay the Blue Jay", "Disabled Students"].map(nameKey),
+);
+
+export function isNotAPerson(name: string): boolean {
+    return NOT_PEOPLE.has(nameKey(withoutNameAnnotations(name)));
+}
+
 export function canonicalPersonName(name: string): string {
     const cleaned = withoutNameAnnotations(name);
     const key = nameKey(cleaned);
@@ -785,7 +797,16 @@ function spellingDamage(name: string): number {
     const lowered = name.split(/\s+/).filter((word) =>
         /^[a-z]/.test(word) && !/^(?:de|del|la|le|van|von|der|du|da|di|dit|bin|al|el)$/.test(word));
     if (lowered.length > 0) damage += 1;
+    // "President Daniels", "Dean Ruzicka": a title is not a name.
+    if (/^(?:president|vice|dean|dr|chair|senator|major|professor|prof|provost|director)\b/i.test(name)) damage += 2;
     return damage;
+}
+
+/** Words of the name itself: Ronald J. Daniels says more than Ronald Daniels. */
+function nameFullness(key: string): number {
+    // "A.J. Tsang" is as full as "AJ Tsang": run-on initials are one word.
+    return key.replace(/\b([a-z]) (?=[a-z]\b)/g, "$1").split(" ")
+        .filter((word) => word && !NAME_SUFFIX_WORDS.has(word)).length;
 }
 
 type MergeCandidate = {
@@ -839,9 +860,16 @@ export function planPersonMerges<T extends MergeCandidate>(
     for (const cluster of clusters.values()) {
         if (cluster.length < 2) continue;
 
+        // Toward the full name, unless another spelling in the group gives a
+        // different middle initial: then neither is the safe one to keep.
+        const middle = (key: string) => nameWords(key).middle.join(" ");
+        const fullness = (row: T) =>
+            cluster.some((other) => middle(other.nameKey) && middle(row.nameKey) && middle(other.nameKey) !== middle(row.nameKey))
+                ? 0 : nameFullness(row.nameKey);
         const ranked = [...cluster].sort(
             (a, b) =>
                 spellingDamage(a.name) - spellingDamage(b.name) ||
+                fullness(b) - fullness(a) ||
                 b._count.contributions - a._count.contributions ||
                 b.name.length - a.name.length,
         );
@@ -1206,7 +1234,7 @@ export async function resolveAffiliates(
     // Establish explicit full names before resolving any shorthand in this document.
     // Otherwise an earlier "Jessica" can attach to the only Jessica in the archive.
     for (const mention of mentions) {
-        if (isShortForm(mention.name) || mention.onlyIfKnown) continue;
+        if (isShortForm(mention.name) || mention.onlyIfKnown || isNotAPerson(mention.name)) continue;
         const name = canonicalPersonName(mention.name);
         if (regulars.some(person => person.nameKey === nameKey(name))) continue;
         // A spelling already folded onto someone else must not come back as
@@ -1227,6 +1255,10 @@ export async function resolveAffiliates(
     const unresolved = new Set<number>();
 
     for (const [index, mention] of mentions.entries()) {
+        if (isNotAPerson(mention.name)) {
+            unresolved.add(index);
+            continue;
+        }
         const writtenKey = nameKey(mention.name);
         const canonicalName = canonicalPersonName(mention.name);
         const key = nameKey(canonicalName);

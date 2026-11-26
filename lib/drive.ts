@@ -325,6 +325,36 @@ export async function getFile(fileId: string): Promise<DriveFile | null> {
     return toDriveFile(raw);
 }
 
+/**
+ * Only the owner of a file, or null when Drive will not say.
+ *
+ * Unlike getFile this ignores the manual-archive filter: archive records are
+ * transcribed from exactly those files, and reading who owns one ingests
+ * nothing.
+ */
+export async function getFileOwner(fileId: string): Promise<DriveUser | null> {
+    const params = new URLSearchParams({
+        fields: "owners(displayName, emailAddress)",
+        supportsAllDrives: "true",
+        key: apiKey(),
+    });
+    const response = await fetch(
+        `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?${params.toString()}`,
+        { cache: "no-store" },
+    );
+    if (response.status === 404) return null;
+    if (response.status === 403) {
+        const body = await response.text().catch(() => "");
+        if (KEY_REJECTED.test(body)) throw new DriveKeyError(body);
+        return null;
+    }
+    if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`Drive API ${response.status} ${response.statusText}: ${body.slice(0, 500)}`);
+    }
+    return toUser(((await response.json()) as RawFile).owners?.[0]);
+}
+
 /** Drive requests the walk keeps in flight at once. */
 const WALK_CONCURRENCY = 8;
 

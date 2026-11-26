@@ -58,7 +58,10 @@ or `npm run revisions` for all published native Google Docs minutes. Sync
 refreshes revision history for new or changed published minutes after meeting
 classification, skipping unchanged text, agendas, and held edits. Credentials
 must be configured in the environment running the sync. Failed imports retain
-stored history and are reported in the sync result and logs.
+stored history and are reported in the sync result and logs. Each sync also
+retries up to `REVISION_RETRIES_PER_RUN` (`config/sync.ts`) published minutes
+that have no stored history, newest session and edit first, so a failed import
+is retried without waiting for the file to change.
 
 For a new installation, apply migrations with `npx prisma migrate deploy` and
 generate the client with `npx prisma generate` before importing revisions.

@@ -225,6 +225,7 @@ export default async function Documents({
               sort={sort}
               hasQuery={hasQuery}
               emptyMessage={emptyMessage}
+              chipPeople={people.map((entry) => entry.id)}
             />
           </section>
         </DocumentQueryProvider>

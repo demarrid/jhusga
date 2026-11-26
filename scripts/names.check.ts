@@ -11,6 +11,7 @@ import {
     canonicalPersonName,
     diminutiveCandidates,
     givenNameCandidates,
+    isNotAPerson,
     looksMistyped,
     misspellingCandidates,
     namedInFull,
@@ -441,7 +442,7 @@ check(
 check(
     "two initials that disagree are not both folded onto a bare name",
     JSON.stringify(planned([row("1", "Mitchell Smith", 2), row("2", "Mitchell O. Smith", 1), row("3", "Mitchell D. Smith", 1)])) ===
-        JSON.stringify([["Mitchell Smith", "Mitchell D. Smith"]]),
+        JSON.stringify([["Mitchell D. Smith", "Mitchell Smith"]]),
 );
 check(
     "O'Connor is not Connor with an initial, and III is not the father",
@@ -457,6 +458,16 @@ check(
     JSON.stringify(planned([row("1", "Siddharth Dhadi", 38, "s@jh.edu"), row("2", "Siddarth Dhadi", 0)])) ===
         JSON.stringify([["Siddharth Dhadi", "Siddarth Dhadi"]]) &&
     planned([row("1", "Amanda HernÃ¡ndez", 9), row("2", "Amanda Hernández", 4)])[0]?.[0] === "Amanda Hernández",
+);
+check(
+    "the full name is kept over a busier shorter one",
+    JSON.stringify(planned([row("1", "Ronald Daniels", 280), row("2", "Ronald J. Daniels", 28)])) ===
+        JSON.stringify([["Ronald J. Daniels", "Ronald Daniels"]]),
+);
+check(
+    "removed non-people are never a person again",
+    isNotAPerson("Blue Jay") && isNotAPerson("send follow-up to Jake") && isNotAPerson("Disabled Students (LATE)") &&
+        !isNotAPerson("Jay Blue"),
 );
 check(
     "pairs checked against the archive stay two people",

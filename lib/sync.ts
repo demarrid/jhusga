@@ -6,12 +6,12 @@ import { reconcileMeetingDates } from "@/lib/meeting-dates";
 import { createHash } from "node:crypto";
 
 import { SESSION_NUMBER } from "@/config/sga";
-import { matchAccount } from "@/lib/accounts";
+import { inferAccountFromDocuments, matchAccount } from "@/lib/accounts";
 import { findQuote } from "@/lib/anchor";
 import { bodyForDocument } from "@/lib/bodies";
 import { extractContributors, UNIVERSITY_OFFICE } from "@/lib/contributors";
 import { assessChange, isGoverning } from "@/lib/integrity";
-import { extractDocumentLinks, resolveReferences } from "@/lib/links";
+import { driveFileIdFrom, extractDocumentLinks, resolveReferences } from "@/lib/links";
 import { meetingFor, documentMeetingRole } from "@/lib/meetings";
 import { resolveAffiliates } from "@/lib/names";
 import { validatePersonMentions } from "@/lib/person-validation";
@@ -36,6 +36,7 @@ import {
     exportPresentationAsText,
     exportSpreadsheetAsCsv,
     getFile,
+    getFileOwner,
     isDocxFile,
     isPdfFile,
 } from "@/lib/drive";
@@ -476,6 +477,75 @@ export async function rebuildReferences(): Promise<number> {
 }
 
 /**
+ * Give archive documents the Drive owner of the file they were transcribed from.
+ *
+ * Archive records are imported by script and never pass through the folder
+ * walk, so they arrive without owner metadata. An excerpt split out of a
+ * compilation PDF shares that PDF as its `source`, so every excerpt inherits
+ * the compilation's owner, and recordDriveAccounts then lists that owner in
+ * People named when the account matches a known person.
+ *
+ * The public key is tried first; archive files are often unshared, so the
+ * revision OAuth account is asked next when it is configured. A file Drive
+ * definitively names no owner for is marked with an empty email so later syncs
+ * do not ask again; `force` asks again. A file nobody could be asked about
+ * (private, OAuth not configured) stays unmarked and is retried next sync.
+ * Only the owner is copied: the last editor of a compilation did not edit the
+ * excerpt in any meaningful sense.
+ */
+export async function recordArchiveSourceOwners(options: {
+    force?: boolean;
+    deadline?: number;
+    /** Source files already looked up in this run; added to as it goes. */
+    checked?: Set<string>;
+} = {}): Promise<{ complete: boolean; documentsUpdated: number }> {
+    const checked = options.checked ?? new Set<string>();
+    const documents = await prisma.document.findMany({
+        where: {
+            discoveredVia: "archive",
+            driveOwnerName: null,
+            OR: [{ driveOwnerEmail: null }, ...(options.force ? [{ driveOwnerEmail: "" }] : [])],
+        },
+        select: { id: true, source: true },
+    });
+
+    const byFile = new Map<string, string[]>();
+    for (const document of documents) {
+        const fileId = driveFileIdFrom(document.source);
+        if (!fileId || checked.has(fileId)) continue;
+        byFile.set(fileId, [...(byFile.get(fileId) ?? []), document.id]);
+    }
+
+    const { oauthFileOwner } = await import("@/lib/drive-revisions");
+    let documentsUpdated = 0;
+    for (const [fileId, ids] of byFile) {
+        if (options.deadline !== undefined && Date.now() >= options.deadline) {
+            return { complete: false, documentsUpdated };
+        }
+        checked.add(fileId);
+        let owner: DriveFile["owner"] | undefined = (await getFileOwner(fileId)) ?? undefined;
+        if (!owner) {
+            try {
+                owner = await oauthFileOwner(fileId);
+            } catch (error) {
+                console.warn(`archive owner: ${fileId} — ${error instanceof Error ? error.message : String(error)}`);
+                continue;
+            }
+        }
+        // Nobody with access was asked; leave it for a sync that can ask.
+        if (owner === undefined) continue;
+        const result = await prisma.document.updateMany({
+            where: { id: { in: ids } },
+            data: owner
+                ? { driveOwnerName: owner.displayName, driveOwnerEmail: owner.emailAddress }
+                : { driveOwnerEmail: "" },
+        });
+        if (owner) documentsUpdated += result.count;
+    }
+    return { complete: true, documentsUpdated };
+}
+
+/**
  * Link Drive owner and last-editor accounts onto people the archive knows.
  *
  * Runs after every document has been ingested, because the candidate list is
@@ -516,6 +586,8 @@ export async function recordDriveAccounts(documentIds?: string[]): Promise<numbe
         source: string;
         evidence: string;
     }[] = [];
+    /** Owner account (email, else display name) -> in-scope documents it owns. */
+    const unmatchedOwners = new Map<string, string[]>();
 
     for (const document of documents) {
         const accounts = [
@@ -535,12 +607,46 @@ export async function recordDriveAccounts(documentIds?: string[]): Promise<numbe
             if (!account.email && !account.displayName) continue;
 
             const match = matchAccount(account, people);
-            if (!match) continue;
+            if (!match) {
+                if (account.role === "drive_owner") {
+                    const key = account.email || account.displayName!;
+                    unmatchedOwners.set(key, [...(unmatchedOwners.get(key) ?? []), document.id]);
+                }
+                continue;
+            }
 
             rows.push({
                 documentId: document.id,
                 hopkinsAffiliateId: match.person.id,
                 role: account.role,
+                source: "drive",
+                evidence: match.evidence,
+            });
+        }
+    }
+
+    // Owners the handle could not resolve: corroborate from who the account's
+    // documents name, counted over everything it owns, not only this scope.
+    for (const [key, ids] of unmatchedOwners) {
+        const byEmail = key.includes("@");
+        const owned = await prisma.document.findMany({
+            where: byEmail ? { driveOwnerEmail: key } : { driveOwnerName: key, driveOwnerEmail: null },
+            select: { contributors: { where: { NOT: { source: "drive" } }, select: { hopkinsAffiliateId: true } } },
+        });
+        const named = new Map<string, number>();
+        for (const document of owned) {
+            for (const id of new Set(document.contributors.map((row) => row.hopkinsAffiliateId))) {
+                named.set(id, (named.get(id) ?? 0) + 1);
+            }
+        }
+        const match = inferAccountFromDocuments(
+            byEmail ? { email: key } : { displayName: key }, named, owned.length, people);
+        if (!match) continue;
+        for (const documentId of ids) {
+            rows.push({
+                documentId,
+                hopkinsAffiliateId: match.person.id,
+                role: "drive_owner",
                 source: "drive",
                 evidence: match.evidence,
             });

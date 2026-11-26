@@ -1,9 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
 import { demoModeEnabled } from "./data-mode";
 import { metricFailure } from "./telemetry-retry";
+import { foregroundFirst } from "./database-priority";
 
 // One pool per JS runtime, shared by instrumented application queries and raw
 // telemetry writes. Each Fluid instance is its own process, and Prisma
@@ -31,6 +32,7 @@ export function database() {
     warnIfDirectPrismaHost(connectionString);
     const pool = new Pool({ connectionString, max: DATABASE_POOL_MAX,
         idleTimeoutMillis: DATABASE_IDLE_MS, connectionTimeoutMillis: DATABASE_CONNECT_MS });
+    preferForegroundAcquisitions(pool);
     // Ensure Vercel does not freeze the runtime before idle sockets can close.
     attachDatabasePool(pool);
     pool.on("error", () => console.warn("Idle database connection failed; pool will replace it."));
@@ -54,6 +56,20 @@ export async function retryConnectionLimit<T>(run: () => Promise<T>, delays = CO
             await new Promise(resolve => setTimeout(resolve, delays[attempt] * (0.5 + Math.random())));
         }
     }
+}
+
+/**
+ * pool.query and the Prisma adapter both acquire through pool.connect, so the
+ * instance method orders every acquisition; see lib/database-priority.ts.
+ */
+function preferForegroundAcquisitions(pool: Pool) {
+    const raw = Pool.prototype.connect.bind(pool) as () => Promise<PoolClient>;
+    const ordered = foregroundFirst(raw);
+    pool.connect = ((callback?: (error: Error | undefined, client?: PoolClient, done?: PoolClient["release"]) => void) => {
+        const acquired = ordered.connect();
+        if (!callback) return acquired;
+        acquired.then(client => callback(undefined, client, client.release.bind(client)), error => callback(error));
+    }) as Pool["connect"];
 }
 
 let warnedDirectHost = false;

@@ -37,10 +37,12 @@ import path from "node:path";
 const SUITES = [
     "telemetry",
     "telemetry-pool",
+    "database-priority",
     "sign-in-email",
     "anchor",
     "archive",
     "archive-cache",
+    "archive-owners",
     "archive-quality",
     "accounts",
     "activity",

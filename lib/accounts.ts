@@ -224,3 +224,70 @@ export function matchAccount<T extends AccountCandidate>(
         evidence: `Drive account ${accountLabel}`,
     };
 }
+
+/** Fewest owned documents naming a person before co-occurrence counts at all. */
+export const MIN_COOCCURRENCE_DOCUMENTS = 3;
+
+/**
+ * Whether a handle is shaped like this person's name, loosely enough to be
+ * worth corroborating but never enough on its own: initials (`th9435` for Tim
+ * Huang), initials before the surname (`mekuzma1993`), or the given name with
+ * at most the surname's opening after it (`petertcollege`).
+ */
+export function handleFitsName(name: string, account: string): boolean {
+    const stem = accountStem(account);
+    const parts = nameParts(name);
+    if (!parts || parts.tokens.length < 2 || stem.length < 2) return false;
+    const { tokens, given, surname } = parts;
+
+    if (accountNameScore(name, account) >= 3) return true;
+    if (stem === tokens.map((token) => token[0]).join("") || stem === `${given[0]}${surname[0]}`) return true;
+    if (surname.length >= 4 && stem.endsWith(surname)) {
+        const prefix = stem.slice(0, -surname.length);
+        if (prefix.length >= 1 && prefix.length <= 3 && prefix[0] === given[0]) return true;
+    }
+    if (given.length >= 4 && stem.startsWith(given)) {
+        const rest = stem.slice(given.length);
+        if (!rest || (rest[0] === surname[0] && rest.length <= surname.length + 1)) return true;
+    }
+    return false;
+}
+
+/**
+ * Resolve an account the handle alone could not, from who its documents name.
+ *
+ * An account's owner tends to be named in what it owns -- the bills they
+ * introduced, the minutes they took. Counting alone is not enough, though: the
+ * most-named person in a body's files is usually its president, not whoever
+ * set the files up. So only people whose name the handle could plausibly spell
+ * (handleFitsName) are counted, and one has to be named in at least three of
+ * the account's documents, in a tenth of them, and in twice as many as the next
+ * such person. Measured against every account already resolved another way,
+ * this picked no wrong person.
+ *
+ * `named` counts, per person, the account's documents that name them.
+ */
+export function inferAccountFromDocuments<T extends AccountCandidate>(
+    account: { email?: string | null; displayName?: string | null },
+    named: Map<string, number>,
+    documentCount: number,
+    people: T[],
+): AccountMatch<T> | null {
+    const label = account.email?.trim().toLowerCase() || account.displayName?.trim() || "";
+    if (!label || isRoleAccount(label)) return null;
+    const byId = new Map(people.map((person) => [person.id, person]));
+    const ranked = [...named]
+        .flatMap(([id, count]) => {
+            const person = byId.get(id);
+            return person && handleFitsName(person.name, label) ? [{ person, count }] : [];
+        })
+        .sort((a, b) => b.count - a.count);
+    const [top, next] = ranked;
+    if (!top || top.count < MIN_COOCCURRENCE_DOCUMENTS || top.count < 0.1 * documentCount) return null;
+    if (next && top.count < 2 * next.count) return null;
+    return {
+        person: top.person,
+        score: 1,
+        evidence: `Drive account ${label} (named in ${top.count} of the ${documentCount} documents it owns)`,
+    };
+}

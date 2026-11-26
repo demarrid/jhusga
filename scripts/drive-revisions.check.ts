@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { listDriveRevisions, refreshRevisionAuthors, revisionOAuthConfigured, revisionText, revisionRetryDelay } from "../lib/drive-revisions";
+import { listDriveRevisions, minutesMissingRevisionHistory, refreshRevisionAuthors, revisionOAuthConfigured, revisionText, revisionRetryDelay } from "../lib/drive-revisions";
 const originalFetch = globalThis.fetch;
 const originalNow = Date.now;
 const originalTimeout = globalThis.setTimeout;
@@ -114,6 +114,22 @@ async function main() {
             assert.ok(!error.message.includes("private details"));
             return true;
         });
+        type Query = { take?: number; where: Record<string, unknown>; orderBy: unknown[] };
+        const queries: Query[] = [];
+        (globalThis as { prisma?: unknown }).prisma = { document: { findMany: async (query: Query) => {
+            queries.push(query);
+            return [{ driveFileId: "uncredited-minutes" }];
+        } } };
+        assert.deepEqual(await minutesMissingRevisionHistory(0), [], "a zero cap reads nothing");
+        assert.equal(queries.length, 0);
+        assert.deepEqual(await minutesMissingRevisionHistory(10, ["changed-minutes"]), ["uncredited-minutes"]);
+        const [query] = queries;
+        assert.equal(query!.take, 10);
+        assert.deepEqual(query!.where.driveRevisions, { none: {} }, "only files with no stored history are retried");
+        assert.deepEqual(query!.where.driveFileId, { notIn: ["changed-minutes"] }, "this run's changed files are not double-counted");
+        assert.equal(query!.where.meetingRole, "minutes");
+        assert.equal(query!.where.reviewState, "published", "held edits never have history read");
+        assert.deepEqual(query!.orderBy[0], { sessionNumber: { sort: "desc", nulls: "last" } }, "current session first");
         console.log("all OAuth revision checks passed");
     } finally {
         globalThis.fetch = originalFetch;

@@ -105,6 +105,30 @@ async function oauthFetch(url: string, attempt = 0, redirects = 0, refreshed = f
     return response;
 }
 
+/**
+ * The owner of a file the public API key cannot see, read through the same
+ * OAuth account. Undefined when OAuth is not configured, so a caller can tell
+ * "nobody was asked" from "Drive named no owner" (null).
+ */
+export async function oauthFileOwner(
+    fileId: string,
+): Promise<{ displayName: string | null; emailAddress: string | null } | null | undefined> {
+    if (!revisionOAuthConfigured()) return undefined;
+    const url = new URL(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`);
+    url.searchParams.set("fields", "owners(displayName,emailAddress)");
+    url.searchParams.set("supportsAllDrives", "true");
+    const response = await oauthFetch(url.toString());
+    if (response.status === 404 || response.status === 403) {
+        await response.body?.cancel();
+        return null;
+    }
+    if (!response.ok) throw new Error(`Drive owner lookup failed (${response.status})`);
+    const file = await response.json() as { owners?: { displayName?: string; emailAddress?: string }[] };
+    const owner = file.owners?.[0];
+    if (!owner?.displayName && !owner?.emailAddress) return null;
+    return { displayName: owner.displayName ?? null, emailAddress: owner.emailAddress ?? null };
+}
+
 const historyAccess = new Map<string, { readable: boolean; expires: number }>();
 
 /** Access is tied to the OAuth account, not the public document permissions. */
@@ -167,14 +191,37 @@ export async function revisionText(revision: Revision): Promise<string | null> {
     return plain ? response.text() : docxToText(Buffer.from(await response.arrayBuffer()));
 }
 
+/** The only documents whose Drive history is ever read for authorship. */
+const HISTORY_ELIGIBLE = {
+    mimeType: GOOGLE_DOC_MIME, meetingRole: "minutes", kind: { startsWith: "minutes." }, reviewState: "published",
+} as const;
+
+/**
+ * Published minutes with no stored revision history, newest session and edit
+ * first, for the sync to retry. A file is only queued when its text changes,
+ * so without this one failed import left the file uncredited until someone
+ * edited it again. Capped per run: each file costs several paced requests,
+ * and files that keep failing must not crowd out the rest of the sync.
+ */
+export async function minutesMissingRevisionHistory(limit: number, excluding: string[] = []): Promise<string[]> {
+    if (limit <= 0) return [];
+    const documents = await prisma.document.findMany({
+        where: { ...HISTORY_ELIGIBLE, driveRevisions: { none: {} },
+            ...(excluding.length ? { driveFileId: { notIn: excluding } } : {}) },
+        orderBy: [{ sessionNumber: { sort: "desc", nulls: "last" } }, { driveModifiedTime: { sort: "desc", nulls: "last" } }],
+        select: { driveFileId: true },
+        take: limit,
+    });
+    return documents.map(document => document.driveFileId);
+}
+
 /** One atomic write per document; failed downloads retain the previous history.
  * Never overwrite publication or review state with a historical snapshot.
  */
 export async function importRevisionAuthors(fileId?: string): Promise<{ imported: number; failed: number }> {
     if (!revisionOAuthConfigured()) throw new Error("Configure Drive revision OAuth first (see docs/drive-revisions.md)");
     const documents = await prisma.document.findMany({
-        where: { mimeType: GOOGLE_DOC_MIME, meetingRole: "minutes", kind: {startsWith: "minutes."}, reviewState: "published",
-            ...(fileId ? { driveFileId: fileId } : {}) },
+        where: { ...HISTORY_ELIGIBLE, ...(fileId ? { driveFileId: fileId } : {}) },
         select: { id: true, driveFileId: true },
     });
     let imported = 0;

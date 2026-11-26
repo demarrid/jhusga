@@ -54,3 +54,9 @@ export const SYNC_ABANDON_AFTER_MS = 3 * 60 * 60_000;
  * rather than being retried forever.
  */
 export const SYNC_MAX_ATTEMPTS = 3;
+
+/**
+ * Published minutes with no stored Drive history that one sync retries, on
+ * top of the files it changed. Each costs a few requests paced 1.5 s apart.
+ */
+export const REVISION_RETRIES_PER_RUN = 10;
