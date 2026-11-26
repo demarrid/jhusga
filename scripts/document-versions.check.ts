@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import assert from "node:assert/strict";
-import { selectDocumentVersion, versionCutoffDate, versionDay, versionOptions } from "../lib/document-versions";
+import { mergeUnchangedVersions, selectDocumentVersion, sortVersionOccurrences, versionCutoffDate, versionDay, versionOptions } from "../lib/document-versions";
 
 import type { Prisma } from "@prisma/client";
 
@@ -33,6 +33,19 @@ assert.equal(versionCutoffDate({ id: "day", datedAt: anchor, aiDateValue: "2026-
 assert.equal(versionCutoffDate({ id: "stated", datedAt: anchor }), anchor);
 assert.equal(selectDocumentVersion(options, versionCutoffDate({ id: "session", datedAt: anchor, aiDateValue: "2026/2027" }))?.selected.id, "after");
 
+// A save that changed neither text nor images folds into the save before it.
+const save = (id: string, revisionId: string, day: string, mediaHash: string | null = null) =>
+    ({ id, revisionId, mediaHash, sourceModifiedTime: new Date(`2026-${day}T12:00:00Z`), observedAt: new Date(`2026-${day}T12:00:00Z`) });
+const saves = sortVersionOccurrences([
+    save("comment", "A", "11-18"), save("written", "A", "10-06"), save("edit", "B", "11-20"),
+    save("revert", "A", "11-21"), save("image", "A", "11-22", "picture"), save("image-comment", "A", "11-23", "picture"),
+]);
+const merged = mergeUnchangedVersions(saves);
+assert.deepEqual(merged.kept.map(row => row.id), ["written", "edit", "revert", "image"],
+    "comment-only saves fold back; a reversion and an image-only edit stay versions");
+assert.equal(merged.aliases.get("comment"), "written");
+assert.equal(merged.aliases.get("image-comment"), "image");
+
 type Occurrence = { id: string; revisionId: string; sourceModifiedTime: Date | null; observedAt: Date; status: string };
 async function main() {
     Object.assign(globalThis, { AsyncLocalStorage });
@@ -64,15 +77,15 @@ async function main() {
         summary: { content: "Summary of current text", status: "fresh", model: "fixture", generatedAt: dated, citations: [] },
     };
     const rows = [
-        { id: "old", status: "published", sourceModifiedTime: new Date("2026-10-31T20:00:00Z"), observedAt: dated,
+        { id: "old", revisionId: "rev-old", status: "published", sourceModifiedTime: new Date("2026-10-31T20:00:00Z"), observedAt: dated,
             revision: { documentId: "document", content: "# Earlier\n\nEarlier text", title: "Earlier title", editorName: "Earlier editor" } },
-        { id: "new", status: "published", sourceModifiedTime: new Date("2026-11-01T18:00:00Z"), observedAt: dated,
+        { id: "new", revisionId: "rev-new", status: "published", sourceModifiedTime: new Date("2026-11-01T18:00:00Z"), observedAt: dated,
             revision: { documentId: "document", content: current.content, title: current.title, editorName: "Current editor" } },
-        { id: "held", status: "held", sourceModifiedTime: new Date("2026-11-02T18:00:00Z"), observedAt: dated,
+        { id: "held", revisionId: "rev-held", status: "held", sourceModifiedTime: new Date("2026-11-02T18:00:00Z"), observedAt: dated,
             revision: { documentId: "document", content: "Do not expose", title: "Held", editorName: "" } },
-        { id: "rejected", status: "rejected", sourceModifiedTime: new Date("2026-11-03T18:00:00Z"), observedAt: dated,
+        { id: "rejected", revisionId: "rev-rejected", status: "rejected", sourceModifiedTime: new Date("2026-11-03T18:00:00Z"), observedAt: dated,
             revision: { documentId: "document", content: "Do not expose", title: "Rejected", editorName: "" } },
-        { id: "foreign", status: "published", sourceModifiedTime: dated, observedAt: dated,
+        { id: "foreign", revisionId: "rev-foreign", status: "published", sourceModifiedTime: dated, observedAt: dated,
             revision: { documentId: "another-document", content: "Other document", title: "Other", editorName: "" } },
     ];
     type Where = { id?: string; status: string; revision: { documentId: string } };
@@ -144,7 +157,14 @@ async function main() {
     assert.equal((await cachedView("document", "new"))?.selected.id, "new", "versions have separate cache keys");
     assert.equal(await cachedView("document", "foreign"), null, "cache never bypasses publication/ownership");
     assert.equal(await getDocumentVersionContent(warm!.document, "foreign"), null);
-    rows.push({ ...rows[1], id: "newest", sourceModifiedTime: new Date("2026-11-05T12:00:00Z") });
+    rows.push({ ...rows[1], id: "comment-only", sourceModifiedTime: new Date("2026-11-04T12:00:00Z") });
+    assert.equal(await getLatestPublishedVersionId("document"), "new", "a save with unchanged text is not a new version");
+    entries.clear();
+    const folded = await cachedView("document", "comment-only");
+    assert.equal(folded?.selected.id, "new", "a link to a folded save opens the version it folded into");
+    assert.deepEqual(folded?.options.map(row => row.id), ["old", "new"]);
+    await cachedView("document", "new"); // Re-warm for the cache check below.
+    rows.push({ ...rows[1], id: "newest", revisionId: "rev-newest", sourceModifiedTime: new Date("2026-11-05T12:00:00Z") });
     assert.equal(await getLatestPublishedVersionId("document"), "newest", "refresh ID bypasses a warm page cache");
     assert.notEqual((await cachedView("document", "new"))?.latest.id, "newest");
     entries.clear(); // Simulate the archive tag invalidation performed after a changed refresh.

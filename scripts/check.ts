@@ -63,6 +63,7 @@ const SUITES = [
     "document-presentation",
     "document-sort",
     "document-categories",
+    "document-filters",
     "document-versions",
     "visit-refresh",
     "document-media",

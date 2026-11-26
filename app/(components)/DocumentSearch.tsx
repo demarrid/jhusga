@@ -6,6 +6,7 @@ import Checkbox from "@/app/(components)/Checkbox";
 import { useDocumentQuery } from "@/app/(components)/DocumentQuery";
 import Select from "@/app/(components)/Select";
 import { contributorRoleLabel } from "@/lib/contributors";
+import { joinFilterValues } from "@/lib/document-filters";
 import { documentKindLabel } from "@/lib/kinds";
 
 import styles from "./DocumentSearch.module.css";
@@ -36,10 +37,10 @@ export default function DocumentSearch({
     offices,
 }: {
     query?: string;
-    kind?: string;
-    person?: string;
-    role?: string;
-    office?: string;
+    kind: string[];
+    person: string[];
+    role: string[];
+    office: string[];
     archive: boolean;
     kinds: { kind: string; count: number }[];
     people: { id: string; name: string; count: number }[];
@@ -126,9 +127,10 @@ export default function DocumentSearch({
                     <span>Type</span>
                     <Select
                         name="kind"
-                        value={kind ?? ""}
+                        multiple
+                        value={kind}
                         ariaLabel="Filter by document type"
-                        onChange={(value) => apply({ kind: value })}
+                        onChange={(values) => apply({ kind: joinFilterValues(values) })}
                         options={[
                             { value: "", label: "All types" },
                             ...kinds.map((option) => ({
@@ -143,9 +145,10 @@ export default function DocumentSearch({
                     <span>Person</span>
                     <Select
                         name="person"
-                        value={person ?? ""}
+                        multiple
+                        value={person}
                         ariaLabel="Filter by person"
-                        onChange={(value) => apply({ person: value })}
+                        onChange={(values) => apply({ person: joinFilterValues(values) })}
                         options={[
                             { value: "", label: "Anyone" },
                             ...people.map((option) => ({
@@ -160,9 +163,10 @@ export default function DocumentSearch({
                     <span>Capacity</span>
                     <Select
                         name="role"
-                        value={role ?? ""}
+                        multiple
+                        value={role}
                         ariaLabel="Filter by capacity"
-                        onChange={(value) => apply({ role: value })}
+                        onChange={(values) => apply({ role: joinFilterValues(values) })}
                         options={[
                             { value: "", label: "Any capacity" },
                             ...roles.map((option) => ({
@@ -178,9 +182,10 @@ export default function DocumentSearch({
                         <span>Office</span>
                         <Select
                             name="office"
-                            value={office ?? ""}
+                            multiple
+                            value={office}
                             ariaLabel="Filter by office"
-                            onChange={(value) => apply({ office: value })}
+                            onChange={(values) => apply({ office: joinFilterValues(values) })}
                             options={[
                                 { value: "", label: "Any office" },
                                 ...offices.map((option) => ({

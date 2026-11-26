@@ -40,6 +40,8 @@ export default function DoubleStickyHolder({
                 innerRef.current.style.transform =
                     value === 0 ? "" : `translate3d(0, ${value}px, 0)`;
             }
+            // Lets the clip fade its top edge only while something is under it.
+            selfRef.current?.toggleAttribute("data-shifted", value < 0);
         }
 
         function stickTopPx(sidebar: HTMLElement) {

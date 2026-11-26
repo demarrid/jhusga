@@ -20,7 +20,9 @@ export const metadata: Metadata = pageMetadata({
   path: "/",
 });
 
-export const dynamic = "force-dynamic";
+// Cached (ISR). Sync expires it through the archive cache tag; the hourly
+// fallback picks up changes made outside a deployment, such as CLI scripts.
+export const revalidate = 3600;
 
 export default async function Home() {
   const activity = await getRecentActivity();

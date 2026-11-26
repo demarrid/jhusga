@@ -44,6 +44,43 @@ export function versionOptions(rows: Omit<DocumentVersionOption, "label">[]): Do
     });
 }
 
+/** A recorded source save: its text (revision) and its images (media hash). */
+export type VersionOccurrence = {
+    id: string;
+    revisionId: string;
+    mediaHash: string | null;
+    sourceModifiedTime: Date | null;
+    observedAt: Date;
+};
+
+/** Oldest first, by the source's own clock where it gave one. */
+export function sortVersionOccurrences<T extends VersionOccurrence>(rows: T[]): T[] {
+    return [...rows].sort((a, b) => (a.sourceModifiedTime ?? a.observedAt).getTime() - (b.sourceModifiedTime ?? b.observedAt).getTime()
+        || a.observedAt.getTime() - b.observedAt.getTime() || a.id.localeCompare(b.id));
+}
+
+/**
+ * Drive records a new modified time for a comment, a formatting tweak or a
+ * rename. A save that changed neither the text nor the images is not a new
+ * version to a reader: it folds into the save before it, so the version list
+ * dates the current text to when it was written rather than when the file
+ * was last touched. A -> B -> A keeps both occurrences of A. `aliases` maps a
+ * folded save's ID to the version that stands for it, so old links still open.
+ */
+export function mergeUnchangedVersions<T extends VersionOccurrence>(chronological: T[]) {
+    const kept: T[] = [];
+    const aliases = new Map<string, string>();
+    for (const row of chronological) {
+        const previous = kept.at(-1);
+        if (previous && previous.revisionId === row.revisionId && previous.mediaHash === row.mediaHash) {
+            aliases.set(row.id, previous.id);
+            continue;
+        }
+        kept.push(row);
+    }
+    return { kept, aliases };
+}
+
 /** Rows are chronological. An explicit version always overrides the default. */
 export function selectDocumentVersion(versions: DocumentVersionOption[], datedAt: Date | null, requested?: string) {
     const latest = versions.at(-1);

@@ -27,7 +27,7 @@ Document `236a176e-6846-4c49-a24c-5980a6f8600f` has the filename `Executive #10`
 
 Deploy the application changes before applying new category strings: older application versions do not recognize them. Then run `npx tsx scripts/classify-archive.ts` to audit and `npx tsx scripts/classify-archive.ts --apply` to apply the backfill. The script only changes unknown records, saves before/after metadata in an ignored `.archive-local/category-backfill-*.json` manifest, guards against concurrent source changes, and reports current and historical coverage. No Drive revisions, AI generation, passage statuses, or credit labels are changed.
 
-The CLI cannot invalidate the deployed Next.js cache; archive filter counts refresh on their existing 15-minute fallback. The document rows themselves are updated directly.
+The CLI cannot invalidate the deployed Next.js cache; archive filter counts refresh on their existing one-hour fallback. The document rows themselves are updated directly.
 
 Regression checks: `npm run check -- document-categories identity meetings sync-batching sync-run document-media-sync archive-quality amendment-passage` and `npx tsc --noEmit`.
 

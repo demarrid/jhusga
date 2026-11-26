@@ -25,10 +25,11 @@ export async function GET(request: NextRequest) {
     try {
         const page = await getDocumentPage({
             query,
-            kind: params.get("kind") ?? undefined,
-            personId: params.get("person") ?? undefined,
-            role: params.get("role") ?? undefined,
-            officeId: params.get("office") ?? undefined,
+            // Comma-separated or repeated; see lib/document-filters.
+            kind: params.getAll("kind"),
+            personId: params.getAll("person"),
+            role: params.getAll("role"),
+            officeId: params.getAll("office"),
             session: params.get("archive") === "1" ? "all" : SESSION_NUMBER,
             sort: parseDocumentSort(params.get("sort"), Boolean(query?.trim())),
             cursor: after

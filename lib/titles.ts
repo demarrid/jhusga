@@ -689,8 +689,9 @@ export function standardTitles(documents: TitleInput[]): Map<string, string> {
     const corrected = new Map<string, string>();
     for (const document of documents) {
         const correction = document.driveFileId ? DOCUMENT_CORRECTIONS[document.driveFileId] : undefined;
-        // An accepted minute title still takes precedence, as it always has.
-        if (correction && !acceptedMinuteTitle(document)) corrected.set(document.id, correction.displayTitle);
+        // Reviewed by a person against the record, so it also outranks an
+        // accepted AI minute title (GBM #9's copied-forward 10/13 header).
+        if (correction) corrected.set(document.id, correction.displayTitle);
     }
     const correctedNames = new Set(corrected.values());
     for (const document of documents) {

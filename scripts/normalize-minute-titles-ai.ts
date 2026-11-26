@@ -2,6 +2,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile, appendFile } from 'node:fs/promises';
 import { prisma } from '../lib/prisma';
+import { DOCUMENT_CORRECTIONS } from '../config/document-corrections';
 import { generateJson } from '../lib/ai';
 import { acceptedMinuteTitle, EARLIER_MINUTE_TITLE_PROMPTS, minuteTitleSourceHash, MINUTE_TITLE_PROMPT, standardMinuteTitleDates, validateMinuteTitle } from '../lib/minute-title-ai';
 
@@ -23,7 +24,7 @@ async function main() {
     }
     if (args.includes('--cached-only')) limit = 0;
     const documents = await prisma.document.findMany({ where: { kind: { startsWith: 'minutes.' }, id: documentId },
-        orderBy: { id: 'asc' }, select: { id: true, title: true, displayTitle: true, kind: true, folderPath: true,
+        orderBy: { id: 'asc' }, select: { id: true, driveFileId: true, title: true, displayTitle: true, kind: true, folderPath: true,
             content: true, updatedAt: true, aiNormalizedTitle: true, aiTitleSourceHash: true } });
     if (documentId && !documents.length) throw new Error('Minutes document not found');
     // Reserve all current titles, including documents outside this batch.
@@ -40,6 +41,8 @@ async function main() {
     const changes: { document: typeof documents[number]; proposed: string; sourceHash: string }[] = [];
     let calls = 0, skipped = 0;
     for (const document of documents) {
+        // A reviewed correction already names this document; see lib/titles.ts.
+        if (DOCUMENT_CORRECTIONS[document.driveFileId]) { skipped++; continue; }
         const accepted = acceptedMinuteTitle(document);
         if (accepted) {
             let refreshed = accepted;

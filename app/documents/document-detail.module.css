@@ -122,22 +122,40 @@
   overflow: hidden;
 }
 
-/* Fixed chrome: translated content passes underneath, not through, this bar. */
+/* Fixed chrome: translated content passes underneath, not through, this bar.
+   It has no rule of its own now; it is a band of page colour the contents
+   fade into, kept at its old height so .withheld still lines up. */
 .sidebar::before {
   content: "";
   display: block;
   flex: none;
   box-sizing: border-box;
   height: calc(0.8rem + 2px);
-  border-top: 2px solid #002d72;
   background: #f7f9fb;
   z-index: 2;
+}
+
+/* Registered so the fade's depth can transition; a gradient itself cannot. */
+@property --sidebar-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
 }
 
 .sidebar > div {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* Lines sliding under the bar fade out instead of being cut off. At 0 the
+     gradient is solid, so nothing is masked until the contents have moved. */
+  --sidebar-fade: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--sidebar-fade));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--sidebar-fade));
+  transition: --sidebar-fade 180ms ease;
+}
+
+.sidebar > div[data-shifted] {
+  --sidebar-fade: 2rem;
 }
 
 .sidebarSection {
@@ -157,6 +175,112 @@
   font-size: 1.25rem;
   font-weight: 560;
   letter-spacing: -0.025em;
+}
+
+/* Collapsible sidebar sections, animated like the history timeline's
+   "How this timeline was made". The heading's gap moves onto the summary so
+   the chevron centres on the heading and the gap can close with the body. */
+.sidebarDetails {
+  interpolate-size: allow-keywords;
+}
+
+.sidebarDetails > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.45rem;
+  /* An accent rule under the heading. Blue, so it never reads as one of the
+     grey separators between list items. */
+  border-bottom: 1.5px solid transparent;
+  cursor: pointer;
+  list-style: none;
+  transition: margin-bottom 280ms ease, border-color 200ms ease;
+}
+
+.sidebarDetails:not([open]) > summary {
+  margin-bottom: 0;
+}
+
+/* The arrow and rule stay out of the way while a section is open, and come
+   back on hover, keyboard focus, or once it is collapsed so it can be found
+   again. Touch screens cannot hover, so they always show them. */
+.sidebarDetails:hover > summary,
+.sidebarDetails > summary:focus-visible,
+.sidebarDetails:not([open]) > summary {
+  border-bottom-color: rgba(55, 126, 188, 0.5);
+}
+
+.sidebarDetails:hover > summary::after,
+.sidebarDetails > summary:focus-visible::after,
+.sidebarDetails:not([open]) > summary::after {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .sidebarDetails > summary {
+    border-bottom-color: rgba(55, 126, 188, 0.5);
+  }
+
+  .sidebar .sidebarDetails > summary::after {
+    opacity: 1;
+  }
+}
+
+/* The accent rule already sits under the heading, so the first item needs
+   no separator of its own. */
+.sidebar .sidebarDetails > ul > li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.sidebarDetails > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar .sidebarDetails > summary > :is(h2, h3) {
+  margin: 0;
+}
+
+.sidebarDetails > summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.2rem;
+  border-right: 1px solid #002d72;
+  border-bottom: 1px solid #002d72;
+  opacity: 0;
+  transform: rotate(-45deg);
+  transition: transform 280ms ease, opacity 200ms ease;
+}
+
+.sidebarDetails[open] > summary::after {
+  transform: rotate(45deg);
+}
+
+.sidebarDetails::details-content {
+  height: 0;
+  overflow: hidden;
+  transition: height 280ms ease, content-visibility 280ms allow-discrete;
+}
+
+.sidebarDetails[open]::details-content {
+  height: auto;
+}
+
+.sidebarDetails > summary:focus-visible {
+  outline: 2px solid #607286;
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebarDetails > summary,
+  .sidebarDetails > summary::after,
+  .sidebarDetails::details-content {
+    transition: none;
+  }
 }
 
 .sidebar h3.relatedLabel {
@@ -953,7 +1077,7 @@
 
 .withheld {
   margin: 0;
-  /* The sidebar's rule sits above its heading. This matches that offset so
+  /* The sidebar's top band sits above its heading. This matches that offset so
      the sentence starts level with "Summary". */
   padding-top: calc(0.8rem + 2px);
   color: #6a7c8f;

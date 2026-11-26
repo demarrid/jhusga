@@ -534,6 +534,31 @@ export async function abandonSyncRun(id: string): Promise<void> {
     });
 }
 
+/**
+ * The run a resume trigger should pick up: the oldest one whose hand-off was
+ * lost. Vercel's recursion protection answers a long enough chain of
+ * self-invocations with HTTP 508, so every run that outlasts a few slices ends
+ * up here; a cron request starts a fresh chain. One nobody resumed for hours
+ * is abandoned, as the start triggers do. Nothing is resumed while any run is
+ * live, so two model steps never work the same queue, and nothing is started.
+ */
+export async function stalledSyncRun(now = Date.now()): Promise<ActiveRun | null> {
+    const runs = await prisma.syncRun.findMany({
+        where: { status: "running" },
+        orderBy: { startedAt: "asc" },
+        select: { id: true, startedAt: true, heartbeatAt: true, leaseUntil: true, step: true },
+    });
+    if (runs.some((run) => !isStalled(run, now))) return null;
+    for (const run of runs) {
+        if (isAbandoned(run, now)) {
+            await abandonSyncRun(run.id);
+            continue;
+        }
+        return run;
+    }
+    return null;
+}
+
 export type SliceOutcome = "finished" | "more" | "busy" | "failed";
 
 /**
@@ -715,6 +740,13 @@ export async function dispatchSyncContinuation(runId: string, origin: string, se
             await response.arrayBuffer();
             if (response.ok) return;
             failure = `HTTP ${response.status}`;
+            // Vercel's recursion protection: the chain of self-invocations is
+            // too long, and a second request from the same chain gets the same
+            // answer. The hourly resume cron starts a fresh chain.
+            if (response.status === 508) {
+                failure += " (recursion limit; the resume cron continues the run)";
+                break;
+            }
             // Authentication/configuration errors need repair, not another request.
             if (response.status < 500 && response.status !== 429) break;
         } catch (cause) {

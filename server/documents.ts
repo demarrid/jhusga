@@ -21,7 +21,8 @@ import {
 } from "@/lib/document-sort";
 import { heldNotice } from "@/lib/integrity";
 import { agendaMappingKey, agendaMappingHash, agendaSectionLinks, agendaOutlineWithLinks, validateAgendaMatches, type AgendaMatch } from "@/lib/agenda-mapping";
-import { DOCUMENT_CATEGORIES, documentCategory, documentCategoryFilter, type DocumentKind, isDocumentKind } from "@/lib/kinds";
+import { DOCUMENT_CATEGORIES, documentCategory, documentCategoryFilter, type DocumentKind, isDocumentCategory, isDocumentKind } from "@/lib/kinds";
+import { parseFilterValues } from "@/lib/document-filters";
 import { extractDocumentLinks, extractInternalDocumentLinks } from "@/lib/links";
 import { compareNamesBySurname } from "@/lib/contributors";
 import { isMeetingRole, meetingForDocument, type MeetingRole } from "@/lib/meetings";
@@ -93,40 +94,47 @@ function sessionWhere(session: SessionFilter = SESSION_NUMBER) {
     return session === "all" ? {} : { sessionNumber: session };
 }
 
+/** One value, or several chosen together; see lib/document-filters. */
+type FilterValues = string | readonly string[];
+
 export type DocumentFilters = {
-    kind?: string;
+    /** Only documents in any of these categories. */
+    kind?: FilterValues;
     query?: string;
     session?: SessionFilter;
-    /** Only documents naming this person (affiliate id). */
-    personId?: string;
-    /** Only documents where someone acted in this capacity. */
-    role?: string;
-    /** Only documents naming someone who holds this office (HopkinsCategory id). */
-    officeId?: string;
+    /** Only documents naming any of these people (affiliate ids). */
+    personId?: FilterValues;
+    /** Only documents where someone acted in any of these capacities. */
+    role?: FilterValues;
+    /** Only documents naming someone who holds any of these offices (HopkinsCategory ids). */
+    officeId?: FilterValues;
 };
 
 function documentWhere(filters: DocumentFilters) {
-    const categoryFilter = documentCategoryFilter(filters.kind);
+    const categoryFilters = parseFilterValues(filters.kind)
+        .filter(isDocumentCategory)
+        .map((category) => documentCategoryFilter(category));
     const query = filters.query?.trim();
-    const personId = filters.personId?.trim() || undefined;
-    const role = filters.role?.trim() || undefined;
-    const officeId = filters.officeId?.trim() || undefined;
+    const personIds = parseFilterValues(filters.personId);
+    const roles = parseFilterValues(filters.role);
+    const officeIds = parseFilterValues(filters.officeId);
 
-    // Person, document-role, and office compose: given more than one, a single
-    // contributor row must satisfy all of them.
+    // Values within one filter are alternatives. Person, document-role, and
+    // office compose: given more than one, a single contributor row must
+    // satisfy all of them.
     const contributorWhere =
-        personId || role || officeId
+        personIds.length || roles.length || officeIds.length
             ? {
                 contributors: {
                     some: {
-                        ...(personId ? { hopkinsAffiliateId: personId } : {}),
-                        ...(role ? { role } : {}),
-                        ...(officeId
+                        ...(personIds.length ? { hopkinsAffiliateId: { in: personIds } } : {}),
+                        ...(roles.length ? { role: { in: roles } } : {}),
+                        ...(officeIds.length
                             ? {
                                 hopkinsAffiliate: {
                                     hopkinsRelationships: {
                                         some: {
-                                            hopkinsCategoryId: officeId,
+                                            hopkinsCategoryId: { in: officeIds },
                                             ...(filters.session === "all" ? {} : { endedAt: null }),
                                         },
                                     },
@@ -138,13 +146,20 @@ function documentWhere(filters: DocumentFilters) {
             }
             : {};
 
-    return {
-        ...sessionWhere(filters.session),
-        ...categoryFilter,
-        ...contributorWhere,
+    // Each part is its own AND clause: several categories and a typed query
+    // both use OR, and spreading them into one object would let the second
+    // silently replace the first.
+    const clauses: Prisma.DocumentWhereInput[] = [
+        sessionWhere(filters.session),
+        categoryFilters.length > 1 ? { OR: categoryFilters } : (categoryFilters[0] ?? {}),
+        contributorWhere,
         // Postgres LIKE is case-sensitive, so the mode is required here --
         // without it, searching "constitution" would miss "Constitution".
-        ...documentQueryFilter(query ?? ""),
+        documentQueryFilter(query ?? ""),
+    ];
+
+    return {
+        AND: clauses.filter((clause) => Object.keys(clause).length > 0),
     } satisfies Prisma.DocumentWhereInput;
 }
 

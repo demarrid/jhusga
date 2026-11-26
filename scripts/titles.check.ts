@@ -3,6 +3,7 @@
  * anything, and that a rename is abandoned when it would collide.
  */
 import { canonicalTitle, cleanTitle, standardTitles } from "../lib/titles";
+import { acceptedMinuteTitle, minuteTitleSourceHash } from "../lib/minute-title-ai";
 
 let failures = 0;
 function check(label: string, condition: boolean, detail?: unknown) {
@@ -546,6 +547,18 @@ check(
     aiCopies.get("passed") === "Equitable Access to AI Tools" &&
     aiCopies.get("secretary") === "SGA Resolution - Equitable Access to AI Tools 10.27.26",
     [aiCopies.get("passed"), aiCopies.get("secretary")],
+);
+
+// GBM #9's header was copied forward from 10/13; the user confirmed 10/20.
+const gbm9 = { id: "gbm9", driveFileId: "1eNX_J_J1joa_uuhBMnhi9cwU91rC5Q1639RzSr_wUDs", kind: "minutes.senate",
+    title: "MINUTES of Senate GBM #9", folderPath: GBM_MINUTES, sessionNumber: 114, content: "Senate GBM #9\n10/13/26" };
+const reviewedGbm9 = standardTitles([{ ...gbm9, aiNormalizedTitle: "Senate Meeting #9 — Minutes (10/13/26)",
+    aiTitleSourceHash: minuteTitleSourceHash(gbm9) }]);
+check(
+    "a reviewed correction outranks an accepted minute title",
+    acceptedMinuteTitle({ ...gbm9, aiNormalizedTitle: "Senate Meeting #9 — Minutes (10/13/26)", aiTitleSourceHash: minuteTitleSourceHash(gbm9) }) !== null &&
+    reviewedGbm9.get("gbm9") === "Senate General Body Meeting #9 — Minutes (10/20/26)",
+    reviewedGbm9.get("gbm9"),
 );
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

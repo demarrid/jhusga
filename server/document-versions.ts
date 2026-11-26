@@ -6,7 +6,7 @@ import { demoModeEnabled } from "@/lib/data-mode";
 import { demoDocument } from "@/lib/demo-data";
 import { renderDocument } from "@/lib/render";
 import { redactPersonalData } from "@/lib/archive-redaction";
-import { selectDocumentVersion, versionCutoffDate, versionOptions } from "@/lib/document-versions";
+import { mergeUnchangedVersions, selectDocumentVersion, sortVersionOccurrences, versionCutoffDate, versionOptions } from "@/lib/document-versions";
 import { loadDocument, hydrateDocumentDetail, type DocumentDetail } from "@/server/documents";
 
 const cachedVersionedDocument = unstable_cache(loadVersionedDocument,
@@ -32,12 +32,7 @@ export async function loadVersionedDocument(documentId: string, requested?: stri
         return { document: current, options, ...selection, historical: false };
     }
     const demo = demoModeEnabled();
-    const rows = demo ? demoVersions(current) : await prisma.documentVersion.findMany({
-        where: { status: "published", revision: { documentId } },
-        select: { id: true, sourceModifiedTime: true, observedAt: true },
-    });
-    rows.sort((a, b) => (a.sourceModifiedTime ?? a.observedAt).getTime() - (b.sourceModifiedTime ?? b.observedAt).getTime()
-        || a.observedAt.getTime() - b.observedAt.getTime() || a.id.localeCompare(b.id));
+    const { kept: rows, aliases } = demo ? mergeUnchangedVersions(demoVersions(current)) : await publishedVersions(documentId);
     // Newly imported sources without recorded history still have a readable current copy.
     const options = versionOptions(rows.length ? rows.map(row => ({
         id: row.id, modifiedAt: row.sourceModifiedTime?.toISOString() ?? null, observedAt: row.observedAt.toISOString(),
@@ -45,7 +40,8 @@ export async function loadVersionedDocument(documentId: string, requested?: stri
         observedAt: (current.lastSyncedAt ?? current.driveCreatedTime ?? new Date()).toISOString() }]);
     // Archive revisions are transcription corrections, not historical source edits.
     // A historical document date must not select the earliest, uncorrected OCR.
-    const selection = selectDocumentVersion(options, current.discoveredVia === "archive" ? null : versionCutoffDate(current), requested);
+    const selection = selectDocumentVersion(options, current.discoveredVia === "archive" ? null : versionCutoffDate(current),
+        requested && (aliases.get(requested) ?? requested));
     if (!selection) return null;
     const { selected } = selection;
     const document = selected.id === "latest" ? current : demo ? demoVersion(current, selected.id)
@@ -57,8 +53,9 @@ export async function loadVersionedDocument(documentId: string, requested?: stri
 function demoVersions(document: DocumentDetail) {
     const latest = document.driveModifiedTime ?? new Date("2026-09-09T15:15:00Z");
     return [
-        { id: "demo-earlier", sourceModifiedTime: new Date(latest.getTime() - 86400000), observedAt: new Date(latest.getTime() - 86400000) },
-        { id: "demo-latest", sourceModifiedTime: latest, observedAt: latest },
+        { id: "demo-earlier", revisionId: "demo-earlier", mediaHash: null,
+            sourceModifiedTime: new Date(latest.getTime() - 86400000), observedAt: new Date(latest.getTime() - 86400000) },
+        { id: "demo-latest", revisionId: "demo-latest", mediaHash: null, sourceModifiedTime: latest, observedAt: latest },
     ];
 }
 
@@ -93,11 +90,21 @@ export async function getLatestPublishedVersionId(documentId: string): Promise<s
     });
     if (!document) return null;
     if (document.discoveredVia === "archive" || isSecondaryKind(document.kind)) return "latest";
+    const { kept } = await publishedVersions(documentId);
+    return kept.at(-1)?.id ?? "latest";
+}
+
+/**
+ * Published saves, oldest first, with saves that changed nothing a reader
+ * sees folded into the one before. The page and the refresh check share this,
+ * so a comment-only save never announces a "new version".
+ */
+async function publishedVersions(documentId: string) {
     const rows = await prisma.documentVersion.findMany({
         where: { status: "published", revision: { documentId } },
-        select: { id: true, sourceModifiedTime: true, observedAt: true },
+        select: { id: true, revisionId: true, sourceModifiedTime: true, observedAt: true, media: { select: { contentHash: true } } },
     });
-    rows.sort((a, b) => (a.sourceModifiedTime ?? a.observedAt).getTime() - (b.sourceModifiedTime ?? b.observedAt).getTime()
-        || a.observedAt.getTime() - b.observedAt.getTime() || a.id.localeCompare(b.id));
-    return rows.at(-1)?.id ?? "latest";
+    return mergeUnchangedVersions(sortVersionOccurrences(rows.map(({ media, ...row }) => ({
+        ...row, mediaHash: media?.contentHash ?? null,
+    }))));
 }

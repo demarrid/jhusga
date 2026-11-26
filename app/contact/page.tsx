@@ -16,7 +16,9 @@ import { SESSION_LABEL, pageMetadata } from "@/lib/seo";
 
 import styles from "./contact.module.css";
 
-export const dynamic = "force-dynamic";
+// Cached (ISR). Sync expires it through the archive cache tag; the hourly
+// fallback picks up changes made outside a deployment, such as CLI scripts.
+export const revalidate = 3600;
 
 export const metadata: Metadata = pageMetadata({
   title: "Contact",

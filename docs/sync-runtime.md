@@ -31,9 +31,18 @@ authentication; automatic cross-origin redirects drop the bearer header.
   button then polls `GET /api/sync?run=<id>` for progress.
 - A slice the platform kills loses only the unit it was on. Its lease expires
   after 75 seconds and the run resumes from the last checkpoint.
+- Vercel's recursion protection forwards the originating `x-vercel-id` on the
+  function's own fetches and answers a long enough chain of self-invocations
+  with HTTP 508 (Loop Detected). Runs of November 15–26, 2026 got only 1–15
+  summaries before the chain was cut, then waited for the next daily cron. A
+  508 is not retried: the same chain gets the same answer.
+- `/api/cron/resume` is listed in `vercel.json` once per hour (Hobby allows
+  each cron job only once a day). It resumes the oldest stalled run as a fresh
+  chain, never starts one, and does nothing while any run is live, so the
+  daily Drive pass and the 25-summary allowance are unchanged.
 - A run with no live lease and no checkpoint for two minutes has lost its
-  hand-off. The next button press or cron resumes it; the button nudges it once
-  while polling. A run stalled for three hours is abandoned and a new one starts,
+  hand-off. The hourly resume cron, the next button press, or a start cron
+  resumes it; the button nudges it once while polling. A run stalled for three hours is abandoned and a new one starts,
   except at the summary step: its considered IDs and attempt budget survive until
   the next trigger resumes it. Daily crons must not reset this queue every day.
 - Hand-offs retry transient network errors, HTTP 429, and server failures once,

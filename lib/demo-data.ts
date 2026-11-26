@@ -15,6 +15,7 @@ import { collapseUnchanged, diffLines } from "@/lib/diff";
 import { byRecentlyUpdatedFirst, listedDate } from "@/lib/dates";
 import { compareNamesBySurname } from "@/lib/contributors";
 import { documentFindRank } from "@/lib/document-find";
+import { parseFilterValues } from "@/lib/document-filters";
 import { parseTimeframe } from "@/lib/when";
 import type { HistoryTimeline, HistoryTopicSummary } from "@/server/history";
 
@@ -28,22 +29,31 @@ function documentKind(value: string): DocumentKind {
 
 /** Return demo documents with the same shape and filtering as the database listing. */
 export function demoDocuments(filters: {
-    kind?: string;
+    kind?: string | readonly string[];
     query?: string;
     session?: number | "all";
-    personId?: string;
-    role?: string;
-    officeId?: string;
+    personId?: string | readonly string[];
+    role?: string | readonly string[];
+    officeId?: string | readonly string[];
 } = {}) {
     const query = filters.query?.trim().toLowerCase();
-    const officePersonId = filters.officeId ? officeHolder(filters.officeId) : undefined;
+    const kinds = parseFilterValues(filters.kind);
+    const personIds = parseFilterValues(filters.personId);
+    const roles = parseFilterValues(filters.role);
+    const officeIds = parseFilterValues(filters.officeId);
+    const officePersonIds = officeIds.map(officeHolder);
+
+    // As in the database listing, one contributor must match every filter.
+    const contributorMatches = (person: RawDocument["contributors"][number]) =>
+        (!personIds.length || personIds.includes(person.id)) &&
+        (!roles.length || roles.includes(person.role)) &&
+        (!officeIds.length || officePersonIds.includes(person.id));
 
     return site.documents
         .filter((document) => filters.session === "all" || document.sessionNumber === (filters.session ?? SESSION_NUMBER))
-        .filter((document) => !filters.kind || document.kind === filters.kind)
-        .filter((document) => !filters.personId || document.contributors.some((person) => person.id === filters.personId))
-        .filter((document) => !filters.role || document.contributors.some((person) => person.role === filters.role))
-        .filter((document) => !filters.officeId || document.contributors.some((person) => person.id === officePersonId))
+        .filter((document) => !kinds.length || kinds.includes(document.kind))
+        .filter((document) =>
+            !(personIds.length || roles.length || officeIds.length) || document.contributors.some(contributorMatches))
         .filter((document) => !query || `${document.title} ${document.description} ${document.content} ${document.contributors.map((person) => person.name).join(" ")}`.toLowerCase().includes(query))
         .map((document) => ({
             listing: toListing(document),

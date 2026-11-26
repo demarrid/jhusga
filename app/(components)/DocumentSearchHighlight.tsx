@@ -1,14 +1,27 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { documentQueryHighlights } from '@/lib/document-query';
 
-/** Paint ranges without changing the document DOM or its citation anchors. */
+/**
+ * Paint ranges without changing the document DOM or its citation anchors.
+ *
+ * Only the painter reads `?q=`, inside its own Suspense boundary, so a cached
+ * document page still ships its text in the HTML instead of waiting for the
+ * browser to know the URL.
+ */
 export default function DocumentSearchHighlight({ children }: { children: ReactNode }) {
     const root = useRef<HTMLDivElement>(null);
-    const params = useSearchParams();
-    const query = params.get('q') ?? '';
+    return <>
+        <style>{'::highlight(document-search) { background-color: #ffe58a; color: #191919; }'}</style>
+        <div ref={root}>{children}</div>
+        <Suspense fallback={null}><SearchHighlighter root={root} /></Suspense>
+    </>;
+}
+
+function SearchHighlighter({ root }: { root: RefObject<HTMLDivElement | null> }) {
+    const query = useSearchParams().get('q') ?? '';
     useEffect(() => {
         if (!root.current || !('highlights' in CSS) || typeof Highlight === 'undefined') return;
         const terms = documentQueryHighlights(query);
@@ -39,6 +52,6 @@ export default function DocumentSearchHighlight({ children }: { children: ReactN
         CSS.highlights.set('document-search', new Highlight(...ranges));
         if (!window.location.hash && ranges[0]) ranges[0].startContainer.parentElement?.scrollIntoView({ block: 'center' });
         return () => { CSS.highlights.delete('document-search'); };
-    }, [query]);
-    return <><style>{'::highlight(document-search) { background-color: #ffe58a; color: #191919; }'}</style><div ref={root}>{children}</div></>;
+    }, [query, root]);
+    return null;
 }

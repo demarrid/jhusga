@@ -10,10 +10,10 @@ import styles from "./ArchiveSearch.module.css";
 type ArchiveSearchProps = {
   initialMode: "find" | "ask";
   query?: string;
-  kind?: string;
-  person?: string;
-  role?: string;
-  office?: string;
+  kind: string[];
+  person: string[];
+  role: string[];
+  office: string[];
   archive: boolean;
   kinds: { kind: string; count: number }[];
   people: { id: string; name: string; count: number }[];

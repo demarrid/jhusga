@@ -50,23 +50,27 @@ export default function RelatedDocuments({
         <>
             {counterpart && (
                 <section className={styles.sidebarSection}>
-                    <h3 className={hasAgenda ? styles.relatedLabel : undefined}>
-                        {counterpart.role === "minutes"
-                            ? "Minutes of this meeting"
-                            : "Agenda"}
-                    </h3>
-                    <ul>
-                        {counterpart.documents.map((document) => (
-                            <li key={document.id}>
-                                <Link href={`/documents/${document.id}`}>
-                                    {document.title.trim()}
-                                </Link>
-                                <span className={styles.asideMeta}>
-                                    {` — ${meetingRoleLabel(counterpart.role)}`}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
+                    <details className={styles.sidebarDetails} open>
+                        <summary>
+                            <h3 className={hasAgenda ? styles.relatedLabel : undefined}>
+                                {counterpart.role === "minutes"
+                                    ? "Minutes of this meeting"
+                                    : "Agenda"}
+                            </h3>
+                        </summary>
+                        <ul>
+                            {counterpart.documents.map((document) => (
+                                <li key={document.id}>
+                                    <Link href={`/documents/${document.id}`}>
+                                        {document.title.trim()}
+                                    </Link>
+                                    <span className={styles.asideMeta}>
+                                        {` — ${meetingRoleLabel(counterpart.role)}`}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </details>
                 </section>
             )}
 
@@ -111,50 +115,54 @@ function RelatedList({
 
     return (
         <section className={styles.sidebarSection}>
-            <h3 className={compactHeading ? styles.relatedLabel : undefined}>{heading}</h3>
-            <ul>
-                {documents.map((document) => (
-                    <li key={document.id}>
-                        <Link
-                            href={`/documents/${document.id}`}
-                            // The author's own link text is often more useful
-                            // than the Drive filename, so it is the label and
-                            // the filename moves to the tooltip.
-                            title={document.anchorText ? document.title.trim() : undefined}
-                        >
-                            {(document.anchorText || document.title).trim()}
-                        </Link>
-                        <span className={styles.asideMeta}>
-                            {` — ${documentKindLabel(document.kind)}`}
-                            {document.sessionNumber !== null &&
-                                `, ${sessionOrdinal(document.sessionNumber)} session`}
-                        </span>
-                        {sources?.[document.id] && <span className={styles.asideMeta}>{` · Linked in ${sources[document.id].join(" and ").toLowerCase()}`}</span>}
-                        {matches.filter(match => match.linkedDocumentIds?.includes(document.id)).map(match => (
-                            <MinutesMatch key={`${match.agendaId}:${match.sectionId}:${match.startOffset}`} match={match} />
-                        ))}
-                    </li>
-                ))}
-                {unresolved.map((link) => (
-                    <li key={link.url}>
-                        <a href={link.url} target="_blank" rel="noreferrer">
-                            {unresolvedLabel(link)}
-                        </a>
-                        <span className={styles.asideMeta}>
-                            {link.source === "sharepoint"
-                                ? " — SharePoint (sign-in required to read)"
-                                : " — Google Doc (not in the archive)"}
-                        </span>
-                    </li>
-                ))}
-                {standaloneMatches.map(match => (
-                    <li key={`${match.agendaId}:${match.sectionId}:${match.startOffset}`}>
-                        <Link href={`/documents/${match.agendaId}?version=latest#${match.sectionId}`}>{match.title}</Link>
-                        <MinutesMatch match={match} />
-                    </li>
-                ))}
-            </ul>
-            {caption && <p className={styles.asideMeta}>{caption}</p>}
+            <details className={styles.sidebarDetails} open>
+                <summary>
+                    <h3 className={compactHeading ? styles.relatedLabel : undefined}>{heading}</h3>
+                </summary>
+                <ul>
+                    {documents.map((document) => (
+                        <li key={document.id}>
+                            <Link
+                                href={`/documents/${document.id}`}
+                                // The author's own link text is often more useful
+                                // than the Drive filename, so it is the label and
+                                // the filename moves to the tooltip.
+                                title={document.anchorText ? document.title.trim() : undefined}
+                            >
+                                {(document.anchorText || document.title).trim()}
+                            </Link>
+                            <span className={styles.asideMeta}>
+                                {` — ${documentKindLabel(document.kind)}`}
+                                {document.sessionNumber !== null &&
+                                    `, ${sessionOrdinal(document.sessionNumber)} session`}
+                            </span>
+                            {sources?.[document.id] && <span className={styles.asideMeta}>{` · Linked in ${sources[document.id].join(" and ").toLowerCase()}`}</span>}
+                            {matches.filter(match => match.linkedDocumentIds?.includes(document.id)).map(match => (
+                                <MinutesMatch key={`${match.agendaId}:${match.sectionId}:${match.startOffset}`} match={match} />
+                            ))}
+                        </li>
+                    ))}
+                    {unresolved.map((link) => (
+                        <li key={link.url}>
+                            <a href={link.url} target="_blank" rel="noreferrer">
+                                {unresolvedLabel(link)}
+                            </a>
+                            <span className={styles.asideMeta}>
+                                {link.source === "sharepoint"
+                                    ? " — SharePoint (sign-in required to read)"
+                                    : " — Google Doc (not in the archive)"}
+                            </span>
+                        </li>
+                    ))}
+                    {standaloneMatches.map(match => (
+                        <li key={`${match.agendaId}:${match.sectionId}:${match.startOffset}`}>
+                            <Link href={`/documents/${match.agendaId}?version=latest#${match.sectionId}`}>{match.title}</Link>
+                            <MinutesMatch match={match} />
+                        </li>
+                    ))}
+                </ul>
+                {caption && <p className={styles.asideMeta}>{caption}</p>}
+            </details>
         </section>
     );
 }

@@ -49,7 +49,7 @@ async function main() {
         findUniqueOrThrow: async ({ where }: { where: { id: string } }) => clone(rows.get(where.id)!),
     } } });
 
-    const { activeSyncRun, continuationOrigin, isAbandoned, isStalled, runSyncSlice, startSyncRun } = await import("../lib/sync-run");
+    const { activeSyncRun, continuationOrigin, isAbandoned, isStalled, runSyncSlice, stalledSyncRun, startSyncRun } = await import("../lib/sync-run");
     type Step = import("../lib/sync-run").Step;
     type Slice = import("../lib/sync-run").Slice;
     type Cursor = { ingest?: { pending: string[]; at: number } };
@@ -203,6 +203,23 @@ async function main() {
     assert.ok(isAbandoned({ ...quiet, heartbeatAt: new Date(at - 4 * 60 * 60_000) }, at));
     assert.ok(!isAbandoned({ ...quiet, step: "model", heartbeatAt: new Date(at - 24 * 60 * 60_000) }, at),
         "the next daily cron must resume summary progress instead of restarting the queue");
+
+    // The resume cron picks up a lost hand-off, and only that.
+    rows.clear();
+    assert.equal(await stalledSyncRun(), null, "nothing running, nothing started");
+    const cut = await startSyncRun("cron", { summariesOnly: true });
+    assert.equal(await stalledSyncRun(), null, "a run that just checkpointed is not stalled");
+    now += 3 * 60_000;
+    assert.equal((await stalledSyncRun())?.id, cut, "a run whose hand-off was refused is resumed");
+    const live = await startSyncRun("cron", { steps });
+    assert.equal(await stalledSyncRun(), null, "never resumed beside a live run");
+    row(live).leaseUntil = null;
+    row(cut).heartbeatAt = new Date(now - 5 * 60 * 60_000);
+    row(live).heartbeatAt = new Date(now - 5 * 60 * 60_000);
+    assert.equal((await stalledSyncRun())?.id, cut, "a summary queue survives a long stall");
+    rows.delete(cut);
+    assert.equal(await stalledSyncRun(), null, "a Drive pass stalled for hours is abandoned, not resumed");
+    assert.equal(row(live).status, "error");
 
     // Production hand-offs avoid the protected *.vercel.app deployment hostname.
     const deployment = "https://jhusga-abc123.vercel.app";

@@ -10,6 +10,8 @@ The document finder supports case-insensitive literal text searches:
 
 Search covers titles, descriptions, document text, and linked people's names. Operators are recognized outside quotes. Parenthetical grouping and Google's other operators are not supported. Results carry the query and return-to-search URL into the viewer. Matching positive terms/phrases are highlighted across inline formatting using the browser's CSS Highlight API, and the first match is scrolled into view unless a citation anchor is present. A match solely in metadata or a person's expanded name may have no literal match in the document body. Browsers without CSS Highlight support still display the document normally.
 
+The Type, Person, Capacity, and Office filters each accept several values: hold Ctrl (Cmd on a Mac) while clicking an option, or press Ctrl+Enter or Ctrl+Space on it, to add or remove it and keep the list open. A plain click picks that option alone, and the "All"/"Any" option clears the filter. Values within one filter are alternatives (any of them); the filters still combine with each other, and Person, Capacity, and Office must still be met by the same contributor. In the URL the values are comma-separated in one parameter (`kind=minutes.senate,agenda.senate`); repeated parameters are read the same way, and single-value links are unchanged. Without JavaScript each filter takes one value.
+
 Preview title standardization for every stored `minutes.*` category (including agenda records within those categories):
 
 ```sh

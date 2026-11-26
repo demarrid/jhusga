@@ -123,6 +123,14 @@ async function main() {
     assert.equal(dispatches, 1, 'do not retry invalid credentials');
     assert.match(handoffErrors.at(-1)!, /HTTP 401/, 'persist the reason instead of silently leaving a running job');
     dispatches = 0;
+    globalThis.fetch = async () => {
+        dispatches++;
+        return new Response(null, { status: 508 });
+    };
+    await assert.rejects(dispatchSyncContinuation('run', 'https://www.jhusga.org', 'fixture'), /HTTP 508/);
+    assert.equal(dispatches, 1, 'a recursion-limited chain is left to the resume cron, not retried');
+    assert.match(handoffErrors.at(-1)!, /resume cron/);
+    dispatches = 0;
     globalThis.fetch = async () => { dispatches++; throw new Error('network unavailable'); };
     await assert.rejects(dispatchSyncContinuation('run', 'https://www.jhusga.org', 'fixture'), /network unavailable/);
     assert.equal(dispatches, 2, 'network retries are bounded');

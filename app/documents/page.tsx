@@ -17,6 +17,7 @@ import SyncButton from "@/app/(components)/SyncButton";
 import { SESSION_NUMBER, sessionOrdinal } from "@/config/session";
 import { manualSyncEnabled } from "@/config/sync";
 import { compareNamesBySurname } from "@/lib/contributors";
+import { joinFilterValues, parseFilterValues } from "@/lib/document-filters";
 import { defaultDocumentSort, parseDocumentSort } from "@/lib/document-sort";
 import { documentKindLabel, isDocumentCategory } from "@/lib/kinds";
 import { SESSION_LABEL, pageMetadata } from "@/lib/seo";
@@ -44,10 +45,13 @@ const DOCUMENTS_DESCRIPTION =
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; kind?: string; archive?: string }>;
+  searchParams: Promise<{ q?: string; kind?: string | string[]; archive?: string }>;
 }): Promise<Metadata> {
-  const { q, kind, archive } = await searchParams;
+  const { q, kind: kindParam, archive } = await searchParams;
   const query = q?.trim();
+  // Only a single type names the page; several read as an ordinary search.
+  const kinds = parseFilterValues(kindParam);
+  const kind = kinds.length === 1 ? kinds[0] : undefined;
   const kindLabel = kind && isDocumentCategory(kind) ? documentKindLabel(kind) : null;
   const scope = archive === "1" ? "the archive" : `the ${SESSION_LABEL}`;
 
@@ -80,18 +84,24 @@ export default async function Documents({
 }: {
   searchParams: Promise<{
     q?: string;
-    kind?: string;
-    person?: string;
-    role?: string;
-    office?: string;
+    // A repeated parameter arrives as an array.
+    kind?: string | string[];
+    person?: string | string[];
+    role?: string | string[];
+    office?: string | string[];
     archive?: string;
     lineage?: string;
     mode?: string;
     sort?: string;
   }>;
 }) {
-  const { q, kind, person, role, office, archive, lineage, mode, sort: sortParam } =
-    await searchParams;
+  const params = await searchParams;
+  const { q, archive, lineage, mode, sort: sortParam } = params;
+  // Each list filter may carry several values; see lib/document-filters.
+  const kind = parseFilterValues(params.kind);
+  const person = parseFilterValues(params.person);
+  const role = parseFilterValues(params.role);
+  const office = parseFilterValues(params.office);
 
   // The archive is opt-in, so the default listing is current-session law.
   const session = archive === "1" ? "all" : SESSION_NUMBER;
@@ -107,22 +117,30 @@ export default async function Documents({
     lineage ? getLineage(lineage) : Promise.resolve(null),
   ]);
 
-  let peopleForFilter = people;
-  let activePerson = person ? people.find((entry) => entry.id === person) : undefined;
+  // A chosen person with nothing in this session still needs an option, or
+  // the URL would filter while the control reads "Anyone".
+  const linkedPeople = (
+    await Promise.all(
+      person
+        .filter((id) => !people.some((entry) => entry.id === id))
+        .map((id) => getPersonFilterOption(id, session)),
+    )
+  ).filter((entry) => entry !== null);
+  const peopleForFilter = linkedPeople.length
+    ? [...people, ...linkedPeople].sort((left, right) => compareNamesBySurname(left.name, right.name))
+    : people;
+  const activePerson =
+    person.length === 1 ? peopleForFilter.find((entry) => entry.id === person[0]) : undefined;
 
-  if (person && !activePerson) {
-    const linkedPerson = await getPersonFilterOption(person, session);
-    if (linkedPerson) {
-      peopleForFilter = [...people, linkedPerson].sort((left, right) =>
-        compareNamesBySurname(left.name, right.name),
-      );
-      activePerson = linkedPerson;
-    }
-  }
-
-  const filterCount = [q, kind, person, role, office, archive === "1" ? archive : undefined].filter(
-    Boolean,
-  ).length;
+  // A filter with several values still counts once.
+  const filterCount = [
+    q,
+    kind.length,
+    person.length,
+    role.length,
+    office.length,
+    archive === "1" ? archive : undefined,
+  ].filter(Boolean).length;
 
   const listHeading =
     filterCount === 0
@@ -139,10 +157,10 @@ export default async function Documents({
   const listSearch = new URLSearchParams(
     Object.entries({
       q,
-      kind,
-      person,
-      role,
-      office,
+      kind: joinFilterValues(kind),
+      person: joinFilterValues(person),
+      role: joinFilterValues(role),
+      office: joinFilterValues(office),
       archive: archive === "1" ? "1" : undefined,
       sort: sort === defaultDocumentSort(hasQuery) ? undefined : sort,
     }).filter((entry): entry is [string, string] => Boolean(entry[1])),

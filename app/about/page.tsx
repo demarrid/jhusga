@@ -9,8 +9,9 @@ import { pageMetadata } from "@/lib/seo";
 
 import styles from "./about.module.css";
 
-// Read on request so a daily document sync appears without a redeploy.
-export const dynamic = "force-dynamic";
+// Cached (ISR). Sync expires it through the archive cache tag; the hourly
+// fallback picks up changes made outside a deployment, such as CLI scripts.
+export const revalidate = 3600;
 
 /** The paragraph the page opens with, and so what a link to it should show. */
 const ABOUT_INTRO =

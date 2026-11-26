@@ -7,7 +7,9 @@ import { getHistoryTopics, type HistoryTopicSummary } from "@/server/history";
 
 import styles from "./history.module.css";
 
-export const dynamic = "force-dynamic";
+// Cached (ISR). Sync expires it through the archive cache tag; the hourly
+// fallback picks up changes made outside a deployment, such as CLI scripts.
+export const revalidate = 3600;
 
 const HISTORY_DESCRIPTION =
     "Timelines of what the SGA at Johns Hopkins has done on a subject, assembled from its " +

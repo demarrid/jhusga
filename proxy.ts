@@ -11,7 +11,20 @@ export function proxy(request: NextRequest) {
             } catch { /* Metrics must never prevent access. */ }
         }
     }
-    return NextResponse.next();
+    return versionRewrite(request) ?? NextResponse.next();
+}
+
+/**
+ * The plain document page is cached; a chosen version or open version history
+ * is rendered on request by a sibling route. The address bar keeps its URL.
+ */
+function versionRewrite(request: NextRequest): NextResponse | null {
+    const { pathname, searchParams } = request.nextUrl;
+    const match = /^\/documents\/([^/]+)$/.exec(pathname);
+    if (!match || (!searchParams.has("version") && !searchParams.has("diff"))) return null;
+    const url = request.nextUrl.clone();
+    url.pathname = `/documents/${match[1]}/version`;
+    return NextResponse.rewrite(url);
 }
 // Excludes assets, sign-in, and preference changes.
 export const config = { matcher: ["/", "/documents/:path*", "/discussion/:path*", "/history/:path*",
