@@ -57,6 +57,9 @@ async function main() {
         await assert.rejects(revisionText({...revision, exportLinks:{"text/plain":"https://docs.google.com/unsafe"}}), /Untrusted/);
         await assert.rejects(revisionText({...revision, exportLinks:{"text/plain":"https://evil.example/export"}}), /Untrusted/);
         await assert.rejects(revisionText({...revision, exportLinks:{"text/plain":"https://docs.google.com/broken"}}), /400/);
+        assert.equal(await revisionText({...revision, exportLinks:{"text/plain":"https://docs.google.com/broken",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"https://docs.google.com/gone"}}), null,
+            "a failed plain-text export falls back to the DOCX export");
         assert.equal(tokens, 2, "reuse unexpired token");
         globalThis.fetch = async () => Response.json({revisions:[], nextPageToken:"repeat"});
         await assert.rejects(listDriveRevisions("file"), /repeated/);

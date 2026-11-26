@@ -682,7 +682,19 @@ export function standardTitles(documents: TitleInput[]): Map<string, string> {
     // Documents whose name was read from them one at a time, by the minute
     // title review, rather than derived by rule from a filename or a key.
     const reviewed = new Set<string>();
+    // A reviewed correction names one document on purpose, so it is not put
+    // to the uniqueness vote: a second copy that prints the same title (the
+    // Secretary's 10.27.26 file of the AI-access resolution) keeps its
+    // filename instead of costing the corrected copy its name.
+    const corrected = new Map<string, string>();
     for (const document of documents) {
+        const correction = document.driveFileId ? DOCUMENT_CORRECTIONS[document.driveFileId] : undefined;
+        // An accepted minute title still takes precedence, as it always has.
+        if (correction && !acceptedMinuteTitle(document)) corrected.set(document.id, correction.displayTitle);
+    }
+    const correctedNames = new Set(corrected.values());
+    for (const document of documents) {
+        if (corrected.has(document.id)) continue;
         const accepted = acceptedMinuteTitle(document);
         if (accepted) reviewed.add(document.id);
         const canonical = accepted ?? canonicalTitle(document, dates);
@@ -700,6 +712,7 @@ export function standardTitles(documents: TitleInput[]): Map<string, string> {
 
     for (const [canonical, ids] of usage) {
         if (ids.length !== 1 && !sameMeeting(ids)) continue;
+        if (correctedNames.has(canonical)) continue;
         // Also refuse a canonical name already taken by some other document's
         // cleaned filename.
         const clash = [...cleaned].some(
@@ -708,6 +721,7 @@ export function standardTitles(documents: TitleInput[]): Map<string, string> {
         if (clash) continue;
         for (const id of ids) titles.set(id, canonical);
     }
+    for (const [id, name] of corrected) titles.set(id, name);
 
     return titles;
 }

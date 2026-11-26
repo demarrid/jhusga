@@ -184,11 +184,22 @@ export async function revisionText(revision: Revision): Promise<string | null> {
     const plain = links["text/plain"];
     const docx = links["application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if (!plain && !docx) return null;
-    const response = await oauthFetch(plain || docx);
+    if (plain) {
+        const response = await oauthFetch(plain);
+        if ([403, 404, 410].includes(response.status)) return null;
+        if (response.ok) return response.text();
+        // Drive intermittently answers a plain-text export with 400 (seen on
+        // Executive Meeting #11's revision 4251; the same request passed on
+        // retry). One bad export would discard the file's whole history, so
+        // try the DOCX export of the same revision before failing.
+        await response.body?.cancel();
+        if (!docx) throw new Error(`Drive revision export failed (${response.status})`);
+    }
+    const response = await oauthFetch(docx!);
     if ([403, 404, 410].includes(response.status)) return null;
     if (!response.ok) throw new Error(`Drive revision export failed (${response.status})`);
     // Preserve author metadata from the API; DOCX content itself has no history.
-    return plain ? response.text() : docxToText(Buffer.from(await response.arrayBuffer()));
+    return docxToText(Buffer.from(await response.arrayBuffer()));
 }
 
 /** The only documents whose Drive history is ever read for authorship. */

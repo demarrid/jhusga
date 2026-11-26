@@ -77,6 +77,26 @@ export function rankedEditors(revisions: StoredEditor[]): Map<string, RankedEdit
     return result;
 }
 
+/**
+ * Writers of several records of one meeting, each already qualified on its
+ * own document, ranked by their words across all of them. Thresholds are not
+ * re-applied: a share of one record's writing says nothing about another's.
+ */
+export function mergeRankedEditors(lists: RankedEditor[][]): RankedEditor[] {
+    const people = new Map<string, RankedEditor>();
+    for (const editor of lists.flat()) {
+        const email = editor.email.trim().toLowerCase();
+        const key = email || `name:${editor.name.trim().toLowerCase()}`;
+        const person = people.get(key);
+        if (person) {
+            person.changedWords += editor.changedWords;
+            if (!person.name && editor.name) person.name = editor.name;
+        } else people.set(key, { ...editor });
+    }
+    return [...people.values()].sort((a, b) => b.changedWords - a.changedWords
+        || a.name.localeCompare(b.name) || a.email.localeCompare(b.email));
+}
+
 /** Resolve handles to known people; omit unresolved account handles. */
 export function editorDisplayName(editor: EditorAccount, people: AccountCandidate[]): string {
     const email = editor.email.trim();

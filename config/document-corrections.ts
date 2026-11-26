@@ -43,6 +43,13 @@ export const DOCUMENT_CORRECTIONS: Record<string, { displayTitle: string; datedO
     "1sK0Q2N8sjJ-WJNFAgwaZHAtxAPUzyB2x5b36m3XP7qM": {
         displayTitle: "Take Back The Night Rally Funding Bill",
     },
+    // Requested by the user on 2026-11-26: the Bills_Passed copy carries the
+    // title the resolution prints under its purpose line. The 10.27.26 copy in
+    // the Secretary folder prints the same title, so the corpus-wide collision
+    // rule would otherwise keep both on their filenames; that copy still does.
+    "1FnFbaEe2xZcfdVdJt3jpiHQkoJu__NBy": {
+        displayTitle: "Equitable Access to AI Tools",
+    },
 };
 
 export function hasUnverifiedMeetingDate(driveFileId?: string): boolean {

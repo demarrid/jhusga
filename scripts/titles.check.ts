@@ -532,5 +532,20 @@ check('a historical class council retains its cohort',
     canonicalTitle({ ...historical, kind: 'minutes.class_council', title: '10_17_18 Agenda', datedAt: on('2018-10-17'), content: 'Class of 2021 Council Meeting\n10/17/18 Agenda' }) ===
         'Class of 2021 Council Meeting — Agenda (10/17/18)');
 check('historical templates retain their distinction', canonicalTitle({ ...historical, title: 'Copy of Civic Engagement Meeting #XX (XX_XX_XX)' }) === null);
+
+console.log("\na reviewed correction keeps its name beside a copy printing the same title");
+const aiResolution = "Senate\nA Resolution To Declare the Formal Opinion of the SGA\nEquitable Access to AI Tools\nIntroduced by: Senator Isaac Zhang";
+const aiCopies = standardTitles([
+    { id: "passed", driveFileId: "1FnFbaEe2xZcfdVdJt3jpiHQkoJu__NBy", kind: "resolution", sessionNumber: 114,
+        title: "SGA Resolution - Equitable Access to AI Tools revised.docx", folderPath: "03_Legislation/Bills_Passed", content: aiResolution },
+    { id: "secretary", driveFileId: "1YKqr3xMztlRyHOmbNOaCalYbNV1ghGbj", kind: "resolution", sessionNumber: 114,
+        title: "SGA Resolution - Equitable Access to AI Tools 10.27.26.docx", folderPath: "04_Executive Branch/Secretary", content: aiResolution },
+]);
+check(
+    "the corrected copy is named and the other copy keeps its filename",
+    aiCopies.get("passed") === "Equitable Access to AI Tools" &&
+    aiCopies.get("secretary") === "SGA Resolution - Equitable Access to AI Tools 10.27.26",
+    [aiCopies.get("passed"), aiCopies.get("secretary")],
+);
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

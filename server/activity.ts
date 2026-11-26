@@ -31,7 +31,7 @@ import {
     type ActivityLane,
     type ActivityLaneId,
 } from "@/lib/activity";
-import { editorDisplayName, rankedEditors } from "@/lib/editors";
+import { editorDisplayName, mergeRankedEditors, rankedEditors } from "@/lib/editors";
 import { demoDocuments } from "@/lib/demo-data";
 import { findQuote } from "@/lib/anchor";
 import { prisma } from "@/lib/prisma";
@@ -286,6 +286,32 @@ function toCard(
 }
 
 /**
+ * Every published minutes record of each card's meeting, the card's own first.
+ * A card without a meeting key is its own only record.
+ */
+async function meetingRecords(cardIds: string[]): Promise<Map<string, string[]>> {
+    const result = new Map(cardIds.map(id => [id, [id]]));
+    if (!cardIds.length) return result;
+    const cards = await prisma.document.findMany({
+        where: { id: { in: cardIds } },
+        select: { id: true, meetingKey: true },
+    });
+    const keys = [...new Set(cards.flatMap(card => card.meetingKey ? [card.meetingKey] : []))];
+    if (!keys.length) return result;
+    const siblings = await prisma.document.findMany({
+        where: { meetingKey: { in: keys }, meetingRole: "minutes", kind: { startsWith: "minutes." }, reviewState: "published" },
+        select: { id: true, meetingKey: true },
+        orderBy: { id: "asc" },
+    });
+    for (const card of cards) {
+        if (!card.meetingKey) continue;
+        const others = siblings.filter(sibling => sibling.meetingKey === card.meetingKey && sibling.id !== card.id);
+        result.set(card.id, [card.id, ...others.map(sibling => sibling.id)]);
+    }
+    return result;
+}
+
+/**
  * Legislation is credited from the lines the bill itself writes. Minutes are
  * credited from substantive writing in retained OAuth revision snapshots.
  * Unknown history and unresolved handles earn no inferred authorship.
@@ -299,6 +325,11 @@ async function attachAuthors(
     const meetingIds = lanes
         .filter((lane) => lane.id === "meetings")
         .flatMap((lane) => lane.cards.map((card) => card.id));
+    // A card stands for its meeting, and a meeting can have more than one
+    // published minutes record (two officers' write-ups of Executive #11).
+    // Each is credited from its own history; the card lists the writers of all.
+    const recordsByCard = await meetingRecords(meetingIds);
+    const recordIds = [...new Set([...recordsByCard.values()].flat())];
 
     const [contributors, revisions, people] = await Promise.all([
         legislationIds.length
@@ -314,10 +345,10 @@ async function attachAuthors(
                   },
               })
             : [],
-        meetingIds.length
+        recordIds.length
             ? prisma.driveRevision.findMany({
                   where: {
-                      documentId: { in: meetingIds },
+                      documentId: { in: recordIds },
                   },
                   select: {
                       documentId: true,
@@ -359,7 +390,8 @@ async function attachAuthors(
     for (const lane of lanes) {
         for (const card of lane.cards) {
             if (lane.id === "meetings") {
-                card.authors = [...new Set((authors.get(card.id) ?? [])
+                const records = recordsByCard.get(card.id) ?? [card.id];
+                card.authors = [...new Set(mergeRankedEditors(records.map(id => authors.get(id) ?? []))
                     .map(editor => editorDisplayName(editor, people)).filter(Boolean))].join(", ") || "Writing credit not verified";
             } else {
                 card.authors = authorLine(byDocument.get(card.id) ?? []);

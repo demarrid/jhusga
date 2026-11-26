@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { contributionWords, rankedEditors, editorDisplayName } from "../lib/editors";
+import { contributionWords, mergeRankedEditors, rankedEditors, editorDisplayName } from "../lib/editors";
 const words = (prefix: string, count: number) => Array.from({length: count}, (_, i) => `${prefix}${i}`).join(" ");
 assert.equal(contributionWords("First paragraph\n\nSecond paragraph", "Second paragraph\n\nFirst paragraph"), 0);
 assert.equal(contributionWords("**Hello world.**", "hello world!"), 0);
@@ -28,4 +28,10 @@ assert.deepEqual(rankedEditors([
     row(0, "Owner", baseline), anonymous, row(2, "Alice", namedAfterAnonymous),
 ]).get("minutes")!.map(x => [x.name, x.changedWords]), [["Alice", 40]],
 "anonymous additions neither earn credit nor suppress named writers; their text remains the baseline");
+assert.deepEqual(mergeRankedEditors([
+    [{ name: "spate249", email: "spate249@jh.edu", changedWords: 900 }],
+    [{ name: "Sumi", email: "S.109SU3IRE@gmail.com", changedWords: 1200 }, { name: "spate249", email: "spate249@jh.edu", changedWords: 150 }],
+    [],
+]).map(x => [x.email.toLowerCase(), x.changedWords]), [["s.109su3ire@gmail.com", 1200], ["spate249@jh.edu", 1050]],
+"each record of a meeting contributes its qualified writers, summed per account and ranked by words");
 console.log("all editor contribution checks passed");
