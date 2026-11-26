@@ -85,4 +85,16 @@ assert.equal(matchShortName("Soph", [lou], {
     evidence: "Soph: met new advisor",
 }), null);
 
+// Two people with the name in office: the meeting's other record settles it.
+const meetingDay = { asOf: new Date("2026-11-20T12:00:00.000Z"), sessionNumber: 114, text: "Sophia: giving students a role", evidence: "Sophia: giving students a role" };
+assert.equal(matchShortName("Sophia", [baleeiro, zhang], meetingDay), null);
+assert.equal(matchShortName("Sophia", [baleeiro, zhang], { ...meetingDay, meetingPeople: new Set(["zhang"]) })?.id, "zhang");
+assert.equal(matchShortName("Sophia", [baleeiro, zhang], { ...meetingDay, meetingPeople: new Set(["zhang", "baleeiro"]) }), null);
+
+// "Jazz" is also the last word of an act's name; nobody by that surname was
+// around, so the nickname still reaches Jazzlyn.
+const act: ShortNamePerson = { id: "act", name: "NOT 2 COOL JAZZ", seats: [], appearances: [] };
+const jazzlyn: ShortNamePerson = { id: "jazzlyn", name: "Jazzlyn Fernandez", seats: [{ startedAt: new Date("2026-06-01T12:00:00.000Z"), endedAt: null }], appearances: [] };
+assert.equal(matchShortName("Jazz", [act, jazzlyn], { ...meetingDay, text: "Jazz: agreed", evidence: "Jazz: agreed" })?.id, "jazzlyn");
+
 console.log("Short-name matching checks passed");

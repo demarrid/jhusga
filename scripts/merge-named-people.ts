@@ -38,7 +38,8 @@ const PEOPLE: [keep: string, ...rows: string[]][] = [
     ["Rachel Huang", "R Huang", "Rachel Huang"],
     ["Tim Huang", "T. Huang", "Tim Huang"],
     ["Kobi Khong", "President Khong", "Kobi Khong"],
-    ["Sienna San Kim", "Sienna Kim", "Sienna San Kim"],
+    // The attendance sheet spells it out; "San" is one document's typo.
+    ["Sienna Sian Kim", "Sienna Kim", "Sienna San Kim", "Sienna Sian Kim"],
     ["Aarshi Lamichhane", "RC Lamichhane", "Aarshi Lamichhane"],
     ["Ruth Marie Landry", "Ruth Landry", "Ruth Marie Landry"],
     ["Wyatt Larkin", "Major Larkin", "Wyatt Larkin"],
@@ -82,6 +83,8 @@ const PEOPLE: [keep: string, ...rows: string[]][] = [
     ["Calvin Wise", "Dean Wise", "Calvin Wise"],
     ["Jason Yu", "Jason Y", "Jason Yu"],
     ["Kimberly Zou", "Kim Zou", "Kimberly Zou"],
+    ["Brittini Brown", "Britni Brown", "Brittini Brown"],
+    ["Lainie Rutkow", "Lainie Rutkov", "Lainie Rutkow"],
 ];
 
 /** Read as a person by mistake: an action item, the mascot, a caucus. */

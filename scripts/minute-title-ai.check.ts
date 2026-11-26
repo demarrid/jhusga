@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { acceptedMinuteTitle, minuteTitleSourceHash, validateMinuteTitle, withoutOrganizationName } from '../lib/minute-title-ai';
+import { acceptedMinuteTitle, minuteTitleSourceHash, validateMinuteTitle, withoutCurrentSession, withoutOrganizationName } from '../lib/minute-title-ai';
 import { standardTitles } from '../lib/titles';
 
 // The organisation is every document's; meeting titles drop its name.
@@ -60,6 +60,24 @@ async function main() {
     assert.equal(acceptedMinuteTitle({ ...accepted, kind: 'report' }), null);
     const collision = standardTitles([accepted, { ...accepted, id: 'second' }]);
     assert.notEqual(collision.get(source.id), proposal.title, 'collisions never silently merge two document titles');
+
+    // The session in progress goes without saying; a past one does not.
+    assert.equal(withoutCurrentSession('114th Executive Meeting #11 — Minutes (11/20/26)', 114), 'Executive Meeting #11 — Minutes (11/20/26)');
+    assert.equal(withoutCurrentSession('113th Executive Meeting #3 — Minutes (09/09/25)', 113), '113th Executive Meeting #3 — Minutes (09/09/25)');
+    assert.equal(withoutCurrentSession('114th SGA Meeting — Minutes', 114), 'SGA Meeting — Minutes');
+    assert.equal(withoutCurrentSession('Executive Meeting Minutes (114th Session)', 114), 'Executive Meeting Minutes (114th Session)');
+    const exec = { ...source, kind: 'minutes.executive', folderPath: '04_Executive Branch', sessionNumber: 114, meetingKey: '114:executive:11', meetingRole: 'minutes' };
+    const reviewedMinutes = [
+        { ...exec, id: 'minutes-11', title: 'Minutes #11', content: 'Executive Meeting #11\nNovember 20th, 2026' },
+        { ...exec, id: 'executive-11', title: 'Executive Meeting #11', content: 'Executive Meeting #11\nNovember 20th, 2026\nBSC 201' },
+    ].map(document => ({ ...document, aiTitleSourceHash: minuteTitleSourceHash(document) }));
+    const shared = standardTitles([
+        { ...reviewedMinutes[0], aiNormalizedTitle: '114th Executive Meeting #11 — Minutes (11/20/26)' },
+        { ...reviewedMinutes[1], aiNormalizedTitle: 'Executive Meeting #11 — Minutes (11/20/26)' },
+    ]);
+    assert.deepEqual([shared.get('minutes-11'), shared.get('executive-11')],
+        ['Executive Meeting #11 — Minutes (11/20/26)', 'Executive Meeting #11 — Minutes (11/20/26)'],
+        'two reviewed minutes of one meeting share its name');
     const db = new PGlite();
     try {
         await db.exec('CREATE TABLE "Document" (id TEXT PRIMARY KEY); INSERT INTO "Document" VALUES (\'existing\');');

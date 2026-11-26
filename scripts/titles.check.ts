@@ -195,6 +195,22 @@ check(
     canon("March 10 2025 Exec x Advisor Meeting", EXEC, 112) === null,
     canon("March 10 2025 Exec x Advisor Meeting", EXEC, 112),
 );
+for (const kind of ["notes.meeting", "minutes.committee"]) {
+    const input = {
+        id: "ksas-sac",
+        title: "11/20 - KSAS Student Advisory Council",
+        folderPath: "Senate/Committees/Internal Affairs/Committee Minutes",
+        sessionNumber: 114,
+        driveCreatedTime: on("2026-11-20"),
+        kind,
+        content: "a: math dept now requires 75% of course grade to be exams\n\nbraley: the policy is that 75% must be proctored",
+    };
+    check(
+        `a university advisory council in a committee's folder keeps its filename (${kind})`,
+        canonicalTitle(input) === null,
+        canonicalTitle(input),
+    );
+}
 
 console.log("\nrunning logs of meetings");
 

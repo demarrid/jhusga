@@ -278,6 +278,7 @@ export async function recordTitles(): Promise<number> {
             folderPath: true,
             sessionNumber: true,
             meetingRole: true,
+            meetingKey: true,
             driveCreatedTime: true,
             datedAt: true,
             // A committee that types every meeting of the year into one file

@@ -28,6 +28,40 @@ export function peopleChunks(content: string): string[] {
     return chunks;
 }
 
+const PLACEHOLDER_NAMES = new Set(['jane doe', 'john doe', 'jane roe', 'john roe', 'john smith', 'jane smith']);
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SURNAME = String.raw`(?:[A-Z]\.\s*)*[\p{Lu}][\p{L}'’-]+(?:\s+[\p{Lu}][\p{L}'’-]+)?`;
+// The rest of an author list after one name: ", Knight, and Cerce", " & Hine", " et al."
+const AUTHOR_TAIL = new RegExp(String.raw`^((?:\s*(?:,|&|\band\b)\s*(?:&\s*|\band\s+)?${SURNAME}|\s+et\s+al\.?)*)`, 'u');
+const YEAR = String.raw`(?:1[89]\d{2}|20\d{2})[a-z]?`;
+
+/** True when every occurrence of the name in its quote is a scholarly citation
+ * author, e.g. "Prentky, Lee, Knight, and Cerce (1997)" or "(Sasson & Paul, 2014)".
+ * Cited researchers are not SGA people, and their bare surnames would otherwise
+ * resolve to unrelated members. A full name with a lone year is kept, since a
+ * roster can write "Julia Lee (2027)". */
+export function isCitationOnlyName(name: string, evidence: string): boolean {
+    const pattern = new RegExp(String.raw`(?<![\p{L}'’-])${escapeRegExp(name.trim()).replace(/\s+/g, String.raw`\s+`)}(?![\p{L}'’-])`, 'giu');
+    const occurrences = [...evidence.matchAll(pattern)];
+    if (!occurrences.length) return false;
+    const surnameOnly = /^(?:[A-Z]\.\s*)*[\p{Lu}][\p{L}'’-]+$/u.test(name.trim());
+    return occurrences.every(match => {
+        const after = evidence.slice(match.index! + match[0].length);
+        const tail = AUTHOR_TAIL.exec(after)![1];
+        const before = evidence.slice(0, match.index!);
+        // Preceded by another author in the same list: "Sasson and Paul", "Prentky, Lee".
+        const listed = /(?:,|&|\band)\s*$/.test(before) && new RegExp(String.raw`${SURNAME}\s*(?:,|&|\band)\s*$`, 'u').test(before);
+        const multiAuthor = listed || /(?:,|&|\band\b|et\s+al)/.test(tail);
+        if (!surnameOnly && !multiAuthor && !/et\s+al/.test(tail)) return false;
+        const rest = after.slice(tail.length);
+        const insideParens = before.lastIndexOf('(') > before.lastIndexOf(')');
+        // Narrative "Paul (2014)" or "Paul (2014, p. 3)", not "Bonsu (2012 Class Council Election)".
+        if (new RegExp(String.raw`^\s*\(\s*${YEAR}\s*[),;:]`, 'u').test(rest)) return true;
+        // Parenthetical "(Paul, 2014)", "(Finley 2012)", "(Craig et al., in press)".
+        return insideParens && new RegExp(String.raw`^\s*,?\s*(?:${YEAR}|n\.d\.|in\s+press)\s*[),;:]`, 'u').test(rest);
+    });
+}
+
 export function parseExtractedPeople(value: unknown, content: string,
     onReject: (rejection: PeopleRejection) => void = () => {}): ExtractedContributor[] {
     if (!value || typeof value !== 'object' || !('people' in value) || !Array.isArray(value.people)) {
@@ -47,6 +81,8 @@ export function parseExtractedPeople(value: unknown, content: string,
         if (!evidence.toLocaleLowerCase().replace(/\s+/g, ' ').includes(name.toLocaleLowerCase().replace(/\s+/g, ' ').trim())) {
             reject('Name is absent from the supporting quote'); continue;
         }
+        if (PLACEHOLDER_NAMES.has(name.trim().toLocaleLowerCase().replace(/\s+/g, ' '))) { reject('Placeholder name'); continue; }
+        if (isCitationOnlyName(name, evidence)) { reject('Name appears only as a cited author'); continue; }
         people.push({ name: name.trim(), role: role as ExtractedContributor['role'], evidence,
             office: null, note: null, onlyIfKnown: !name.trim().includes(' ') });
     }

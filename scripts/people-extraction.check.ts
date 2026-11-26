@@ -46,6 +46,32 @@ async function main() {
         await logPeopleRejections(context, logs, directory); // unwritable destination must not fail extraction
     } finally { await rm(directory, { recursive: true, force: true }); }
     assert.deepEqual(parseExtractedPeople({ people: [] }, document.content), []);
+    // Cited researchers are not SGA people; their surnames must not reach linking.
+    const cited = [
+        ['Lee', 'Prentky, Lee, Knight, and Cerce (1997) reported a 39% sexual reoffending rate.'],
+        ['Paul', 'Sasson and Paul (2014) assessed factors that influence the way non-victims label an act.'],
+        ['Paul', 'such as reactions received from others (Sasson & Paul, 2014).'],
+        ['A. Murphy', 'influencing police training outcomes (A. Murphy & Hine, 2019).'],
+        ['Cook Craig', '(e.g., Bringing in the Bystander; Banyard, Moynihan, & Plante, 2007; or, Green Dot; Cook Craig et al., in press) utilize'],
+        ['Olafson', 'as reported elsewhere (Olafson, 2011).'],
+        ['Jane Doe', 'undergraduate Jane Doe of Cornell University'],
+    ];
+    const citedRejections: PeopleRejection[] = [];
+    const citedText = cited.map(([, evidence]) => evidence).join('\n');
+    assert.deepEqual(parseExtractedPeople({ people: cited.map(([name, evidence]) => ({ name, role: 'mentioned', evidence })) },
+        citedText, row => citedRejections.push(row)), []);
+    assert.deepEqual(citedRejections.map(row => row.reason), [...Array(6).fill('Name appears only as a cited author'), 'Placeholder name']);
+    const kept = [
+        ['Julia Lee', 'Senators present: Julia Lee (2027), Paul Woo (2028).'],
+        ['Paul', 'Paul: I can review the bill (2026 edition) tonight.'],
+        ['Lee', 'Lee and Paul presented the budget, then Lee (Treasurer) answered questions.'],
+        ['Paul', 'We met with Paul, 2026 Senate liaison.'],
+        ['Lee', 'Prentky, Lee, Knight, and Cerce (1997) reported this; Lee later joined the Senate.'],
+        ['Bonsu', 'Bailey, Bonsu (2012 Class Council Election)'],
+    ];
+    const keptText = kept.map(([, evidence]) => evidence).join('\n');
+    assert.equal(parseExtractedPeople({ people: kept.map(([name, evidence]) => ({ name, role: 'mentioned', evidence })) }, keptText).length,
+        kept.length, 'ordinary mentions near numbers survive');
     const long = document.content + 'x'.repeat(45000) + '\nZainab Ali reviewed this.';
     const chunks = peopleChunks(long);
     assert.equal(chunks.length, 3);

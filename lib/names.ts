@@ -45,6 +45,8 @@ const MANUAL_NAME_ALIASES = [
     // Both hold the same 114th seats over the same dates as the verified row.
     { alias: "Shreemman Patel", canonical: "Shreemann Patel" },
     { alias: "Kayla Marie Gonzalez", canonical: "Kayla Gonzalez" },
+    // The 114th attendance sheet's spelling; "San" is a typo in one document.
+    { alias: "Sienna San Kim", canonical: "Sienna Sian Kim" },
 ] as const;
 
 /**

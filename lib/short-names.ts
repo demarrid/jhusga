@@ -37,6 +37,14 @@ export type ShortNameContext = {
     sessionNumber?: number | null;
     text: string;
     evidence: string;
+    /**
+     * People already credited on the meeting's other records -- its agenda,
+     * a second set of minutes -- used only when nothing else separates two
+     * people in office. Executive Meeting #11 was minuted
+     * twice; the copy with a roll call names Grace Guan, and the "Grace:"
+     * speaking in the other copy is her rather than another Grace in office.
+     */
+    meetingPeople?: ReadonlySet<string>;
 };
 
 export function textHasFullName(text: string, name: string): boolean {
@@ -144,9 +152,12 @@ export function matchShortName(
     const given = givenNameCandidates(name, regulars);
     const surnames = surnameCandidates(name, regulars);
     const named = [...new Map([...given, ...surnames].map((person) => [person.id, person])).values()];
-    const pool = named.length > 0 ? named : diminutiveCandidates(name, regulars);
     const byId = new Map(people.map((person) => [person.id, person]));
-    const eligible = pool.map((person) => byId.get(person.id)!).filter((person) => plausible(person, context));
+    const fits = (pool: RegularPerson[]) => pool.map((person) => byId.get(person.id)!).filter((person) => plausible(person, context));
+    // "Jazz" is also the last word of an act called "NOT 2 COOL JAZZ". A
+    // name that nobody around at the time carries falls back to nicknames.
+    const direct = fits(named);
+    const eligible = direct.length > 0 ? direct : fits(diminutiveCandidates(name, regulars));
     if (eligible.length === 1) return eligible[0]!;
     if (eligible.length < 2) return null;
 
@@ -154,5 +165,8 @@ export function matchShortName(
     const shared = eligible.filter((person) => person.appearances.some((row) =>
         appearanceNear(row, context) && textHasFullName(row.evidence, person.name) &&
         [...tokens].some((token) => nameKey(row.evidence).split(" ").includes(token))));
-    return shared.length === 1 ? shared[0]! : null;
+    if (shared.length === 1) return shared[0]!;
+
+    const atMeeting = eligible.filter((person) => context.meetingPeople?.has(person.id));
+    return atMeeting.length === 1 ? atMeeting[0]! : null;
 }

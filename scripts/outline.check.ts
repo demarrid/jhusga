@@ -762,6 +762,45 @@ check("leadership minutes topic links land on their original source lines",
 check("cleaning the leadership outline leaves every document word intact",
     words(leadershipBlocks).join(" ") === (toPlainText(leadershipMinutes).match(/[A-Za-z0-9]+/g) ?? []).join(" "));
 
+// Executive Meeting #11 (114th): a roll whose first lines at each depth were
+// left out, replies typed as "Name: no", and agenda items signed with who
+// brings them, however much they read like a question.
+const executiveMinutes = [
+    "1. Attendance",
+    "   1. Absent",
+    "      1. Sienna",
+    "   2. Present",
+    "      1. Exec: Sumi, Shreemann, Jazz, Nora, Amy, Grace,",
+    "      2. Staff: Charles",
+    "      3. Senate: Demarri",
+    "",
+    "2. Agenda Items",
+    "   1. Sid Debrief",
+    "      1. Sumi: Sid believes there is a culture of people not really talking",
+    "   2. Report from Sumi, students sentiments on diversity decline, and what we can ask from Dean Wise and school (Sumi)",
+    "      1. Updates: attended BSU town hall, PRSA, now scheduling MLC \\> themes and questions",
+    "         1. Charles: is it possible for exec to get there at 3:30?",
+    "         2. Amy: no",
+    "         3. Sumi and Shreemann: yes",
+    "      2. Consent agenda",
+    "   3. New Office of Opportunity and Engagement, how can we butt in? (Shreemann)",
+    "   4. JHU Ten for One (Shreemann)",
+    "   5. Student Services Survey-\\>School spirit improvements (Grace)\\!\\!",
+    "   6. potential meeting with Christi and RSOs debrief (Amy)",
+].join("\n");
+check("roll-call names, one-word replies and signed agenda items outline as the agenda",
+    flat(documentSections(executiveMinutes)).join("|") === [
+        "Attendance", "Agenda Items", "  Sid Debrief",
+        "  Report from Sumi, students sentiments on diversity decline, and what we can ask from Dean Wise and school (Sumi)",
+        "    Consent agenda",
+        "  New Office of Opportunity and Engagement, how can we butt in? (Shreemann)",
+        "  JHU Ten for One (Shreemann)", "  Student Services Survey->School spirit improvements (Grace)!!",
+        "  potential meeting with Christi and RSOs debrief (Amy)",
+    ].join("|"), flat(documentSections(executiveMinutes)));
+check("an acronym in parentheses does not make a sentence an agenda item",
+    !flat(documentSections("1. FINDINGS\n   1. To amend the SGA Constitution to limit the members of the Committee on Student Elections (CSE).\n2. PURPOSES"))
+        .some(title => title.includes("(CSE)")));
+
 if (failures > 0) {
     console.log(`\n${failures} failed`);
     process.exitCode = 1;

@@ -122,10 +122,21 @@ async function linkShortNames(
     });
     const documents = await prisma.document.findMany({
         where: { id: scope.documentId, sessionNumber: scope.sessionNumber },
-        select: { id: true, title: true, kind: true, content: true, datedAt: true, sessionNumber: true },
+        select: { id: true, title: true, kind: true, content: true, datedAt: true, sessionNumber: true, meetingKey: true },
         orderBy: { id: "asc" },
     });
     if (scope.documentId && !documents.length) throw new Error("Document not found in the selected scope");
+    // Who each meeting's other records already credit, so a short name can
+    // be settled by the meeting itself. See `meetingPeople` in lib/short-names.ts.
+    const meetingKeys = [...new Set(documents.map((document) => document.meetingKey).filter(Boolean))];
+    const meetingCredits = meetingKeys.length ? await prisma.documentContributor.findMany({
+        where: { document: { meetingKey: { in: meetingKeys } } },
+        select: { documentId: true, hopkinsAffiliateId: true, document: { select: { meetingKey: true } } },
+    }) : [];
+    const meetingPeople = (document: { id: string; meetingKey: string }) => document.meetingKey
+        ? new Set(meetingCredits.filter((row) => row.document.meetingKey === document.meetingKey && row.documentId !== document.id)
+            .map((row) => row.hopkinsAffiliateId))
+        : undefined;
 
     let processed = 0;
     let failed = 0;
@@ -146,6 +157,7 @@ async function linkShortNames(
                     hopkinsAffiliate: { select: { name: true } },
                 },
             });
+            const atMeeting = meetingPeople(document);
             const resolved = mentions.map((mention) => ({
                 mention,
                 person: matchShortName(mention.name, roster, {
@@ -153,6 +165,7 @@ async function linkShortNames(
                     sessionNumber: document.sessionNumber,
                     text: document.content,
                     evidence: mention.evidence,
+                    meetingPeople: atMeeting,
                 }),
             }));
             const changes: string[] = [];

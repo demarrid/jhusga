@@ -35,7 +35,7 @@ import { formatDateNumeric } from "@/lib/dates";
 import { DOCUMENT_CORRECTIONS } from "@/config/document-corrections";
 import { meetingHeaderDate } from "@/lib/identity";
 import { isCommitteeRecordsFolder, isSecondaryKind } from "@/lib/kinds";
-import { committeeAcronym, committeeFrom, documentMeetingRole, meetingFor, meetingLog, meetingNumber, yearlessDate, type MeetingRole } from "@/lib/meetings";
+import { committeeAcronym, committeeFrom, documentMeetingRole, isExternalMeeting, meetingFor, meetingLog, meetingNumber, yearlessDate, type MeetingRole } from "@/lib/meetings";
 import { sessionOrdinal } from "@/config/session";
 
 /**
@@ -216,6 +216,8 @@ export type TitleInput = {
     aiNormalizedTitle?: string;
     aiTitleSourceHash?: string;
     meetingRole?: string;
+    /** "114:executive:11". Two records of one meeting may share its name; see `standardTitles`. */
+    meetingKey?: string;
     datedAt?: Date | null;
     driveFileId?: string;
     id: string;
@@ -360,7 +362,7 @@ function formatMeetingTitle(
 function historicalMeetingTitle(input: TitleInput): string | null {
     if (!input.kind?.startsWith('minutes.')) return null;
     const title = cleanTitle(input.title);
-    if (/\b(?:retreat|dinner|roundtable|template|with|w\/|w_|deans?|provost|advisor|adviser|cabinet|coalition)\b/i.test(input.title)) return null;
+    if (/\b(?:retreat|dinner|roundtable|template|with|w\/|w_|deans?|provost|advisor|adviser|cabinet|coalition)\b/i.test(input.title) || isExternalMeeting(input.title)) return null;
     const heading = (input.content ?? '').split(/\r?\n/).map(toPlainText).filter(Boolean).slice(0, 10);
     const headingText = heading.join('\n');
     const combined = /\bagenda\s*(?:and|&|\+|\/)\s*minutes\b/i.test(`${title}\n${headingText}`);
@@ -654,6 +656,11 @@ export function canonicalTitle(
  * Bylaws 2026-2027", which canonicalise identically -- naming both "JHU SGA
  * Bylaws (114th Session)" would assert they are one document. When that
  * happens, everyone in the collision keeps their cleaned filename instead.
+ *
+ * Except when the documents are two sets of minutes, or two agendas, of the
+ * same meeting -- Executive Meeting #11 was minuted in two files. There the
+ * name is the meeting's and true of both, and falling back to "Minutes #11"
+ * and "Executive Meeting #11" would hide which meeting either one records.
  */
 export function standardTitles(documents: TitleInput[]): Map<string, string> {
     const cleaned = new Map(
@@ -672,23 +679,34 @@ export function standardTitles(documents: TitleInput[]): Map<string, string> {
     const dates = meetingDates(documents);
     const usage = new Map<string, string[]>();
 
+    // Documents whose name was read from them one at a time, by the minute
+    // title review, rather than derived by rule from a filename or a key.
+    const reviewed = new Set<string>();
     for (const document of documents) {
-        const canonical = acceptedMinuteTitle(document) ?? canonicalTitle(document, dates);
+        const accepted = acceptedMinuteTitle(document);
+        if (accepted) reviewed.add(document.id);
+        const canonical = accepted ?? canonicalTitle(document, dates);
         if (!canonical) continue;
         usage.set(canonical, [...(usage.get(canonical) ?? []), document.id]);
     }
 
     const titles = new Map(cleaned);
+    const byId = new Map(documents.map((document) => [document.id, document]));
+    const sameMeeting = (ids: string[]) => {
+        const first = byId.get(ids[0]!);
+        return !!first?.meetingKey && !!first.meetingRole && ids.every((id) => reviewed.has(id) &&
+            byId.get(id)?.meetingKey === first.meetingKey && byId.get(id)?.meetingRole === first.meetingRole);
+    };
 
     for (const [canonical, ids] of usage) {
-        if (ids.length !== 1) continue;
+        if (ids.length !== 1 && !sameMeeting(ids)) continue;
         // Also refuse a canonical name already taken by some other document's
         // cleaned filename.
         const clash = [...cleaned].some(
-            ([id, name]) => id !== ids[0] && name === canonical,
+            ([id, name]) => !ids.includes(id) && name === canonical,
         );
         if (clash) continue;
-        titles.set(ids[0]!, canonical);
+        for (const id of ids) titles.set(id, canonical);
     }
 
     return titles;

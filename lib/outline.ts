@@ -210,6 +210,9 @@ function isSpeaker(plain: string): boolean {
     const nameWords = name.split(/\s+/);
     if (nameWords.length > 4) return false;
     if (speech.length > 24 || /[.!?]/.test(speech)) return true;
+    // "Amy: no", "Sumi and Shreemann: yes". A name after a colon is
+    // capitalised; a lowercase reply is someone answering.
+    if (/^\p{Ll}/u.test(speech)) return true;
     return nameWords.length <= 2 && speech.split(/\s+/).length >= 2;
 }
 
@@ -370,6 +373,20 @@ function isOutlineEntry(plain: string): boolean {
     // A longer title is capitals. "Auditions due at October 4th" is a note:
     // the lowercase word is what makes it one, even when the names are capital.
     return words.length >= 2 && share >= 0.75;
+}
+
+/**
+ * "New Office of Opportunity and Engagement, how can we butt in? (Shreemann)":
+ * an agenda item signed with who brings it. The name in parentheses is what
+ * makes it an item, however much it reads like a question or a sentence.
+ */
+const PRESENTER =
+    /\(\s*(?:(?:Dr|Prof|Mr|Ms|Mrs)\.?\s+)?\p{Lu}\p{Ll}[\p{L}'’-]*(?:\s+(?:&|and|\p{Lu}\p{Ll}[\p{L}'’-]*)){0,3}\s*\)[\s!?]*$/u;
+
+function isPresenterItem(plain: string): boolean {
+    if (plain.length > 200 || isSpeaker(plain) || !PRESENTER.test(plain)) return false;
+    const item = plain.replace(PRESENTER, "").trim();
+    return item.length >= 2 && /^[\p{L}\p{N}]/u.test(item);
 }
 
 /** Share of words of three letters or more that start with a capital. */
@@ -611,6 +628,8 @@ export function indexSections(content: string): Index {
     const bodied = new Set<DocumentSection>();
     const styled = new Set<DocumentSection>();
     let open: DocumentSection | null = null;
+    // The list line being read, which notes the frame it opens. See `listed`.
+    let reading: Listed | null = null;
 
     function closeFront() {
         if (front === null) return;
@@ -657,7 +676,9 @@ export function indexSections(content: string): Index {
         }
 
         parents[parents.length - 1]!.push(node);
-        frames.push({ level, indent, outline, markdown, marker });
+        const frame: Frame = { level, indent, outline, markdown, marker };
+        frames.push(frame);
+        if (reading) reading.frame = frame;
         parents.push(node.children);
         anchors.set(at, node.id);
         open = node;
@@ -695,6 +716,11 @@ export function indexSections(content: string): Index {
      * A list that starts again at 1 under the item above it is that item's
      * own list. "b." indented under "a." did not start over, and the export
      * indents it that way anyway, so it stays a sibling.
+     *
+     * "2. Consent agenda" under "2. Report from Sumi ... (Sumi)" did start
+     * over: "1. Updates: ..." above it at the same depth was a note the
+     * outline left out. When the line it is indented under is itself a
+     * section, it is that section's child.
      */
     function outlineLevel(indent: number, kind: MarkerKind, value: number): number {
         if (kind !== "bullet") {
@@ -702,6 +728,13 @@ export function indexSections(content: string): Index {
                 const frame = frames[index]!;
                 if (!frame.outline) break;
                 if (frame.marker === kind && frame.indent === indent) return frame.level;
+            }
+            // Only where "b. under a." cannot be what happened: the number
+            // does not carry on from the line it is indented under.
+            const parent = listedParent(indent);
+            if (parent?.frame && frames[frames.length - 1] === parent.frame && parent.kind === kind &&
+                value !== parent.value + 1 && hasListedSibling(indent, kind)) {
+                return parent.frame.level + 1;
             }
         }
 
@@ -719,6 +752,46 @@ export function indexSections(content: string): Index {
         }
         const parent = index >= 0 ? frames[index]! : null;
         return (parent?.level ?? 0) + 1;
+    }
+
+    // Every list line seen so far, sections and notes alike: its indent, its
+    // words, and the frame it opened if the outline kept it. The line being
+    // read is the last one.
+    type Listed = { indent: number; kind: MarkerKind; value: number; plain: string; frame?: Frame };
+    const listed: Listed[] = [];
+    /** The line this one is indented under. */
+    function listedParent(indent: number): Listed | null {
+        for (let index = listed.length - 2; index >= 0; index -= 1) {
+            if (listed[index]!.indent < indent) return listed[index]!;
+        }
+        return null;
+    }
+    /** Whether a line of the same kind came before this one at its depth, under the same parent. */
+    function hasListedSibling(indent: number, kind: MarkerKind): boolean {
+        for (let index = listed.length - 2; index >= 0; index -= 1) {
+            const prior = listed[index]!;
+            if (prior.indent > indent) continue;
+            return prior.indent === indent && prior.kind === kind;
+        }
+        return false;
+    }
+    /**
+     * Whether a list line sits in the roll call: under "Attendance", or under
+     * "Present" or "Absent" inside it, however deep. "2. Staff: Charles" there
+     * names who came, not a part of the meeting, even when the lines above it
+     * at its own depth ("1. Exec: Sumi, Shreemann, ...") were left out and
+     * nothing in the outline is open to hold it.
+     */
+    function inRollCall(indent: number): boolean {
+        let depth = indent;
+        for (let index = listed.length - 2; index >= 0; index -= 1) {
+            const prior = listed[index]!;
+            if (prior.indent >= depth) continue;
+            const label = prior.plain.replace(/:\s*$/, "");
+            if (ROLL_CALL_HEADING.test(label) || isRollCall(label)) return true;
+            depth = prior.indent;
+        }
+        return false;
     }
 
     const lines = toLines(content);
@@ -776,6 +849,7 @@ export function indexSections(content: string): Index {
         }).length >= 3;
 
     for (const [lineIndex, line] of lines.entries()) {
+        reading = null;
         if (lineIndex < legislativeTitleEnd) continue;
         let text = line.text;
         let at = line.start;
@@ -881,6 +955,12 @@ export function indexSections(content: string): Index {
         const mark = outlineMark(text);
         if (mark) {
             const label = emphasis(mark.raw);
+            reading = { indent: mark.indent, kind: mark.kind, value: mark.value, plain: label.plain };
+            listed.push(reading);
+            if (mark.kind !== "bullet" && label.wrapped === null && inRollCall(mark.indent)) {
+                body();
+                continue;
+            }
             const next = nextContent.get(lineIndex);
             const child = next ? outlineMark(next.text) : null;
             const hasChildren = !!child && child.indent > mark.indent;
@@ -908,7 +988,8 @@ export function indexSections(content: string): Index {
             }
             // A colon here introduces the bill or the person reporting, not a
             // speech. "Jazz: Thank you..." is never a numbered label.
-            if (!isLabel(label.plain) || isBanner(label.plain, meetings)) {
+            const presenter = mark.kind !== "bullet" && isPresenterItem(label.plain);
+            if ((!presenter && !isLabel(label.plain)) || isBanner(label.plain, meetings)) {
                 body();
                 continue;
             }
@@ -930,7 +1011,7 @@ export function indexSections(content: string): Index {
             // -- are its children, even when the export did not indent them.
             const agendaHeading = mark.kind === "number" && label.wrapped === "bold";
             // A note numbered like an agenda item is still a note.
-            if (!agendaHeading && !isOutlineEntry(label.plain)) {
+            if (!agendaHeading && !presenter && !isOutlineEntry(label.plain)) {
                 if (open) bodied.add(open);
                 continue;
             }

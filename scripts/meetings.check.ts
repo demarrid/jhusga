@@ -276,6 +276,13 @@ check(
     at("9/25 - Meeting w/ Prof Brodsky", IA, 114, new Date("2026-09-25T15:00:00Z")).key === "",
     at("9/25 - Meeting w/ Prof Brodsky", IA, 114, new Date("2026-09-25T15:00:00Z")),
 );
+// A real file: a senator's notes from the KSAS Student Advisory Council,
+// kept in Internal Affairs' folder and once titled as that committee's minutes.
+check(
+    "a university advisory council is not the committee's own meeting",
+    at("11/20 - KSAS Student Advisory Council", IA, 114, new Date("2026-11-20T15:00:00Z")).key === "",
+    at("11/20 - KSAS Student Advisory Council", IA, 114, new Date("2026-11-20T15:00:00Z")),
+);
 check(
     "a dated committee meeting in a term folder is still the committee's",
     at("CE June 15 2026 Meeting", `${CE}/Summer 2026`, 114).key ===

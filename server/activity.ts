@@ -35,6 +35,7 @@ import { editorDisplayName, rankedEditors } from "@/lib/editors";
 import { demoDocuments } from "@/lib/demo-data";
 import { findQuote } from "@/lib/anchor";
 import { prisma } from "@/lib/prisma";
+import { canonicalPersonName } from "@/lib/names";
 
 /**
  * The three lanes of the home carousel.
@@ -413,12 +414,16 @@ async function attachPositions(lanes: ActivityLane[], sessions: CreditSession[])
     const directories = await Promise.all([...new Set(sessions.map(document => document.sessionNumber))]
         .filter((session): session is number => session !== null)
         .map(async session => [session, await getContactDirectory(session)] as const));
-    const directoryBySession = new Map(directories);
+    // A roster can misspell someone the archive already knows -- the 114th's
+    // lists "Shreemman Patel" -- so read its names through the same reviewed
+    // aliases the credits were resolved with.
+    const membersBySession = new Map(directories.map(([session, directory]) => [session,
+        directory.members.map(member => ({ ...member, name: canonicalPersonName(member.name) }))]));
     for (const card of credited) {
         const session = sessionById.get(card.id);
         if (session == null) continue;
         const names = card.authors.split(", ");
-        const credits = names.map(name => contactCredit(name, directoryBySession.get(session)?.members ?? []));
+        const credits = names.map(name => contactCredit(name, membersBySession.get(session) ?? []));
         card.authors = credits.map(credit => credit.name).join(", ");
         const expanded = credits.map(credit => credit.full).join("; ");
         if (expanded !== card.authors) card.authorsWithPositions = expanded;

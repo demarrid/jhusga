@@ -1,13 +1,27 @@
 import { createHash } from 'node:crypto';
 import { expandCalendarYear } from './calendar-year';
+import { SESSION_NUMBER, sessionOrdinal } from '../config/session';
 
-export type MinuteTitleSource = { title: string; content?: string; kind?: string; folderPath: string };
+export type MinuteTitleSource = { title: string; content?: string; kind?: string; folderPath: string; sessionNumber?: number | null };
 export function minuteTitleSourceHash(document: MinuteTitleSource): string {
     return createHash('sha256').update(JSON.stringify([document.title, document.content ?? '', document.kind ?? '', document.folderPath])).digest('hex');
 }
 export function acceptedMinuteTitle(document: MinuteTitleSource & { aiNormalizedTitle?: string; aiTitleSourceHash?: string }): string | null {
     return document.kind?.startsWith('minutes.') && document.aiNormalizedTitle && document.aiTitleSourceHash === minuteTitleSourceHash(document)
-        ? withoutOrganizationName(document.aiNormalizedTitle) : null;
+        ? withoutCurrentSession(withoutOrganizationName(document.aiNormalizedTitle), document.sessionNumber) : null;
+}
+
+/**
+ * A meeting of the session in progress is just "Executive Meeting #11": the
+ * whole site is the 114th's unless it says otherwise. The ordinal stays on a
+ * previous session's meetings, where it is what says the meeting is archive,
+ * and on titles that name a whole session rather than one meeting of it.
+ */
+export function withoutCurrentSession(title: string, sessionNumber: number | null | undefined): string {
+    if (sessionNumber !== SESSION_NUMBER) return title;
+    const prefix = new RegExp(`^${sessionOrdinal(SESSION_NUMBER)}\\s+(?=\\S)`, 'i');
+    if (!prefix.test(title) || /\(\s*\d+(?:st|nd|rd|th)\s+session\s*\)/i.test(title)) return title;
+    return title.replace(prefix, '').replace(/^(Meeting\b)/i, 'SGA $1');
 }
 
 /**

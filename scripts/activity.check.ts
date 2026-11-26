@@ -23,6 +23,7 @@ import {
     passedLegislation,
     recordedResolutionPassage,
 } from "../lib/activity";
+import { canonicalPersonName } from "../lib/names";
 
 let failures = 0;
 
@@ -35,6 +36,11 @@ check("the Ayaji contact spelling supplies Ajayi's caucus position", contactCred
 check("omitted contact middle names preserve the full credited name", contactCredit("Kayla Marie Gonzalez", contactPeople).full === "Hispanic/Latine Students Caucus Senator Kayla Marie Gonzalez");
 check("all contact positions precede the name", contactCredit("Jazzlyn Fernandez", contactPeople).full === "President of the Senate and First-Generation Limited Income Students Caucus Senator Jazzlyn Fernandez");
 check("ambiguous contact variants do not guess a position", contactCredit("Kayla Marie Gonzalez", [...contactPeople, { ...contactPeople[1], name: "Kayla Ana Gonzalez" }]).full === "Kayla Marie Gonzalez");
+// The 114th roster spells him "Shreemman"; server/activity.ts reads roster
+// names through the reviewed aliases before matching credits.
+const rosterTypo = { name: canonicalPersonName("Shreemman Patel"), group: "executive" as const, email: null, positions: ["Student Body Vice President"] };
+check("Sienna's one-document typo resolves to the attendance sheet's spelling", canonicalPersonName("Sienna San Kim") === "Sienna Sian Kim");
+check("a roster misspelling with a reviewed alias still supplies the office", contactCredit("Shreemann Patel", [rosterTypo]).full === "Student Body Vice President Shreemann Patel", contactCredit("Shreemann Patel", [rosterTypo]));
 
 check("combined card uses the last summary bullet without formatting or citation markers",
     latestMinutesSummary({status: "fresh", content: "- Earlier meeting. [1]\n- **October 14:** Discussed housing access. [2]"}) === "October 14: Discussed housing access.");

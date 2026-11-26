@@ -68,9 +68,19 @@ const NOT_A_MEETING = /\btemplate\b|^\s*copy of\b/i;
  * 2025 Exec x Advisor Meeting" as an ordinary Executive Board meeting, or
  * "9/25 - Meeting w/ Prof Brodsky" as one of Internal Affairs -- losing the
  * one thing the filename was written to say.
+ *
+ * "Advisory" counts too: the SGA has no advisory body of its own, so "11/20 -
+ * KSAS Student Advisory Council" is a senator's notes from the school's
+ * council, not a dated Internal Affairs meeting. "Council" alone does not,
+ * since the Class and Programming Councils are the SGA's.
  */
 const EXTERNAL_MEETING =
-    /\badvisors?\b|\badvisers?\b|\bdeans?\b|\bprovost\b|\bprof(?:essor)?s?\b|president daniels|board of trustees/i;
+    /\badvisors?\b|\badvisers?\b|\badvisory\b|\bdeans?\b|\bprovost\b|\bprof(?:essor)?s?\b|president daniels|board of trustees/i;
+
+/** Whether a filename names a meeting with someone outside the SGA. */
+export function isExternalMeeting(title: string): boolean {
+    return EXTERNAL_MEETING.test(title);
+}
 
 /** "113th", "1st" -- the session, never the meeting number. */
 const SESSION_ORDINAL = /\b\d{1,3}(?:st|nd|rd|th)\b/gi;
@@ -621,7 +631,7 @@ export function meetingLog(input: MeetingInput & { content: string }): MeetingLo
     if (meetingFor(input).key) return null;
 
     const title = input.title.trim();
-    if (!title || NOT_A_MEETING.test(title)) return null;
+    if (!title || NOT_A_MEETING.test(title) || EXTERNAL_MEETING.test(title)) return null;
 
     const body = bodyFor(title, input.folderPath);
     if (!body) return null;
