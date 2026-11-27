@@ -22,7 +22,7 @@ import {
 } from "@/config/history";
 import { sessionOrdinal } from "@/config/session";
 
-import { layoutFlags, type Flag, type Measure } from "./flags";
+import { FLAG_METRICS, layoutFlags, type Flag, type Measure } from "./flags";
 import styles from "./Timeline.module.css";
 
 export type TimelineEvent = {
@@ -62,14 +62,32 @@ const YEAR = 365.2425 * DAY;
 const MONTH = YEAR / 12;
 const MIN_SPAN = 60 * DAY;
 const REVEAL_SPAN = 4 * YEAR;
-const STAGE_HEIGHT = 470;
-const COMPACT_STAGE_HEIGHT = 400;
-/** The axis line's distance from the bottom of the track; tick labels sit below it. */
-const AXIS_BOTTOM = 34;
-/** Shortest pole, so even the lowest flag stands clear of the markers. */
+const STAGE_HEIGHT = 580;
+const COMPACT_STAGE_HEIGHT = 500;
+/** Shortest pole, so even the nearest flag stands clear of the markers. */
 const POLE_MIN = 14;
 /** Room above the flags for the session labels. */
 const TOP_PAD = 30;
+/** Room below the flags for the tick labels. */
+const TICK_AREA = 26;
+/** Background for a box listing several events, which may span threads. */
+const GROUP_FLAG_COLOR = "#13294b";
+
+/** The axis runs through the middle of the room left between the labels. */
+const axisTop = (stageHeight: number) => Math.round(TOP_PAD + (stageHeight - TOP_PAD - TICK_AREA) / 2);
+
+/** Dark or white text, whichever reads better on a solid `#rrggbb` background (WCAG contrast). */
+function inkFor(background: string | undefined): string {
+    const match = /^#?([0-9a-f]{6})$/i.exec(background ?? "");
+    if (!match) return "#ffffff";
+    const channel = (offset: number) => {
+        const value = Number.parseInt(match[1]!.slice(offset, offset + 2), 16) / 255;
+        return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+    const dark = 0.0118; // luminance of #0f1f33
+    return (1.05) / (luminance + 0.05) >= (luminance + 0.05) / (dark + 0.05) ? "#ffffff" : "#0f1f33";
+}
 const RUBBER_PX = 120;
 const EASE_TAU_MS = 120;
 const FRICTION = 0.93;
@@ -460,6 +478,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     const panelOpen = selected !== null;
     const cover = panelOpen && wide ? PANEL_COVER_PX : 0;
     const stageHeight = compact ? COMPACT_STAGE_HEIGHT : STAGE_HEIGHT;
+    const axisY = axisTop(stageHeight);
     const measure = useMemo(() => createMeasure(fontFamily), [fontFamily]);
     const toX = (time: number) => ((time - view.start) / view.span) * width;
     const inView = useMemo(
@@ -467,7 +486,8 @@ export default function Timeline({ events, threads, details, initialEventId }: P
             visible.filter((event) => {
                 const from = ((event.start - view.start) / view.span) * width;
                 const to = event.end ? ((event.end - view.start) / view.span) * width : from;
-                return to >= -40 && from <= width + 40;
+                // Wide enough on the left that a flag whose pole is off screen still shows its clipped box.
+                return to >= -FLAG_METRICS.width - 40 && from <= width + 40;
             }),
         [visible, view, width],
     );
@@ -477,11 +497,12 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                 events: inView,
                 toX: (time) => ((time - view.start) / view.span) * width,
                 usable: width - cover,
-                maxHeight: stageHeight - AXIS_BOTTOM - POLE_MIN - TOP_PAD,
+                maxAbove: axisY - TOP_PAD - POLE_MIN,
+                maxBelow: stageHeight - TICK_AREA - axisY - POLE_MIN,
                 measure,
                 compact,
             }),
-        [inView, view, width, cover, stageHeight, measure, compact],
+        [inView, view, width, cover, stageHeight, axisY, measure, compact],
     );
     const ticks = useMemo(() => axisTicks(view, width), [view, width]);
     const bands = useMemo(() => sessionBands(view), [view]);
@@ -970,7 +991,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                                 <div
                                     className={styles.gridline}
                                     data-major={tick.major || undefined}
-                                    style={{ left: toPercent(x), top: TOP_PAD - 6, bottom: AXIS_BOTTOM }}
+                                    style={{ left: toPercent(x), top: TOP_PAD - 6, bottom: TICK_AREA }}
                                 />
                                 <span className={styles.tick} data-major={tick.major || undefined} style={{ left: toPercent(x) }}>
                                     {tick.label}
@@ -979,12 +1000,13 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                         );
                     })}
 
-                    <div className={styles.axis} style={{ bottom: AXIS_BOTTOM }} aria-hidden="true" />
+                    <div className={styles.axis} style={{ top: axisY }} aria-hidden="true" />
 
                     {flags.map((flag) => (
                         <FlagView
                             key={flag.key}
                             flag={flag}
+                            axisY={axisY}
                             selectedId={selectedId}
                             colorOf={flagThread}
                             onSelect={(event) => select(event.id === selectedId ? null : event)}
@@ -1001,6 +1023,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                             <AxisMarker
                                 key={event.id}
                                 event={event}
+                                axisY={axisY}
                                 x={toX(event.start)}
                                 endX={event.end ? toX(event.end) : null}
                                 color={flagThread(event)}
@@ -1135,6 +1158,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
 
 function AxisMarker({
     event,
+    axisY,
     x,
     endX,
     color,
@@ -1143,6 +1167,7 @@ function AxisMarker({
     onHover,
 }: {
     event: TimelineEvent;
+    axisY: number;
     x: number;
     endX: number | null;
     color: string | undefined;
@@ -1158,7 +1183,7 @@ function AxisMarker({
             {endX !== null && (
                 <div
                     className={styles.spanBar}
-                    style={{ left: x, bottom: AXIS_BOTTOM, width: Math.max(2, endX - x), "--c": color } as CSSProperties}
+                    style={{ left: x, top: axisY, width: Math.max(2, endX - x), "--c": color } as CSSProperties}
                     aria-hidden="true"
                 />
             )}
@@ -1173,7 +1198,7 @@ function AxisMarker({
                 data-selected={selected || undefined}
                 aria-pressed={selected}
                 aria-label={`${event.title}, ${event.dateLabel}`}
-                style={{ left: x, bottom: AXIS_BOTTOM, width: radius * 2, height: radius * 2, "--c": color } as CSSProperties}
+                style={{ left: x, top: axisY, width: radius * 2, height: radius * 2, "--c": color } as CSSProperties}
                 onClick={(click) => click.detail === 0 && onActivate()}
                 onPointerEnter={(pointer) => onHover(pointer.currentTarget)}
                 onPointerLeave={() => onHover(null)}
@@ -1182,9 +1207,10 @@ function AxisMarker({
     );
 }
 
-/** One flag: its pole down to the axis, a bracket under a group, and the box. */
+/** One flag: its pole to the axis, a bracket on the axis under a group, and the box. */
 function FlagView({
     flag,
+    axisY,
     selectedId,
     colorOf,
     onSelect,
@@ -1193,6 +1219,7 @@ function FlagView({
     onLeave,
 }: {
     flag: Flag<TimelineEvent>;
+    axisY: number;
     selectedId: string | null;
     colorOf: (event: TimelineEvent) => string | undefined;
     onSelect: (event: TimelineEvent) => void;
@@ -1203,8 +1230,18 @@ function FlagView({
     const { group } = flag;
     const single = flag.type === "event" ? flag.event : null;
     const color = single ? colorOf(single) : undefined;
-    const bottom = AXIS_BOTTOM + POLE_MIN + flag.y;
-    const box = { left: flag.left, bottom, width: flag.width, height: flag.height, "--c": color } as CSSProperties;
+    const fill = color ?? GROUP_FLAG_COLOR;
+    const above = flag.side === "above";
+    const reach = POLE_MIN + flag.y;
+    const top = above ? axisY - reach - flag.height : axisY + reach;
+    const box = {
+        left: flag.left,
+        top,
+        width: flag.width,
+        height: flag.height,
+        "--c": fill,
+        "--ink": inkFor(fill),
+    } as CSSProperties;
     const first = group.events[0]!;
     const last = group.events.at(-1)!;
     const range = first.dateLabel === last.dateLabel ? first.dateLabel : `${first.dateLabel} – ${last.dateLabel}`;
@@ -1330,14 +1367,15 @@ function FlagView({
             {!single && group.x1 - group.x0 > 2 && (
                 <div
                     className={styles.flagBracket}
-                    style={{ left: group.x0, width: group.x1 - group.x0, bottom: AXIS_BOTTOM + 10 }}
+                    data-side={flag.side}
+                    style={{ left: group.x0, width: group.x1 - group.x0, top: above ? axisY - 15 : axisY + 10 }}
                     aria-hidden="true"
                 />
             )}
             <div
                 className={styles.flagPole}
                 data-group={!single || undefined}
-                style={{ left: flag.poleX, bottom: AXIS_BOTTOM, height: POLE_MIN + flag.y, "--c": color } as CSSProperties}
+                style={{ left: flag.poleX, top: above ? axisY - reach : axisY, height: reach, "--c": color } as CSSProperties}
                 aria-hidden="true"
             />
             {body}

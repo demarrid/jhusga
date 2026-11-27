@@ -12,7 +12,8 @@
  *
  * Left out on purpose: Wendell E. Dunn, Jr. and Wendell E. Dunn III are two
  * generations of the family the Dunn award honours, and the archive names
- * both in the same sentence.
+ * both in the same sentence. Dean Chien is a student named Dean (Executive
+ * President, 2018-20), not a dean, and stays apart from Megan Chien.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { prisma } from "../lib/prisma";
@@ -85,6 +86,10 @@ const PEOPLE: [keep: string, ...rows: string[]][] = [
     ["Kimberly Zou", "Kim Zou", "Kimberly Zou"],
     ["Brittini Brown", "Britni Brown", "Brittini Brown"],
     ["Lainie Rutkow", "Lainie Rutkov", "Lainie Rutkow"],
+    ["Brittini Brown", "Dr. Brown", "Brittini Brown"],
+    ["Susan Kulesa Boswell", "Dean Boswell", "S. Boswell", "Susan Boswell", "Susan Kulesa Boswell"],
+    ["Matthew Brown", "Senator Brown", "Matt Brown", "Matthew Brown"],
+    ["Samuel Mollin", "Sam M", "Sam Mollin", "Samuel Mollin"],
 ];
 
 /** Read as a person by mistake: an action item, the mascot, a caucus. */

@@ -40,8 +40,9 @@ export type Flag<E extends FlagEvent = FlagEvent> = Shape<E> & {
     left: number;
     width: number;
     height: number;
-    /** Height of the box's bottom above the lowest flag position. */
+    /** Distance of the box's near edge from the shortest pole's end. */
     y: number;
+    side: FlagSide;
 };
 
 /** Box metrics, which Timeline.module.css must match. */
@@ -130,23 +131,23 @@ function shapes<E extends FlagEvent>(
     group: FlagGroup<E>,
     level: number,
     toX: (time: number) => number,
-    usable: number,
     measure: Measure,
     compact: boolean,
 ): Flag<E>[] {
     const m = FLAG_METRICS;
     const fullWidth = compact ? m.compactWidth : m.width;
     const inner = fullWidth - m.chromeX - 2;
-    const at = (poleX: number, width: number) => Math.min(Math.max(2, poleX - 1), Math.max(2, usable - width - 2));
     const flag = (shape: Shape<E>, key: string, poleX: number, width: number, height: number): Flag<E> => ({
         ...shape,
         key,
         group,
         poleX,
-        left: at(poleX, width),
+        // The pole is the box's left edge even past the edge of the track, which clips it.
+        left: poleX - 1,
         width,
         height,
         y: 0,
+        side: "above",
     });
 
     if (level === 0) {
@@ -192,71 +193,95 @@ function shapes<E extends FlagEvent>(
 }
 
 type Placed = { left: number; right: number; bottom: number; top: number; pole: number };
+export type FlagSide = "above" | "below";
+type Placement = { y: number; side: FlagSide } | null;
 
-/** Lowest free height for each flag, or null where none fits under `maxHeight`. */
-function place(flags: Flag[], maxHeight: number): (number | null)[] {
-    const placed: Placed[] = [];
-    const heights: (number | null)[] = new Array(flags.length).fill(null);
-    // Right to left, so a pole always stands left of the boxes placed below it.
+/** Lowest free height for a flag among those already on one side, or null. */
+function lowest(flag: Flag, placed: Placed[], maxHeight: number): number | null {
+    const left = flag.left;
+    const right = flag.left + flag.width;
+    const near = placed.filter(
+        (other) =>
+            (other.left < right + GAP_X && other.right > left - GAP_X) ||
+            (other.pole >= left - POLE_CLEAR && other.pole <= right + POLE_CLEAR),
+    );
+    const candidates = [0, ...near.map((other) => other.top + GAP_Y)].sort((a, b) => a - b);
+    for (const y of candidates) {
+        const top = y + flag.height;
+        if (top > maxHeight) return null;
+        const clear = near.every((other) => {
+            const besides = other.right + GAP_X <= left || other.left >= right + GAP_X;
+            if (!besides && other.bottom < top + GAP_Y && other.top + GAP_Y > y) return false;
+            // Their pole runs from the axis out to their box, so it must stay nearer the axis than ours.
+            if (other.pole >= left - POLE_CLEAR && other.pole <= right + POLE_CLEAR && other.bottom > y) return false;
+            // Ours runs out to `y`, so no box may sit across it nearer the axis.
+            if (flag.poleX >= other.left - POLE_CLEAR && flag.poleX <= other.right + POLE_CLEAR && other.bottom < y) {
+                return false;
+            }
+            return true;
+        });
+        if (clear) return y;
+    }
+    return null;
+}
+
+/**
+ * A side and a distance from the axis for each flag, or null where neither side
+ * has room. Each flag takes whichever side keeps it nearer the axis, alternating
+ * on a tie so neighbours fan out above and below.
+ */
+function place(flags: Flag[], maxAbove: number, maxBelow: number): Placement[] {
+    const sides: Record<FlagSide, Placed[]> = { above: [], below: [] };
+    const placements: Placement[] = new Array(flags.length).fill(null);
+    // Right to left, so a pole always stands left of the boxes placed nearer the axis.
     const order = flags.map((_, index) => index).sort((a, b) => flags[b]!.poleX - flags[a]!.poleX);
+    let last: FlagSide = "below";
 
     for (const index of order) {
         const flag = flags[index]!;
-        const left = flag.left;
-        const right = flag.left + flag.width;
-        const near = placed.filter(
-            (other) =>
-                (other.left < right + GAP_X && other.right > left - GAP_X) ||
-                (other.pole >= left - POLE_CLEAR && other.pole <= right + POLE_CLEAR),
-        );
-        const candidates = [0, ...near.map((other) => other.top + GAP_Y)].sort((a, b) => a - b);
-        for (const y of candidates) {
-            const top = y + flag.height;
-            if (top > maxHeight) break;
-            const clear = near.every((other) => {
-                const besides = other.right + GAP_X <= left || other.left >= right + GAP_X;
-                if (!besides && other.bottom < top + GAP_Y && other.top + GAP_Y > y) return false;
-                // Their pole runs from the axis up to their box, so it must stay below ours.
-                if (other.pole >= left - POLE_CLEAR && other.pole <= right + POLE_CLEAR && other.bottom > y) return false;
-                // Ours runs up to `y`, so no box may sit across it below that.
-                if (flag.poleX >= other.left - POLE_CLEAR && flag.poleX <= other.right + POLE_CLEAR && other.bottom < y) {
-                    return false;
-                }
-                return true;
-            });
-            if (!clear) continue;
-            heights[index] = y;
-            placed.push({ left, right, bottom: y, top, pole: flag.poleX });
-            break;
-        }
+        const above = lowest(flag, sides.above, maxAbove);
+        const below = lowest(flag, sides.below, maxBelow);
+        if (above === null && below === null) continue;
+        const side: FlagSide =
+            below === null ? "above"
+            : above === null ? "below"
+            : above < below ? "above"
+            : below < above ? "below"
+            : last === "above" ? "below" : "above";
+        const y = side === "above" ? above! : below!;
+        last = side;
+        placements[index] = { y, side };
+        sides[side].push({ left: flag.left, right: flag.left + flag.width, bottom: y, top: y + flag.height, pole: flag.poleX });
     }
-    return heights;
+    return placements;
 }
-
 export function layoutFlags<E extends FlagEvent>(options: {
     /** Visible events, in date order. */
     events: E[];
     toX: (time: number) => number;
     /** Width of the track not covered by the detail panel. */
     usable: number;
-    maxHeight: number;
+    /** Room above and below the axis for flags, past the shortest pole. */
+    maxAbove: number;
+    maxBelow: number;
     measure: Measure;
     compact: boolean;
 }): Flag<E>[] {
-    const { toX, usable, maxHeight, measure, compact } = options;
+    const { toX, usable, maxAbove, maxBelow, measure, compact } = options;
     const events = options.events.filter((event) => {
         const x = toX(event.start);
-        return x >= 0 && x <= usable;
+        // A flag whose pole is just off the left edge still shows the part of its box that is in view.
+        return x >= -(compact ? FLAG_METRICS.compactWidth : FLAG_METRICS.width) && x <= usable;
     });
     const groups = groupEvents(events, toX);
     const levels = groups.map(() => 0);
     const reach = compact ? FLAG_METRICS.compactWidth : FLAG_METRICS.width;
 
     let flags: Flag<E>[] = [];
-    let heights: (number | null)[] = [];
+    let heights: Placement[] = [];
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
-        flags = groups.flatMap((group, index) => shapes(group, levels[index]!, toX, usable, measure, compact));
-        heights = place(flags, maxHeight);
+        flags = groups.flatMap((group, index) => shapes(group, levels[index]!, toX, measure, compact));
+        heights = place(flags, maxAbove, maxBelow);
         const failed = new Set<FlagGroup>();
         heights.forEach((height, index) => height === null && failed.add(flags[index]!.group));
         if (failed.size === 0) break;
@@ -286,8 +311,8 @@ export function layoutFlags<E extends FlagEvent>(options: {
 
     // Simplifying in batches overshoots, so give detail back wherever it still fits: weightier
     // and smaller groups first.
-    const build = () => groups.flatMap((group, index) => shapes(group, levels[index]!, toX, usable, measure, compact));
-    const fits = (candidate: Flag<E>[]) => place(candidate, maxHeight).every((height) => height !== null);
+    const build = () => groups.flatMap((group, index) => shapes(group, levels[index]!, toX, measure, compact));
+    const fits = (candidate: Flag<E>[]) => place(candidate, maxAbove, maxBelow).every((height) => height !== null);
     if (heights.every((height) => height !== null)) {
         const priority = groups
             .map((group, index) => ({ index, weight: Math.max(...group.events.map((event) => event.weight)), size: group.events.length }))
@@ -307,11 +332,11 @@ export function layoutFlags<E extends FlagEvent>(options: {
             }
             if (!improved) break;
         }
-        heights = place(flags, maxHeight);
+        heights = place(flags, maxAbove, maxBelow);
     }
 
     return flags.flatMap((flag, index) => {
-        const y = heights[index];
-        return y === null || y === undefined ? [] : [{ ...flag, y }];
+        const placement = heights[index];
+        return placement ? [{ ...flag, y: placement.y, side: placement.side }] : [];
     });
 }

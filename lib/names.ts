@@ -575,6 +575,12 @@ export async function mergeAffiliate(
     await foldReviewedAdministrator(prisma, fromId, intoId);
 
     if (!from.email && !from.userId) {
+        // Spellings already folded onto the old row ("Sam Mollins") would
+        // otherwise cascade away with it and come back as people.
+        await prisma.hopkinsAlias.updateMany({
+            where: { hopkinsAffiliateId: fromId },
+            data: { hopkinsAffiliateId: intoId },
+        });
         await prisma.hopkinsAffiliate.delete({ where: { id: fromId } });
     }
 }

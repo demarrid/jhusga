@@ -369,19 +369,22 @@ const flagEvents = (count: number, years: number): FlagEvent[] =>
         weight: ((index % 3) + 1) as 1 | 2 | 3,
     })).sort((a, b) => a.start - b.start);
 
-function layOut(events: FlagEvent[], width: number, maxHeight = 392) {
+function layOut(events: FlagEvent[], width: number, maxHeight = 240) {
     const start = events[0]!.start;
     const span = events.at(-1)!.start - start || 1;
     const toX = (time: number) => 20 + ((time - start) / span) * (width - 40);
-    return { flags: layoutFlags({ events, toX, usable: width, maxHeight, measure: flagMeasure, compact: false }), maxHeight, width };
+    const flags = layoutFlags({ events, toX, usable: width, maxAbove: maxHeight, maxBelow: maxHeight, measure: flagMeasure, compact: false });
+    return { flags, maxHeight, width };
 }
 
+// Each side of the axis is its own stack: boxes and poles only meet flags on the same side.
 function assertClear({ flags, maxHeight, width }: { flags: Flag[]; maxHeight: number; width: number }, name: string) {
     for (const flag of flags) {
         assert.ok(flag.y >= 0 && flag.y + flag.height <= maxHeight, `${name}: ${flag.key} fits the height`);
-        assert.ok(flag.left >= 0 && flag.left + flag.width <= width, `${name}: ${flag.key} fits the width`);
+        assert.ok(flag.poleX >= -flag.width && flag.poleX <= width, `${name}: ${flag.key}'s pole is near the track`);
+        assert.equal(flag.left, flag.poleX - 1, `${name}: ${flag.key} starts at its pole and is clipped, not pushed in`);
         for (const other of flags) {
-            if (other === flag) continue;
+            if (other === flag || other.side !== flag.side) continue;
             const apart =
                 flag.left + flag.width <= other.left || other.left + other.width <= flag.left ||
                 flag.y + flag.height <= other.y || other.y + other.height <= flag.y;
@@ -399,6 +402,10 @@ const sparse = layOut(flagEvents(4, 40), 1400);
 assertClear(sparse, "sparse");
 assert.equal(sparse.flags.length, 4);
 assert.ok(sparse.flags.every((flag) => flag.type === "event" && flag.mode === "full" && flag.descLines > 0));
+
+// Neighbours that would stack fan out to both sides of the axis.
+const pair = layOut(flagEvents(2, 1), 1400);
+assert.deepEqual(new Set(pair.flags.map((flag) => flag.side)), new Set(["above", "below"]));
 
 // Crowded timelines fall back to lists, labels, and counts, but never overlap and still account for every event.
 for (const [count, width] of [[40, 1400], [150, 1400], [400, 1400], [150, 360]] as const) {
