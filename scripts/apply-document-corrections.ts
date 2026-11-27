@@ -13,10 +13,12 @@ async function main() {
         const document = await prisma.document.findUnique({ where: { driveFileId } });
         if (!document) continue;
         const kind = classifyDocument({ ...document, name: document.title, displayTitle: correction.displayTitle });
+        // A title-only correction keeps the recorded date: the filename parser
+        // cannot see an accepted AI date, and would clear it.
         await prisma.document.update({ where: { id: document.id }, data: {
             displayTitle: correction.displayTitle,
             kind,
-            datedAt: documentDate(document),
+            ...(correction.datedOn !== undefined ? { datedAt: documentDate(document) } : {}),
         } });
         // A summary repeating the source's incorrect date should be regenerated.
         if (correction.datedOn !== undefined && document.datedAt?.getTime() !== documentDate(document)?.getTime()) await prisma.documentSummary.updateMany({

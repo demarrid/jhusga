@@ -157,6 +157,9 @@ const KIND_GUIDE = `- legislation: an SGA bill or resolution being introduced, r
 - policy: a change to a university or SGA policy, office, or process.
 - report: a survey, report, or release of data.`;
 
+/** Who a finding may name, unless the topic says otherwise. */
+const DEFAULT_PEOPLE_RULE = "Never name or identify a survivor, complainant, or accused person, or describe the details of an individual case. Name SGA bodies and offices rather than individual students. If no quote for a finding can avoid identifying such a person, leave the finding out.";
+
 /** A topic's own rules, after the shared ones. Nothing at all when it has none,
  * so a topic without them keeps its prompt, and its caches, unchanged. */
 function topicRules(rules: string[] | undefined): string {
@@ -182,7 +185,7 @@ Rules:
 - Only what this document records. No outside knowledge, and nothing about motives or effects the text does not state.
 - A development outside the SGA belongs only when this document ties it to the SGA; mark its involvement "context". Otherwise "sga".
 - Skip mentions where nothing happened: a committee name in a list, a template, a hotline number in a footer, a résumé line.
-- Never name or identify a survivor, complainant, or accused person, or describe the details of an individual case. Name SGA bodies and offices rather than individual students. If no quote for a finding can avoid identifying such a person, leave the finding out.${topicRules(topic.extractionRules)}
+- ${topic.peopleRule ?? DEFAULT_PEOPLE_RULE}${topicRules(topic.extractionRules)}
 
 Fields:
 - "summary": one neutral sentence in the past tense, under 30 words, saying who did what.
@@ -222,6 +225,7 @@ async function extractDocument(
     let model = "";
     let feedback = "";
     let rejected = 0;
+    let firstProblem = "";
     // One correction attempt: a quote that repeats in the document (an agenda
     // line asked of two members) cannot be anchored until it is lengthened.
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -254,11 +258,12 @@ async function extractDocument(
             }
         }
         rejected = problems.length;
+        firstProblem = problems[0] ?? "";
         if (!rejected) return { status: findings.length > 0 ? "found" : "none", findings, model, rejected };
         feedback = "\n\nYour previous response had findings that failed validation:\n- " + problems.join("\n- ") +
             "\nReturn a corrected complete response. Every quote must be copied exactly from the document and occur in it exactly once.";
     }
-    return { status: "failed", findings: [], model, rejected, error: `${rejected} invalid or unanchored finding(s)` };
+    return { status: "failed", findings: [], model, rejected, error: `${rejected} invalid or unanchored finding(s); first: ${firstProblem}` };
 }
 
 async function pool<T>(items: T[], size: number, work: (item: T) => Promise<boolean>): Promise<void> {
@@ -577,7 +582,7 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
         result.extracted += 1;
         if (outcome.status === "failed") result.extractFailures += 1;
         log(
-            `[${result.extracted}/${toExtract.length}] ${outcome.status.padEnd(6)} ${outcome.findings.length} kept, ${outcome.rejected} rejected  ${document.displayTitle || document.title}${outcome.error ? `  (${outcome.error.slice(0, 160)})` : ""}`,
+            `[${result.extracted}/${toExtract.length}] ${outcome.status.padEnd(6)} ${outcome.findings.length} kept, ${outcome.rejected} rejected  ${document.displayTitle || document.title}${outcome.error ? `  (${outcome.error.slice(0, 400)})` : ""}`,
         );
         if (isAiQuotaExhausted(outcome.error)) {
             quotaError = outcome.error!;
@@ -661,7 +666,7 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
                 const message = cause instanceof Error ? cause.message : String(cause);
                 result.mergeFailures += 1;
                 failures.push(`${key}: ${message}`);
-                log(`merge failed ${key}: ${message.slice(0, 200)}`);
+                log(`merge failed ${key}: ${message.slice(0, 700)}`);
                 if (isAiQuotaExhausted(message)) break mergeYears;
             }
         }

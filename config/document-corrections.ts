@@ -1,5 +1,11 @@
 /** Reviewed archive metadata; original filenames and source text remain intact. */
 export const DOCUMENT_CORRECTIONS: Record<string, { displayTitle: string; datedOn?: string | null }> = {
+    // Its own first lines: "SGA Exec Transition Training Module #1 / SGA
+    // Internals & History". A training deck, not Executive Board minutes; its
+    // history section recounts 2001-2019 under session headings.
+    "19lxWkAFpObhIoYjIShfBpqEkVZHIUA06": {
+        displayTitle: "Exec Transition Training Module #1 — SGA Internals and History",
+    },
     // Spring 2020 HSS folder, filename 2_14, and notes that still treat April
     // as upcoming. The meeting is with CHEW, so the committee folder must not
     // replace that name.

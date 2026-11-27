@@ -211,7 +211,7 @@ const FUTURE_SLACK_MS = 366 * 24 * 60 * 60 * 1000;
  */
 export function resolveFindingDate(statedDate: string | null, document: DatableDocument, quote = ""): ResolvedDate {
     const reviewed = reviewedFindingDate(document.id, quote);
-    if (reviewed) return { date: new Date(reviewed.date), precision: reviewed.precision };
+    if (reviewed) return { date: reviewed.date ? new Date(reviewed.date) : null, precision: reviewed.precision };
     const own = documentDate(document);
 
     const stated = statedDate ? parseStatedDate(statedDate) : null;

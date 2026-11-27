@@ -19,7 +19,7 @@ async function main() {
         if (events.length !== eventIds.length) throw new Error('Expected all six original events; review before proceeding.');
         const updates = events.map(event => {
             const reviewed = event.citations.map(c => reviewedFindingDate(c.annotation.documentId, c.annotation.content)).find(Boolean);
-            if (!reviewed) throw new Error(`No reviewed date matched ${event.id}`);
+            if (!reviewed?.date) throw new Error(`No reviewed date matched ${event.id}`);
             const occurredAt = new Date(reviewed.date);
             if (event.occurredAt && (event.occurredAt.getTime() !== occurredAt.getTime() || event.datePrecision !== reviewed.precision)) {
                 throw new Error(`Event already has a different date: ${event.id}`);

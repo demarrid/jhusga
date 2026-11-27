@@ -8,10 +8,60 @@ export const HISTORY_DOCUMENT_DATES: Record<string, { year: number; note: string
     },
 };
 
+/** The SGA's 2019 transition-training deck recounts 2001-2019 under session
+ * headings ("2011/2012", "14/15"); its June 2019 date belongs to none of them.
+ * Earlier patterns win, so "end of What Do You Want Wednesdays" precedes the start.
+ */
+const TRAINING_HISTORY = "ee61d497-da5d-46cb-b07f-3b78bdfd6c72";
+const TRAINING_HISTORY_SESSIONS: [RegExp, number][] = [
+    [/2001\/2002|Formally separates programming arms/i, 2001],
+    [/2003\/2004|Student Assembly and Executive Council/i, 2003],
+    [/Board of Elections replaced by CSE|Frequent stumbles by BoE/i, 2005],
+    [/2008\/2009|Birth of current senatorial system|name-change from Student Council/i, 2008],
+    [/turnout reaches over 2,000/i, 2011],
+    [/YouTube/i, 2012],
+    [/Start of monthly emails|end of What Do You Want Wednesdays/i, 2015],
+    [/What Do You Want Wednesdays/i, 2013],
+    [/lowest turnout on record|start of SGA social media feeds/i, 2014],
+    [/CLEAR Act|first SGA Presidential resignation|new attendance standards/i, 2015],
+    [/Civic Engagement Committee created|First SGA Treasurership resignation|Student Orgs reform|First Fall Forum/i, 2016],
+    [/new legislative record|Second Fall Forum|Junior Coffee Chats/i, 2017],
+    [/Junior Outreach Events|first SGA Presidential impeachment|Shared Governance Initiative/i, 2018],
+    // The impeachment and resignation lists tag each name inline: "(16/17)".
+    ...Array.from({ length: 20 }, (_, index): [RegExp, number] => {
+        const yy = (offset: number) => String((index + offset) % 100).padStart(2, "0");
+        return [new RegExp(`\\(${yy(0)}/${yy(1)}\\)`), 2000 + index];
+    }),
+];
+
+type ReviewedFindingDate = {
+    documentId: string;
+    quotePattern: RegExp;
+    /** null places the finding as undated, for a source too vague to date. */
+    date: string | null;
+    precision: "day" | "month" | "session" | "approximate";
+    note: string;
+};
+
 /** Event-level dates: a year-long work log must not lend one date to every row.
  * See docs/research/sexual-violence-work-log-dates.md for corroboration.
  */
-export const HISTORY_FINDING_DATES = [
+export const HISTORY_FINDING_DATES: ReviewedFindingDate[] = [
+    {
+        documentId: TRAINING_HISTORY,
+        quotePattern: /Emergence of SGA website|earliest known use of SGA email/i,
+        date: null,
+        precision: "approximate",
+        note: "Undated: the SGA's 2019 transition-training history places this only in \"the 2000s\".",
+    },
+    ...TRAINING_HISTORY_SESSIONS.map(([quotePattern, year]) => ({
+        documentId: TRAINING_HISTORY,
+        quotePattern,
+        date: `${year}-12-01T12:00:00.000Z`,
+        precision: "session" as const,
+        note: `Dated to the ${year}–${String(year + 1).slice(-2)} session, the heading this sits under in the SGA's ` +
+            "2019 transition-training history: a later summary, not a record made at the time.",
+    })),
     {
         documentId: "203da8e0-2ec3-443b-880c-fc9cbe26c220",
         quotePattern: /jumpstarted collaboration with CHEW|foundations for an anonymous blog|reached out to SARU|interactive resources flowchart/i,

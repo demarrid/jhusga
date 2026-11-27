@@ -41,6 +41,11 @@ export type HistoryTopicDefinition = {
     extractionRules?: string[];
     /** Extra merge rules, after the shared ones. Leave out rather than empty. */
     mergeRules?: string[];
+    /**
+     * Replaces the shared rule on who a finding may name, which keeps to SGA
+     * bodies and offices. Leave out to keep the shared rule.
+     */
+    peopleRule?: string;
 };
 
 export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
@@ -138,20 +143,24 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
         title: "The SGA Itself",
         description:
             "How the SGA and its predecessor, the Student Council, have changed as an institution: " +
-            "constitutions and bylaws, structure and offices, elections and referendums, the " +
-            "judiciary, and how its records were kept and published, as the archive records it.",
+            "constitutions and bylaws, structure and offices, who led it and how they were elected, " +
+            "impeached, or removed, the judiciary and its cases, and how its records were kept and " +
+            "published, as the archive records it.",
         scope:
             "Changes to the student government itself, including its predecessor the Student Council " +
             "(StuCo): adopting, rewriting, or amending its constitution and bylaws; creating, " +
             "renaming, merging, or abolishing its branches, bodies, offices, seats, and committees, " +
             "including the change of name to the Student Government Association; how its members " +
             "are elected, the election bodies and rules, turnout, and referendums on its own " +
-            "governing documents or structure; the founding, powers, and landmark rulings of its " +
-            "judiciary; and how it kept, published, and opened its minutes, legislation, meetings, " +
-            "and records. Ordinary business the student government conducted -- funding a group, a " +
-            "resolution on a campus issue, an event, a single routine election result -- belongs " +
-            "only when the document says it changed how the student government is organized, " +
-            "elected, or run.",
+            "governing documents or structure; who held its offices -- the results of executive " +
+            "and class-president elections, and the appointment or confirmation of Senate leaders, " +
+            "committee and commission chairs, and justices; impeachments, removals, recalls, " +
+            "disqualifications, and resignations of its officers; the founding, powers, cases, and " +
+            "rulings of its judiciary, including writs of certiorari and mandamus; and how it kept, " +
+            "published, and opened its minutes, legislation, meetings, and records. Ordinary business " +
+            "the student government conducted -- funding a group, a resolution on a campus issue, an " +
+            "event -- belongs only when the document says it changed how the student government is " +
+            "organized, elected, led, or run.",
         terms: [
             "(new|proposed|revised|amended|old|previous|current) constitutions?",
             "constitution(al)? (amendment|amendments|convention|referendum|reform|revision|revisions|rewrite|change|changes|overhaul)",
@@ -174,6 +183,18 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
             "(founding|founded|formation|creation|establishment|dissolution) of (the )?(sga|stuco|student council|student government|senate|judiciary|class councils?)",
             "(publish|publishes|published|publishing|post|posts|posted|posting|upload|uploaded) (the |its |our |all )?(meeting )?minutes",
             "(sga|stuco|student council) (website|archive|archives)",
+            "impeach(ed|es|ing|ment|ments)?",
+            "certiorari",
+            "mandamus",
+            "chief justice",
+            "(resign|resigned|resigns|resignation|resignations)",
+            "removed from office",
+            "recall (election|petition)",
+            "(exec|executive|executive board|sga|stuco|student council|class) elections?",
+            "election results",
+            "(president|vice president|treasurer|secretary)[- ]elect",
+            "(sworn in|inaugurated|took office)",
+            "(confirmed|confirmation of|appointed|appointment of|nominated|nomination of) (as |to |the )*(chair|co-chair|chief justice|justices?|director|treasurer|secretary)",
         ],
         acronyms: [],
         // Constitutions stay in: each edition records the structure at its
@@ -213,8 +234,9 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
                 label: "Elections and referendums",
                 description:
                     "How members are elected: election bodies such as the Board of Elections and the " +
-                    "Committee on Student Elections, election rules, turnout, and referendums on the " +
-                    "student government's own documents or structure.",
+                    "Committee on Student Elections, election rules, turnout, disputes and " +
+                    "disqualifications, who won executive and class-president elections, and " +
+                    "referendums on the student government's own documents or structure.",
                 color: "#9a5b00",
             },
             {
@@ -222,8 +244,17 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
                 label: "Judiciary",
                 description:
                     "The student government's judiciary: its founding and powers, changes to it, and " +
-                    "rulings that interpreted or changed how the student government works.",
+                    "its cases and rulings, including writs of certiorari and mandamus, named by caption.",
                 color: "#6b3fa0",
+            },
+            {
+                id: "officers",
+                label: "Officers and leadership",
+                description:
+                    "Who held office outside an election: appointments and confirmations of Senate " +
+                    "leaders, chairs, directors, and justices; impeachments, removals, recalls, and " +
+                    "resignations; and firsts among officeholders.",
+                color: "#1f6f78",
             },
             {
                 id: "records",
@@ -246,17 +277,28 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
             "A bill or amendment that changes a governing document is one finding for the change it makes, " +
                 "and one more only for a second, unrelated change.",
             "Routine procedure is not a finding: attendance and absences, agenda deadlines, device use, " +
-                "filling vacancies, meeting times, or one officer's duties.",
+                "meeting times, or a description of an office's duties.",
             "Training slides, transition guides, briefings, and descriptions of how things already work " +
                 "record no change. Include them only where they say something was created, changed, or ended.",
             "Weight 3 is only for a new or ratified constitution; the creation, renaming, or abolition of a " +
                 "branch, body, or office; or a change to how members are elected. Other rule changes are 2 at most.",
-            "Do not quote a passage that names a student in a disqualification, impeachment, removal, or " +
-                "disciplinary matter; describe the body's action instead, or leave the finding out.",
+            "Record who held office. An election result names each winner with the office won, and the " +
+                "vote or turnout when given. Appointments or confirmations made together are one finding " +
+                "naming each person and office. An impeachment, removal, recall, disqualification, or " +
+                "resignation names the officer and office, the official action, its stated grounds, and " +
+                "the vote when given. A Judiciary case is named by its caption, with what it decided.",
+            "Weight 3 is also right for an executive-election result, a first impeachment or removal of " +
+                "an office, and a Judiciary ruling that changed how the student government works; a routine " +
+                "appointment is weight 1.",
         ],
         mergeRules: [
             "Copies and editions of the same governing document from one year, and the bill, minutes, and " +
                 "reporting on the same change, are one event.",
+            "One election and its results, one nomination and its confirmation, and one impeachment with " +
+                "its trial and outcome are each one event. Titles name the person with the office, either " +
+                "office first (\"Executive President Jane Doe resigns\", \"Chief Justice Jane Doe sworn in\") " +
+                "or the person taking it (\"Jane Doe becomes Executive President\", \"Jane Doe elected " +
+                "Executive President\"), using the office title the findings give.",
             "Name each body as its findings do, in titles and prose alike. The Student Council (StuCo), " +
                 "its Student Activities Commission, and their offices are not the SGA: write \"SGA\" only where " +
                 "a finding's summary does. A Student Council constitution is titled as one -- \"Student Council " +
@@ -267,6 +309,14 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
                 "own structure, elections, judiciary, or records. Leave its id out of every event's " +
                 "\"findings\" list; never make an event, empty or otherwise, to hold findings you leave out.",
         ],
+        peopleRule:
+            "Name students as the document does when they act in a Student Council or SGA office or " +
+            "election: candidates and winners, officers, chairs, justices, and the parties to a Judiciary " +
+            "case by its caption, always with the office. Report an impeachment, removal, recall, " +
+            "disqualification, or resignation by the official action and its stated grounds only. Never " +
+            "name or identify a survivor, complainant, or accused person in a sexual-misconduct or other " +
+            "personal-misconduct matter, or describe the details of such a case; if no quote can avoid " +
+            "that, leave the finding out.",
     },
 ];
 
