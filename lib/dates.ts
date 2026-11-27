@@ -131,7 +131,7 @@ export function formatDateTime(date: Date | null | undefined): string | null {
 /** Source-supported partial dates; sorting anchors do not imply an exact day. */
 export const ARCHIVE_DATE_PRECISION: Record<string, {label:string;precision:string;date:string;sourceKey:string}> = archivePrecision;
 export const DOCUMENT_DATE_LABELS: Record<string,string> = Object.fromEntries(Object.entries(ARCHIVE_DATE_PRECISION).map(([id,value])=>[id,value.label]));
-export function archivePartialDateISO(id:string):string|undefined {const value=ARCHIVE_DATE_PRECISION[id];return value?.date.slice(0,value.precision==='year'?4:7);}
+export function archivePartialDateISO(id:string):string|undefined {const value=ARCHIVE_DATE_PRECISION[id];return value?.date.slice(0,value.precision==='year'||value.precision==='approximate'?4:7);}
 
 export type ShownDate = { text: string; dateTime: string; note: string | null };
 
@@ -146,6 +146,11 @@ export function documentDateText(
     document: { id: string; datedAt?: Date | null; aiDateValue?: string | null },
     style: "long" | "short" = "long",
 ): ShownDate | null {
+    // A reviewed circa range outranks a single AI year: the year is only its sort anchor.
+    const circa = ARCHIVE_DATE_PRECISION[document.id];
+    if (circa?.precision === "approximate") {
+        return { text: circa.label, dateTime: archivePartialDateISO(document.id) ?? circa.date, note: "Approximate: estimated from the text; the source is undated." };
+    }
     const value = document.aiDateValue?.trim() ?? "";
     const day = value ? normalizedDateDay(value) : null;
     const partial = value && !day ? normalizedDateLabel(value) : null;

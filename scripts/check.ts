@@ -59,6 +59,7 @@ const SUITES = [
     "person-validation-sync",
     "directory",
     "document-find",
+    "hard-wraps",
     "document-query",
     "document-presentation",
     "document-sort",

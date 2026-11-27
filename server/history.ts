@@ -42,6 +42,8 @@ export type HistoryEventRecord = {
     endedAt: Date | null;
     datePrecision: HistoryDatePrecision;
     title: string;
+    /** At most four words; "" on events merged before labels existed. */
+    label: string;
     content: string;
     thread: string;
     kind: HistoryEventKind;
@@ -122,6 +124,7 @@ export async function getHistoryTimeline(slug: string): Promise<HistoryTimeline 
                     endedAt: true,
                     datePrecision: true,
                     title: true,
+                    label: true,
                     content: true,
                     thread: true,
                     kind: true,
@@ -156,6 +159,7 @@ export async function getHistoryTimeline(slug: string): Promise<HistoryTimeline 
         endedAt: event.endedAt,
         datePrecision: event.datePrecision as HistoryDatePrecision,
         title: event.title,
+        label: event.label,
         content: event.content,
         thread: threadIds.has(event.thread) ? event.thread : topic.threads[topic.threads.length - 1]!.id,
         kind: event.kind as HistoryEventKind,

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import { reflowRuns } from "@/lib/hard-wraps";
 import { runsText, type Block, type InlineRun, type TableRow } from "@/lib/render";
 import styles from "@/app/documents/document-detail.module.css";
 import { presentBill, ruledSignatureCards, signatureCards, signatureIdentity, TRANSMITTAL, transmittalRecipients } from "@/lib/bill-presentation";
@@ -170,9 +171,9 @@ function BlockView({ block }: { block: Block }) {
                     </p>
                 );
             }
-            // pre-wrap keeps the line breaks the author typed; the export does
-            // not soft-wrap, so every newline inside a paragraph is deliberate.
-            // A bill's letterhead is those breaks and nothing else: five short
+            // pre-wrap keeps the line breaks the author typed. The export does
+            // not soft-wrap, but text pasted from a PDF carries the PDF's
+            // wraps, which renderRuns turns back into spaces. A bill's letterhead is those breaks and nothing else: five short
             // bold lines. Centering them, at the line's own spacing, is the
             // title; the extra gap a body paragraph gives a typed break would
             // string it down the page.
@@ -296,11 +297,11 @@ function LayoutRow({ row }: { row: TableRow }) {
 
     return (
         <div className={styles.viewerLayoutRow}>
-            <p className={styles.viewerLayoutItem}>{renderRuns(item)}</p>
+            <p className={styles.viewerLayoutItem}>{renderRuns(item, true, false)}</p>
             {aside.length > 0 && (
                 <p className={styles.viewerLayoutAside}>
                     {aside.map((cell, index) => (
-                        <span key={index}>{renderRuns(cell)}</span>
+                        <span key={index}>{renderRuns(cell, true, false)}</span>
                     ))}
                 </p>
             )}
@@ -395,7 +396,7 @@ function Row({ row, cell }: { row: TableRow; cell: "th" | "td" }) {
         <tr>
             {row.cells.map((runs, index) => (
                 <Cell key={index} className={runsText(runs).trim().length >= 80 ? styles.viewerLongCell : undefined}>
-                    {renderRuns(runs)}
+                    {renderRuns(runs, true, false)}
                 </Cell>
             ))}
         </tr>
@@ -438,7 +439,15 @@ function splitTypedMarker(runs: InlineRun[], length: number): [InlineRun[], Inli
     return [label, text];
 }
 
-function renderRuns(runs: InlineRun[], gaps = true): ReactNode {
+/**
+ * `gaps` sets a typed break a little apart from the line above it; `reflow`
+ * first turns a pasted PDF's line wraps back into spaces (lib/hard-wraps).
+ * Reflowing here, as the text is drawn, leaves the parsed blocks -- which the
+ * bill header, signatures and outline read line by line -- as they were. A
+ * table cell's lines are its author's, so cells keep every break.
+ */
+function renderRuns(runs: InlineRun[], gaps = true, reflow = gaps): ReactNode {
+    if (reflow) runs = reflowRuns(runs);
     return runs.map((run, index) => <Run key={index} run={run} gaps={gaps} />);
 }
 

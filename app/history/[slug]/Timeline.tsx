@@ -22,6 +22,7 @@ import {
 } from "@/config/history";
 import { sessionOrdinal } from "@/config/session";
 
+import { layoutFlags, type Flag, type Measure } from "./flags";
 import styles from "./Timeline.module.css";
 
 export type TimelineEvent = {
@@ -32,6 +33,10 @@ export type TimelineEvent = {
     precision: HistoryDatePrecision;
     dateLabel: string;
     title: string;
+    /** At most four words, for a crowded stretch of the timeline. */
+    label: string;
+    /** Plain first paragraph of the prose, shown on the event's flag. */
+    summary: string;
     thread: string;
     kind: HistoryEventKind;
     involvement: "sga" | "context";
@@ -57,10 +62,14 @@ const YEAR = 365.2425 * DAY;
 const MONTH = YEAR / 12;
 const MIN_SPAN = 60 * DAY;
 const REVEAL_SPAN = 4 * YEAR;
-const LANE_HEIGHT = 64;
-const AXIS_HEIGHT = 48;
-const CLUSTER_PX = 18;
-const MIN_LABEL_PX = 72;
+const STAGE_HEIGHT = 470;
+const COMPACT_STAGE_HEIGHT = 400;
+/** The axis line's distance from the bottom of the track; tick labels sit below it. */
+const AXIS_BOTTOM = 34;
+/** Shortest pole, so even the lowest flag stands clear of the markers. */
+const POLE_MIN = 14;
+/** Room above the flags for the session labels. */
+const TOP_PAD = 30;
 const RUBBER_PX = 120;
 const EASE_TAU_MS = 120;
 const FRICTION = 0.93;
@@ -68,6 +77,8 @@ const VELOCITY_WINDOW_MS = 90;
 const PANEL_COVER_PX = 396;
 /** Must match the panel's breakpoint in Timeline.module.css. */
 const WIDE_QUERY = "(min-width: 1100px)";
+/** Must match the narrow-screen breakpoint in Timeline.module.css. */
+const COMPACT_QUERY = "(max-width: 759px)";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -94,7 +105,31 @@ function mediaStore(query: string, fallback: boolean) {
 }
 
 const wideStore = mediaStore(WIDE_QUERY, true);
+const compactStore = mediaStore(COMPACT_QUERY, false);
 const reducedMotionStore = mediaStore(REDUCED_MOTION_QUERY, false);
+
+/**
+ * Text widths for the flag layout, from the page's own font once it has
+ * loaded. Before that, and on the server, a per-character estimate.
+ */
+function createMeasure(family: string | null): Measure {
+    const cache = new Map<string, number>();
+    const context = family ? document.createElement("canvas").getContext("2d") : null;
+    return (text, font) => {
+        const key = `${font}\u0000${text}`;
+        let size = cache.get(key);
+        if (size === undefined) {
+            if (context) {
+                context.font = `${font} ${family}`;
+                size = context.measureText(text).width;
+            } else {
+                size = text.length * Number.parseFloat(font.split(" ")[1] ?? "12") * 0.56;
+            }
+            cache.set(key, size);
+        }
+        return size;
+    };
+}
 
 /**
  * One-dimensional camera over time: exponential easing toward a target in
@@ -330,126 +365,7 @@ function sessionBands(view: View): Band[] {
     return bands;
 }
 
-type EventMark = {
-    type: "event";
-    event: TimelineEvent;
-    x: number;
-    endX: number | null;
-    radius: number;
-    labelWidth: number | null;
-};
-type ClusterMark = {
-    type: "cluster";
-    key: string;
-    events: TimelineEvent[];
-    x: number;
-    radius: number;
-};
-type Mark = EventMark | ClusterMark;
-type LaneLayout = { thread: HistoryThread; top: number; marks: Mark[] };
-
-const markerRadius = (event: TimelineEvent) => (event.weight === 3 ? 9 : event.weight === 2 ? 7 : 5.5);
-const labelEstimate = (title: string) => Math.min(280, title.length * 6.6 + 14);
-
-function layoutLanes(
-    lanes: HistoryThread[],
-    eventsByThread: Map<string, TimelineEvent[]>,
-    view: View,
-    width: number,
-    selectedId: string | null,
-): LaneLayout[] {
-    const toX = (time: number) => ((time - view.start) / view.span) * width;
-
-    return lanes.map((thread, index) => {
-        const top = AXIS_HEIGHT + index * LANE_HEIGHT;
-        const inView = (eventsByThread.get(thread.id) ?? []).filter((event) => {
-            const from = toX(event.start);
-            const to = event.end ? toX(event.end) : from;
-            return to >= -40 && from <= width + 40;
-        });
-
-        const marks: Mark[] = [];
-        let group: TimelineEvent[] = [];
-        let groupX = 0;
-        const flush = () => {
-            if (group.length === 1) {
-                const event = group[0]!;
-                marks.push({
-                    type: "event",
-                    event,
-                    x: toX(event.start),
-                    endX: event.end ? toX(event.end) : null,
-                    radius: markerRadius(event),
-                    labelWidth: null,
-                });
-            } else if (group.length > 1) {
-                const x = group.reduce((sum, event) => sum + toX(event.start), 0) / group.length;
-                marks.push({
-                    type: "cluster",
-                    key: `${thread.id}:${group[0]!.id}`,
-                    events: group,
-                    x,
-                    radius: Math.min(17, 10 + Math.sqrt(group.length) * 1.8),
-                });
-            }
-            group = [];
-        };
-        for (const event of inView) {
-            if (event.id === selectedId) continue;
-            const x = toX(event.start);
-            if (group.length > 0 && x - groupX < CLUSTER_PX) {
-                group.push(event);
-                continue;
-            }
-            flush();
-            group = [event];
-            groupX = x;
-        }
-        flush();
-
-        const selected = inView.find((event) => event.id === selectedId);
-        if (selected) {
-            marks.push({
-                type: "event",
-                event: selected,
-                x: toX(selected.start),
-                endX: selected.end ? toX(selected.end) : null,
-                radius: markerRadius(selected),
-                labelWidth: null,
-            });
-        }
-
-        // Greedy labels: the selected event, then the weightiest, then left to right.
-        const taken = marks.map((mark) => [mark.x - mark.radius - 2, mark.x + mark.radius + 2] as const);
-        const candidates = marks
-            .filter((mark): mark is EventMark => mark.type === "event")
-            .sort(
-                (a, b) =>
-                    Number(b.event.id === selectedId) - Number(a.event.id === selectedId) ||
-                    b.event.weight - a.event.weight ||
-                    a.x - b.x,
-            );
-        for (const mark of candidates) {
-            const start = mark.x + mark.radius + 6;
-            if (start < 0) continue;
-            let limit = Math.min(width - 6, start + labelEstimate(mark.event.title));
-            let blocked = false;
-            for (const [from, to] of taken) {
-                if (to <= start) continue;
-                if (from <= start) {
-                    blocked = true;
-                    break;
-                }
-                limit = Math.min(limit, from - 6);
-            }
-            if (blocked || limit - start < MIN_LABEL_PX) continue;
-            mark.labelWidth = limit - start;
-            taken.push([start, limit]);
-        }
-
-        return { thread, top, marks };
-    });
-}
+const markerRadius = (event: TimelineEvent) => (event.weight === 3 ? 7 : event.weight === 2 ? 5.5 : 4.5);
 
 function histogram(events: TimelineEvent[], lanes: HistoryThread[], domain: Domain, bins: number) {
     const span = domain.end - domain.start;
@@ -465,9 +381,8 @@ function histogram(events: TimelineEvent[], lanes: HistoryThread[], domain: Doma
     return { counts, max };
 }
 
-type Hover =
-    | { type: "event"; id: string; x: number; top: number }
-    | { type: "cluster"; key: string; x: number; top: number };
+/** A tooltip over or under the element it describes, in track pixels. */
+type Hover = { events: TimelineEvent[]; x: number; y: number; below: boolean };
 
 type Drag = {
     pointers: Map<number, { x: number; y: number }>;
@@ -521,7 +436,9 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     const [dragging, setDragging] = useState(false);
     const [hint, setHint] = useState<string | null>("Drag to move through time. Click the timeline, then scroll to zoom.");
 
+    const [fontFamily, setFontFamily] = useState<string | null>(null);
     const wide = useSyncExternalStore(wideStore.subscribe, wideStore.snapshot, wideStore.server);
+    const compact = useSyncExternalStore(compactStore.subscribe, compactStore.snapshot, compactStore.server);
     const reducedMotion = useSyncExternalStore(
         reducedMotionStore.subscribe,
         reducedMotionStore.snapshot,
@@ -538,28 +455,48 @@ export default function Timeline({ events, threads, details, initialEventId }: P
             ),
         [sorted, hiddenThreads, needle],
     );
-    const visibleByThread = useMemo(() => {
-        const map = new Map<string, TimelineEvent[]>();
-        for (const event of visible) map.set(event.thread, [...(map.get(event.thread) ?? []), event]);
-        return map;
-    }, [visible]);
-    const layout = useMemo(
-        () => layoutLanes(lanes, visibleByThread, view, width, selectedId),
-        [lanes, visibleByThread, view, width, selectedId],
+    const selected = selectedId ? sorted.find((event) => event.id === selectedId) ?? null : null;
+    const selectedIndex = selected ? visible.findIndex((event) => event.id === selected.id) : -1;
+    const panelOpen = selected !== null;
+    const cover = panelOpen && wide ? PANEL_COVER_PX : 0;
+    const stageHeight = compact ? COMPACT_STAGE_HEIGHT : STAGE_HEIGHT;
+    const measure = useMemo(() => createMeasure(fontFamily), [fontFamily]);
+    const toX = (time: number) => ((time - view.start) / view.span) * width;
+    const inView = useMemo(
+        () =>
+            visible.filter((event) => {
+                const from = ((event.start - view.start) / view.span) * width;
+                const to = event.end ? ((event.end - view.start) / view.span) * width : from;
+                return to >= -40 && from <= width + 40;
+            }),
+        [visible, view, width],
+    );
+    const flags = useMemo(
+        () =>
+            layoutFlags({
+                events: inView,
+                toX: (time) => ((time - view.start) / view.span) * width,
+                usable: width - cover,
+                maxHeight: stageHeight - AXIS_BOTTOM - POLE_MIN - TOP_PAD,
+                measure,
+                compact,
+            }),
+        [inView, view, width, cover, stageHeight, measure, compact],
     );
     const ticks = useMemo(() => axisTicks(view, width), [view, width]);
     const bands = useMemo(() => sessionBands(view), [view]);
     const bins = clamp(Math.floor(width / 6), 24, 240);
     const density = useMemo(() => histogram(visible, lanes, domain, bins), [visible, lanes, domain, bins]);
-    const selected = selectedId ? sorted.find((event) => event.id === selectedId) ?? null : null;
-    const selectedIndex = selected ? visible.findIndex((event) => event.id === selected.id) : -1;
-    const panelOpen = selected !== null;
 
     useEffect(() => {
         const track = trackRef.current;
         if (!track) return;
         const focus = initialEventId ? sorted.find((event) => event.id === initialEventId)?.start ?? null : null;
-        const camera = createCamera(domain, initialViewRef.current, focus, setView);
+        // A moving view re-lays the flags, and a hovered one can vanish without a pointerleave.
+        const camera = createCamera(domain, initialViewRef.current, focus, (next) => {
+            setView(next);
+            setHover(null);
+        });
         cameraRef.current = camera;
         const observer = new ResizeObserver(([entry]) => {
             const next = entry?.contentRect.width ?? track.clientWidth;
@@ -579,8 +516,21 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     }, [reducedMotion]);
 
     useEffect(() => {
-        cameraRef.current?.setCover(panelOpen && wide ? PANEL_COVER_PX : 0);
-    }, [panelOpen, wide]);
+        cameraRef.current?.setCover(cover);
+    }, [cover]);
+
+    useEffect(() => {
+        // Flags are sized by measuring their text, so wait for the real font.
+        let cancelled = false;
+        const root = rootRef.current;
+        if (!root) return;
+        void document.fonts.ready.then(() => {
+            if (!cancelled) setFontFamily(getComputedStyle(root).fontFamily);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useEffect(() => {
         engagedRef.current = engaged;
@@ -665,11 +615,11 @@ export default function Timeline({ events, threads, details, initialEventId }: P
         select(visible[index]!);
     }
 
-    function zoomCluster(cluster: ClusterMark) {
+    function zoomCluster(events: TimelineEvent[]) {
         const camera = cameraRef.current;
-        if (!camera) return;
-        const from = Math.min(...cluster.events.map((event) => event.start));
-        const to = Math.max(...cluster.events.map((event) => event.end ?? event.start));
+        if (!camera || events.length === 0) return;
+        const from = Math.min(...events.map((event) => event.start));
+        const to = Math.max(...events.map((event) => event.end ?? event.start));
         const current = camera.view();
         let span = camera.clampSpan(Math.max((to - from) * 1.8, MIN_SPAN));
         if (span > current.span * 0.7) span = camera.clampSpan(current.span * 0.35);
@@ -685,11 +635,24 @@ export default function Timeline({ events, threads, details, initialEventId }: P
         cameraRef.current?.animateTo({ start: domain.start, span: domainSpan });
     }
 
-    function findCluster(key: string): ClusterMark | undefined {
-        for (const lane of layout) {
-            for (const mark of lane.marks) if (mark.type === "cluster" && mark.key === key) return mark;
-        }
-        return undefined;
+    function findCluster(key: string): TimelineEvent[] | undefined {
+        return flags.find((flag) => flag.key === key)?.group.events;
+    }
+
+    /** Show a tooltip for `events` beside the element under the pointer. */
+    function hoverOver(element: HTMLElement, events: TimelineEvent[], x?: number) {
+        if (dragRef.current) return;
+        const track = trackRef.current?.getBoundingClientRect();
+        if (!track) return;
+        const rect = element.getBoundingClientRect();
+        const top = rect.top - track.top;
+        const below = top < 150;
+        setHover({
+            events,
+            x: x ?? rect.left - track.left + rect.width / 2,
+            y: below ? rect.bottom - track.top + 6 : top - 6,
+            below,
+        });
     }
 
     function trackX(clientX: number) {
@@ -880,7 +843,6 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     }
 
     const toPercent = (x: number) => `${(x / width) * 100}%`;
-    const stageHeight = AXIS_HEIGHT + Math.max(1, lanes.length) * LANE_HEIGHT + 10;
     const brushLeft = ((view.start - domain.start) / domainSpan) * 100;
     const brushWidth = (view.span / domainSpan) * 100;
     const minimapYears = useMemo(() => {
@@ -892,12 +854,8 @@ export default function Timeline({ events, threads, details, initialEventId }: P
         return years;
     }, [domain, width]);
 
-    const hoveredEvents = !hover
-        ? null
-        : hover.type === "event"
-          ? sorted.filter((item) => item.id === hover.id)
-          : findCluster(hover.key)?.events ?? null;
-    const hovered = hoveredEvents?.length ? { hover: hover!, events: hoveredEvents } : null;
+    const hovered = hover?.events.length ? hover : null;
+    const flagThread = (event: TimelineEvent) => threadById.get(event.thread)?.color;
 
     return (
         <div ref={rootRef} className={styles.timeline} data-engaged={engaged || undefined}>
@@ -966,18 +924,6 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                 aria-label="Timeline. Left and right arrows move between events, plus and minus zoom, 0 shows everything."
                 onKeyDown={onStageKeyDown}
             >
-                <div className={styles.gutter} aria-hidden="true">
-                    {layout.map((lane) => (
-                        <div
-                            key={lane.thread.id}
-                            className={styles.gutterLabel}
-                            style={{ top: lane.top, height: LANE_HEIGHT, "--c": lane.thread.color } as CSSProperties}
-                        >
-                            {lane.thread.label}
-                        </div>
-                    ))}
-                </div>
-
                 <div
                     ref={trackRef}
                     className={styles.track}
@@ -1024,7 +970,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                                 <div
                                     className={styles.gridline}
                                     data-major={tick.major || undefined}
-                                    style={{ left: toPercent(x), top: AXIS_HEIGHT - 6 }}
+                                    style={{ left: toPercent(x), top: TOP_PAD - 6, bottom: AXIS_BOTTOM }}
                                 />
                                 <span className={styles.tick} data-major={tick.major || undefined} style={{ left: toPercent(x) }}>
                                     {tick.label}
@@ -1033,53 +979,36 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                         );
                     })}
 
-                    {layout.map((lane) => (
-                        <div
-                            key={lane.thread.id}
-                            className={styles.lane}
-                            style={{ top: lane.top, height: LANE_HEIGHT, "--c": lane.thread.color } as CSSProperties}
-                        >
-                            <span className={styles.laneInlineLabel} aria-hidden="true">
-                                {lane.thread.label}
-                            </span>
-                            {lane.marks.map((mark) =>
-                                mark.type === "cluster" ? (
-                                    <button
-                                        key={mark.key}
-                                        type="button"
-                                        tabIndex={-1}
-                                        className={styles.cluster}
-                                        data-cluster={mark.key}
-                                        style={{ left: toPercent(mark.x), width: mark.radius * 2, height: mark.radius * 2 }}
-                                        aria-label={`${mark.events.length} events from ${mark.events[0]!.dateLabel} to ${
-                                            mark.events.at(-1)!.dateLabel
-                                        }. Zoom in.`}
-                                        onClick={(event) => event.detail === 0 && zoomCluster(mark)}
-                                        onPointerEnter={() =>
-                                            !dragRef.current && setHover({ type: "cluster", key: mark.key, x: mark.x, top: lane.top })
-                                        }
-                                        onPointerLeave={() => setHover(null)}
-                                    >
-                                        {mark.events.length}
-                                    </button>
-                                ) : (
-                                    <EventMarker
-                                        key={mark.event.id}
-                                        mark={mark}
-                                        selected={mark.event.id === selectedId}
-                                        toPercent={toPercent}
-                                        onActivate={() => select(mark.event.id === selectedId ? null : mark.event)}
-                                        onHover={(on) =>
-                                            on
-                                                ? !dragRef.current &&
-                                                  setHover({ type: "event", id: mark.event.id, x: mark.x, top: lane.top })
-                                                : setHover(null)
-                                        }
-                                    />
-                                ),
-                            )}
-                        </div>
+                    <div className={styles.axis} style={{ bottom: AXIS_BOTTOM }} aria-hidden="true" />
+
+                    {flags.map((flag) => (
+                        <FlagView
+                            key={flag.key}
+                            flag={flag}
+                            selectedId={selectedId}
+                            colorOf={flagThread}
+                            onSelect={(event) => select(event.id === selectedId ? null : event)}
+                            onZoom={zoomCluster}
+                            onHover={hoverOver}
+                            onLeave={() => setHover(null)}
+                        />
                     ))}
+
+                    {inView
+                        .filter((event) => event.id !== selectedId)
+                        .concat(inView.filter((event) => event.id === selectedId))
+                        .map((event) => (
+                            <AxisMarker
+                                key={event.id}
+                                event={event}
+                                x={toX(event.start)}
+                                endX={event.end ? toX(event.end) : null}
+                                color={flagThread(event)}
+                                selected={event.id === selectedId}
+                                onActivate={() => select(event.id === selectedId ? null : event)}
+                                onHover={(element) => (element ? hoverOver(element, [event]) : setHover(null))}
+                            />
+                        ))}
 
                     {lanes.length === 0 && <p className={styles.noLanes}>Turn on a thread above to see its events.</p>}
 
@@ -1087,14 +1016,8 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                         <div
                             className={styles.tooltip}
                             role="presentation"
-                            data-below={hovered.hover.top < AXIS_HEIGHT + LANE_HEIGHT * 2 || undefined}
-                            style={{
-                                left: clamp(hovered.hover.x - 140, 4, Math.max(4, width - 284)),
-                                top:
-                                    hovered.hover.top < AXIS_HEIGHT + LANE_HEIGHT * 2
-                                        ? hovered.hover.top + LANE_HEIGHT - 6
-                                        : hovered.hover.top + 6,
-                            }}
+                            data-below={hovered.below || undefined}
+                            style={{ left: clamp(hovered.x - 140, 4, Math.max(4, width - 284)), top: hovered.y }}
                         >
                             {hovered.events.length === 1 ? (
                                 <>
@@ -1210,28 +1133,32 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     );
 }
 
-function EventMarker({
-    mark,
+function AxisMarker({
+    event,
+    x,
+    endX,
+    color,
     selected,
-    toPercent,
     onActivate,
     onHover,
 }: {
-    mark: EventMark;
+    event: TimelineEvent;
+    x: number;
+    endX: number | null;
+    color: string | undefined;
     selected: boolean;
-    toPercent: (x: number) => string;
     onActivate: () => void;
-    onHover: (on: boolean) => void;
+    onHover: (element: HTMLElement | null) => void;
 }) {
-    const { event } = mark;
     const fuzzy = event.precision !== "day" && event.precision !== "month";
     const shape = event.kind === "legislation" ? "diamond" : event.kind === "funding" ? "square" : "circle";
+    const radius = markerRadius(event);
     return (
         <>
-            {mark.endX !== null && (
+            {endX !== null && (
                 <div
                     className={styles.spanBar}
-                    style={{ left: toPercent(mark.x), width: toPercent(Math.max(2, mark.endX - mark.x)) }}
+                    style={{ left: x, bottom: AXIS_BOTTOM, width: Math.max(2, endX - x), "--c": color } as CSSProperties}
                     aria-hidden="true"
                 />
             )}
@@ -1246,21 +1173,174 @@ function EventMarker({
                 data-selected={selected || undefined}
                 aria-pressed={selected}
                 aria-label={`${event.title}, ${event.dateLabel}`}
-                style={{ left: toPercent(mark.x), width: mark.radius * 2, height: mark.radius * 2 }}
+                style={{ left: x, bottom: AXIS_BOTTOM, width: radius * 2, height: radius * 2, "--c": color } as CSSProperties}
                 onClick={(click) => click.detail === 0 && onActivate()}
-                onPointerEnter={() => onHover(true)}
-                onPointerLeave={() => onHover(false)}
+                onPointerEnter={(pointer) => onHover(pointer.currentTarget)}
+                onPointerLeave={() => onHover(null)}
             />
-            {mark.labelWidth !== null && (
-                <span
-                    className={styles.markerLabel}
-                    data-selected={selected || undefined}
-                    style={{ left: `calc(${toPercent(mark.x)} + ${mark.radius + 6}px)`, maxWidth: mark.labelWidth }}
-                    aria-hidden="true"
+        </>
+    );
+}
+
+/** One flag: its pole down to the axis, a bracket under a group, and the box. */
+function FlagView({
+    flag,
+    selectedId,
+    colorOf,
+    onSelect,
+    onZoom,
+    onHover,
+    onLeave,
+}: {
+    flag: Flag<TimelineEvent>;
+    selectedId: string | null;
+    colorOf: (event: TimelineEvent) => string | undefined;
+    onSelect: (event: TimelineEvent) => void;
+    onZoom: (events: TimelineEvent[]) => void;
+    onHover: (element: HTMLElement, events: TimelineEvent[], x?: number) => void;
+    onLeave: () => void;
+}) {
+    const { group } = flag;
+    const single = flag.type === "event" ? flag.event : null;
+    const color = single ? colorOf(single) : undefined;
+    const bottom = AXIS_BOTTOM + POLE_MIN + flag.y;
+    const box = { left: flag.left, bottom, width: flag.width, height: flag.height, "--c": color } as CSSProperties;
+    const first = group.events[0]!;
+    const last = group.events.at(-1)!;
+    const range = first.dateLabel === last.dateLabel ? first.dateLabel : `${first.dateLabel} – ${last.dateLabel}`;
+    const zoomLabel = `${group.events.length} events, ${range}. Zoom in.`;
+
+    let body: ReactNode;
+    if (flag.type === "event") {
+        const event = flag.event;
+        body =
+            flag.mode === "tag" ? (
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    className={styles.flag}
+                    data-mode="tag"
+                    data-event-id={event.id}
+                    data-context={event.involvement === "context" || undefined}
+                    data-selected={event.id === selectedId || undefined}
+                    aria-label={`${event.title}, ${event.dateLabel}`}
+                    style={box}
+                    onClick={(click) => click.detail === 0 && onSelect(event)}
+                    onPointerEnter={(pointer) => onHover(pointer.currentTarget, [event], flag.poleX)}
+                    onPointerLeave={onLeave}
                 >
-                    {event.title}
-                </span>
+                    {event.label}
+                </button>
+            ) : (
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    className={styles.flag}
+                    data-mode={flag.mode}
+                    data-event-id={event.id}
+                    data-context={event.involvement === "context" || undefined}
+                    data-selected={event.id === selectedId || undefined}
+                    aria-label={`${event.title}, ${event.dateLabel}`}
+                    style={box}
+                    onClick={(click) => click.detail === 0 && onSelect(event)}
+                >
+                    <span className={styles.flagMeta}>
+                        {event.dateLabel}
+                        {event.outcome && (
+                            <span data-outcome={event.outcome}> · {HISTORY_OUTCOME_LABELS[event.outcome]}</span>
+                        )}
+                    </span>
+                    <span className={styles.flagTitle} style={{ WebkitLineClamp: flag.titleLines }}>
+                        {event.title}
+                    </span>
+                    {flag.descLines > 0 && (
+                        <span className={styles.flagDesc} style={{ WebkitLineClamp: flag.descLines }}>
+                            {event.summary}
+                        </span>
+                    )}
+                </button>
+            );
+    } else if (flag.type === "list") {
+        body = (
+            <div className={styles.flag} data-mode={flag.mode} style={box}>
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    className={styles.flagMeta}
+                    data-cluster={flag.key}
+                    aria-label={zoomLabel}
+                    onClick={(click) => click.detail === 0 && onZoom(group.events)}
+                >
+                    {range} · {group.events.length}
+                </button>
+                <ul className={styles.flagList}>
+                    {flag.shown.map((event) => (
+                        <li key={event.id} style={{ "--c": colorOf(event) } as CSSProperties}>
+                            <button
+                                type="button"
+                                tabIndex={-1}
+                                data-event-id={event.id}
+                                data-selected={event.id === selectedId || undefined}
+                                aria-label={`${event.title}, ${event.dateLabel}`}
+                                onClick={(click) => click.detail === 0 && onSelect(event)}
+                                onPointerEnter={(pointer) => onHover(pointer.currentTarget, [event])}
+                                onPointerLeave={onLeave}
+                            >
+                                {flag.mode === "titles" ? event.title : event.label}
+                            </button>
+                        </li>
+                    ))}
+                    {flag.more > 0 && (
+                        <li className={styles.flagMore}>
+                            <button
+                                type="button"
+                                tabIndex={-1}
+                                data-cluster={flag.key}
+                                aria-label={zoomLabel}
+                                onClick={(click) => click.detail === 0 && onZoom(group.events)}
+                            >
+                                +{flag.more} more
+                            </button>
+                        </li>
+                    )}
+                </ul>
+            </div>
+        );
+    } else {
+        body = (
+            <button
+                type="button"
+                tabIndex={-1}
+                className={styles.flag}
+                data-mode="count"
+                data-cluster={flag.key}
+                aria-label={zoomLabel}
+                style={box}
+                onClick={(click) => click.detail === 0 && onZoom(group.events)}
+                onPointerEnter={(pointer) => onHover(pointer.currentTarget, group.events, flag.poleX)}
+                onPointerLeave={onLeave}
+            >
+                {group.events.length} events
+            </button>
+        );
+    }
+
+    return (
+        <>
+            {!single && group.x1 - group.x0 > 2 && (
+                <div
+                    className={styles.flagBracket}
+                    style={{ left: group.x0, width: group.x1 - group.x0, bottom: AXIS_BOTTOM + 10 }}
+                    aria-hidden="true"
+                />
             )}
+            <div
+                className={styles.flagPole}
+                data-group={!single || undefined}
+                style={{ left: flag.poleX, bottom: AXIS_BOTTOM, height: POLE_MIN + flag.y, "--c": color } as CSSProperties}
+                aria-hidden="true"
+            />
+            {body}
         </>
     );
 }

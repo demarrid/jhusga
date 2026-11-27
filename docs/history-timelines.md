@@ -32,6 +32,20 @@ Run one history generator at a time; concurrent publication is not coordinated.
 Use `JHUSGA_DATA_MODE=demo npm run dev` for a local synthetic timeline without
 applying the migration or running the model. Demo data is not archive evidence.
 
+## Timeline flags and short labels
+
+The interactive timeline draws each event as a flag (title and the first
+paragraph of its prose) on a pole down to its date. Where flags would collide it
+falls back, stretch by stretch, to one box listing nearby events' titles, then
+their short labels, then a count to zoom into (`app/history/[slug]/flags.ts`).
+
+Short labels (at most four words, e.g. "New SBP") are written by the merge pass
+into `HistoryEvent.label`. Events merged before that column existed have an
+empty label, and the page shortens their title instead. Merge caches are keyed
+on `merge-v2` in `batchHash`, not on the prompt text, so existing batches keep
+their empty labels until they re-merge. Changing that key to `merge-v3` re-merges
+every batch on the next run (merge calls only; extraction caches are reused).
+
 ## Refreshes and recovery
 
 Rerun manually after an archive sync changes relevant documents, dates, kinds,
@@ -60,8 +74,10 @@ Changing `AI_MODEL` alone does not invalidate caches; use `--force` for that.
 - To withdraw a finding that fails privacy review, remove it from that
   document's `HistoryFinding.findings` and rerun; only affected batches
   re-merge. A changed document or `--force` re-extracts it, so review again.
-  Unknown or repeated merge member IDs and invalid citation markers fail the
-  merge instead of silently shifting citations onto different evidence.
+  Unknown or repeated merge member IDs fail the merge instead of silently
+  shifting citations onto different evidence. A citation marker past an
+  event's findings list is dropped when the event keeps at least one valid
+  marker (it attributes nothing wrongly); an event with none fails the merge.
   Merge calls use short batch-local source IDs. Invalid responses receive
   validation feedback and up to two correction attempts before the run fails;
   these attempts incur additional model usage without re-extracting documents.

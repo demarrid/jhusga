@@ -46,6 +46,12 @@ export type HistoryTopicDefinition = {
      * bodies and offices. Leave out to keep the shared rule.
      */
     peopleRule?: string;
+    /**
+     * House-style fixes applied to merged titles and prose, for wording the
+     * merge keeps getting wrong despite a rule. `pattern` is a JavaScript
+     * regular expression source, applied globally and case-sensitively.
+     */
+    styleFixes?: { pattern: string; replacement: string }[];
 };
 
 export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
@@ -294,29 +300,181 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
         mergeRules: [
             "Copies and editions of the same governing document from one year, and the bill, minutes, and " +
                 "reporting on the same change, are one event.",
+            "An officer announcing a resignation or departure from an office or from the student government " +
+                "is an Officers and leadership event, never a mere discussion.",
             "One election and its results, one nomination and its confirmation, and one impeachment with " +
                 "its trial and outcome are each one event. Titles name the person with the office, either " +
                 "office first (\"Executive President Jane Doe resigns\", \"Chief Justice Jane Doe sworn in\") " +
-                "or the person taking it (\"Jane Doe becomes Executive President\", \"Jane Doe elected " +
-                "Executive President\"), using the office title the findings give.",
+                "or the person taking it, using the office title the findings give.",
+            "A title for someone taking an office reads \"<office they already held> <full name> elected as " +
+                "<full title of the new office>\" -- \"Chair of the Committee on Finance Peter Tarpley elected " +
+                "as Vice President of the Senate\", \"Religious and Spiritual Life RSO Senator Cole " +
+                "Liazos-Coffey elected as Chair of the Committee on Internal Affairs\" -- \"elected as\" when " +
+                "the Senate or the students voted on candidates for it, even a single candidate the records " +
+                "say was confirmed; \"confirmed as\" when the Senate approved someone an officer nominated; " +
+                "\"appointed as\" when an officer named them without a vote; never \"selected\". The office already held is the highest they held " +
+                "on that date (an executive or Senate office, then a committee chair, then their Senate seat), " +
+                "never the office being taken; leave it out only when nothing given supplies one. The new " +
+                "office takes its full title, never a short form such as \"Finance Chair\" or \"IA Chair\".",
+            "Every person named in a title or in prose carries the office they held then, before the name: " +
+                "\"Finance Chair Peter Tarpley introduced\", \"Internal Affairs appoints Religious and Spiritual " +
+                "Life RSO Senator Cole Liazos-Coffey vice chair\", \"Sophomore Class President Veda Kommineni " +
+                "appointed CSAC representative\", \"Senior Class Senator Peter Jackson\". Take the office from the " +
+                "findings, or else from the lines and roster titles about people given after them. A senator " +
+                "carries their seat -- \"Sophomore Class Senator Kevin Xu\", \"KSAS Senator Boyi Chen\", " +
+                "\"Transfer Students Caucus Senator Lauryn Carr\" -- never \"Senator\" alone when anything given " +
+                "names the seat; a senator who also chairs a committee may be named by either. Always use the " +
+                "full name given there, never a first name or nickname alone (\"Director of Communications " +
+                "Johnalys Ferrer\", not \"Jo\"); a person whose line repeats a finding's quote is the one that " +
+                "finding means. Name a person without an office, or by first name, only when nothing given " +
+                "supplies more; never guess.",
+            "Use the full office title of the time: for an officer the constitution defines, its title as " +
+                "listed after the findings, in that exact form (\"Student Body Treasurer Amy Xu\", never " +
+                "\"Treasurer Amy Xu\" or \"SGA Treasurer Amy Xu\"; \"President of the Senate Nasreen Naqvi\", " +
+                "never \"Senate President\"); otherwise the title as the documents give it, where \"Chair of the " +
+                "Committee on Finance\" may shorten only to \"Finance Chair\", and only for an office already " +
+                "held. Pick the office held on the event's date, since offices change within a year. A person " +
+                "taking a new office keeps the one they already held: \"Vice President of the Senate Shreemann " +
+                "Patel confirmed as Senate Parliamentarian\", never \"Shreemann Patel confirmed parliamentarian\".",
+            "Office titles and the names of bodies are proper names: capitalize them as the records of the " +
+                "time do, in titles and prose alike, even inside a sentence-case title, and an office the " +
+                "findings mention without a holder takes its official title too -- \"General events role " +
+                "proposed for Chair of Programming\", never \"for programming chair\"; \"Internal Affairs\", " +
+                "\"the Committee on Student Elections\", \"the Senate\".",
+            "A finding that only lists who held offices at the time -- a roster, an agenda or minutes header, " +
+                "a signature block, the officers who presided -- records no change and is off-topic.",
+            "Never say who signed a bill or resolution: the Signatures of Enactment and Signatures of " +
+                "Ceremony printed on legislation are a formality, not an action. A finding that reports them " +
+                "is off-topic, and no title or prose names the signers. Who introduced, authored, or sponsored " +
+                "legislation may be named.",
+            "Say what a governing document changed, not what it contains. An amendment's or edition's event " +
+                "names each change its findings give, concretely and in its own clause -- \"The Senate amended " +
+                "the bylaws to eliminate the Director of Research, make the Director of Communications an " +
+                "elected office, let the Senate approve Committee on Student Elections members during an " +
+                "election season, end post-election meet-and-greets, and elect Class Programming Council " +
+                "members class-wide\" -- never a list of areas it touched (\"amended the executive structure, " +
+                "election procedures, and bylaws\") or \"was amended\" alone. The title names the main change " +
+                "when there is one (\"Constitution replaces caucus chairs with Caucus Senators\"). Only an " +
+                "edition whose findings merely describe its contents gets one sentence naming it and when it " +
+                "was adopted or amended; do not restate its branches, election administration, or open-records " +
+                "rules, and do not add them to an event about an amendment either -- such an edition only " +
+                "supports that the amendment took effect. The exception is a Student Council constitution from " +
+                "before 2000, where one sentence on the structure it set up is kept, since few other records of " +
+                "that structure survive.",
+            "An amendment's text, the committee and Senate votes on it, the minutes passing it, and the " +
+                "edition that took it in are one event, even when the bill's own copy is dated only by year.",
             "Name each body as its findings do, in titles and prose alike. The Student Council (StuCo), " +
                 "its Student Activities Commission, and their offices are not the SGA: write \"SGA\" only where " +
                 "a finding's summary does. A Student Council constitution is titled as one -- \"Student Council " +
-                "constitution adopted\", never \"Constitution defines SGA governance\".",
+                "constitution adopted\", never \"Constitution defines SGA governance\". Bodies inside the SGA " +
+                "go by their own names: \"the Senate adopted\", \"Executive Branch meetings\", never \"the SGA " +
+                "Senate\" or \"SGA executive meetings\".",
             "For this topic, a finding is off-topic, and is left out, when it records only that something " +
-                "was discussed, considered, or tabled with nothing proposed, adopted, created, or changed, or " +
-                "when it concerns a group formed for one campus project rather than the student government's " +
+                "was discussed, considered, or tabled with nothing proposed, adopted, created, or changed; " +
+                "when it comes from a personal draft, working notes, or a working document (as its document " +
+                "title or kind shows) and records nothing the Senate, a committee, or an officer actually did; " +
+                "or when it concerns a group formed for one campus project rather than the student government's " +
                 "own structure, elections, judiciary, or records. Leave its id out of every event's " +
                 "\"findings\" list; never make an event, empty or otherwise, to hold findings you leave out.",
         ],
         peopleRule:
             "Name students as the document does when they act in a Student Council or SGA office or " +
             "election: candidates and winners, officers, chairs, justices, and the parties to a Judiciary " +
-            "case by its caption, always with the office. Report an impeachment, removal, recall, " +
-            "disqualification, or resignation by the official action and its stated grounds only. Never " +
-            "name or identify a survivor, complainant, or accused person in a sexual-misconduct or other " +
-            "personal-misconduct matter, or describe the details of such a case; if no quote can avoid " +
-            "that, leave the finding out.",
+            "case by its caption, always with the office. In impeachments, removals, recalls, censures, " +
+            "disciplinary marks, disqualifications, Judiciary complaints, and other accusations about how " +
+            "someone carried out an SGA or Student Council role, name both the accused and those who brought " +
+            "the accusation, with the official action, the stated grounds, and the vote when given; write an " +
+            "accusation as an accusation, never as an established fact. The one exception: never name or " +
+            "identify a survivor, complainant, or accused person in a matter of sexual misconduct, " +
+            "harassment, or violence, or describe the details of such a case; if no quote can avoid that, " +
+            "leave the finding out.",
+        styleFixes: [
+            // Bodies inside the SGA go by their own names; a document title such as
+            // "112th SGA Senate Meeting" is left alone.
+            { pattern: "\\bSGA Senate\\b(?! [Mm]eeting)", replacement: "Senate" },
+        ],
+    },
+];
+
+export type ReviewedFinding = {
+    documentId: string;
+    /** Finds the extracted finding to correct; when none matches, `quote` adds one. */
+    quotePattern: RegExp;
+    /** Verbatim from the document, so an added finding can be anchored and cited. */
+    quote: string;
+    summary: string;
+    thread: string;
+    kind: HistoryEventKind;
+    weight: 1 | 2 | 3;
+    /** Why, for whoever reads this next. */
+    reason: string;
+};
+
+/**
+ * Findings a maintainer has reviewed against the source. Applied at merge time,
+ * so they outlive re-extraction, which would otherwise repeat the misreading.
+ */
+export const REVIEWED_FINDINGS: ReviewedFinding[] = [
+    {
+        documentId: "58442442-9ef8-486e-897b-4d0ca731310a",
+        // Extraction quotes either the tally or the announcement after it.
+        quotePattern: /alli in favor of peter\? 22|supermajority wins it is peter/,
+        quote: "alli in favor of peter? 22",
+        summary: "The Senate elected Chair of the Committee on Finance Peter Tarpley as Vice President of the Senate by a supermajority hand vote, with 22 votes.",
+        thread: "officers",
+        kind: "policy",
+        weight: 2,
+        reason: "Demarri's 11/3/26 notes record the Vice President of the Senate vote (\"for vpots we have cole, isaac, kevin\"), not a Finance Chair selection: Peter was already Chair of Finance (\"i'm peter, chair of finance\"). MINUTES 11 records the same tally (\"Petter: 22\"), and the 11/17 roster lists \"Peter Tarpley, Vice President of the Senate, Chair of Finance & RSO Senator\".",
+    },
+    {
+        documentId: "4c0c38ff-f5ec-4b2c-b547-5f2e30dca92e",
+        quotePattern: /Petter: 22/,
+        quote: "Petter: 22",
+        summary: "The Senate elected Chair of the Committee on Finance Peter Tarpley as Vice President of the Senate with 22 votes; the minutes spell his name \"Petter\".",
+        thread: "officers",
+        kind: "policy",
+        weight: 2,
+        reason: "The minutes' vote line misspells Peter; the discussion before it names Peter, and later agendas name Peter Tarpley Vice President of the Senate.",
+    },
+    {
+        documentId: "58442442-9ef8-486e-897b-4d0ca731310a",
+        quotePattern: /cole is the chair of ia/,
+        quote: "ok with that, supermajority, cole is the chair of ia",
+        summary: "The Senate elected Religious and Spiritual Life RSO Senator Cole Liazos-Coffey, the only candidate, as Chair of the Committee on Internal Affairs by supermajority.",
+        thread: "officers",
+        kind: "policy",
+        weight: 2,
+        reason: "The notes call it \"voting for the chair of ia\" with Cole the only candidate; he was then Religious and Spiritual Life Senator (SAAC Funding Bill, Bill Voting Records) and Vice Chair of Internal Affairs, and Demarri asked for the title in this form on 11/27/26.",
+    },
+    {
+        documentId: "4c0c38ff-f5ec-4b2c-b547-5f2e30dca92e",
+        quotePattern: /Confirmed unanimously/,
+        quote: "Confirmed unanimously",
+        summary: "The Senate unanimously elected Religious and Spiritual Life RSO Senator Cole Liazos-Coffey as Chair of the Committee on Internal Affairs.",
+        thread: "officers",
+        kind: "policy",
+        weight: 2,
+        reason: "MINUTES 11 records the same vote as \"Voting for chair of IA ... Confirmed unanimously\"; it is the 11/3 election, not a separate confirmation.",
+    },
+    {
+        documentId: "26a7e82c-1763-4dcf-9d33-4a004963b169",
+        quotePattern: /appointing Jo as DoC/,
+        quote: "Voting for appointing Jo as DoC was passed in favor.",
+        summary: "The Senate approved Student Body President Vishnu Dontu's appointment of Johnalys Ferrer as Director of Communications.",
+        thread: "officers",
+        kind: "policy",
+        weight: 1,
+        reason: "The minutes say \"President Vishnu introduced Johnalyse. Jo presented her past visual works\", and the 10/28/25 agenda lists \"Director of Communications - Johnalys Ferrer\".",
+    },
+    {
+        documentId: "26a7e82c-1763-4dcf-9d33-4a004963b169",
+        quotePattern: /appointing Jason as DoR/,
+        quote: "The voting for appointing Jason as DoR was passed in favor.",
+        summary: "The Senate approved Student Body President Vishnu Dontu's reappointment of Jason Shumsky as Director of Research.",
+        thread: "officers",
+        kind: "policy",
+        weight: 1,
+        reason: "The parser credits this line to Jason Yu, then a Sophomore Class Senator, but the Director of Research was Jason Shumsky: every 2023-24 agenda lists \"Director of Research - Director Jason Shumsky\", the 4/23/24 minutes record his reappointment (\"He served in this position in the last SGA, too\"), and the 2025-2026 attendance sheet lists him among the executives.",
     },
 ];
 

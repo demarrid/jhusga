@@ -169,6 +169,29 @@ export function clampWeight(value: unknown): 1 | 2 | 3 {
     return number >= 3 ? 3 : number === 2 ? 2 : 1;
 }
 
+const LABEL_WORDS = 4;
+const LABEL_TRAILING = new Set(["a", "an", "and", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with"]);
+
+/** A model-written short label, or "" when it is missing or over four words. */
+export function historyLabel(value: string): string {
+    const label = value.replace(/\s+/g, " ").trim().replace(/[.;:]+$/, "");
+    return label && label.split(" ").length <= LABEL_WORDS ? label : "";
+}
+
+/** A short label for an event: its own, or the first words of its title. */
+export function eventLabel(label: string, title: string): string {
+    if (historyLabel(label)) return historyLabel(label);
+    const words = title.replace(/\s+/g, " ").trim().replace(/^(the|a|an) /i, "").split(" ").slice(0, LABEL_WORDS);
+    while (words.length > 1 && LABEL_TRAILING.has(words.at(-1)!.toLowerCase())) words.pop();
+    const shortened = words.join(" ").replace(/[,.;:]+$/, "");
+    return shortened.charAt(0).toUpperCase() + shortened.slice(1);
+}
+
+/** An event's first paragraph without citation markers, for a timeline flag. */
+export function eventSummary(content: string): string {
+    return (content.split(/\n\s*\n/)[0] ?? "").replace(/\s*\[\d+\]/g, "").replace(/\s+/g, " ").trim();
+}
+
 // ---------------------------------------------------------------------------
 // Dates
 // ---------------------------------------------------------------------------
@@ -178,6 +201,11 @@ export type DatableDocument = {
     datedAt: Date | null;
     driveCreatedTime: Date | null;
     sessionNumber: number | null;
+    /**
+     * The archive could date it only to a session ("2026/2027"), and datedAt is
+     * that session's opening day, not a day anything happened.
+     */
+    sessionOnly?: boolean;
 };
 
 export type ResolvedDate = { date: Date | null; precision: HistoryDatePrecision };
@@ -267,9 +295,14 @@ function parseStatedDate(value: string): { date: Date; precision: HistoryDatePre
 }
 
 function documentDate(document: DatableDocument): ResolvedDate {
+    if (document.datedAt && document.sessionOnly) {
+        const at = document.datedAt;
+        const start = at.getUTCMonth() >= 5 ? at.getUTCFullYear() : at.getUTCFullYear() - 1;
+        return { date: utcNoon(start, 12, 1), precision: "session" };
+    }
     if (document.datedAt) {
         const established = ARCHIVE_DATE_PRECISION[document.id]?.precision;
-        if (established === "year") {
+        if (established === "year" || established === "approximate") {
             return { date: utcNoon(document.datedAt.getUTCFullYear(), 7, 1), precision: "year" };
         }
         if (established === "month") {
@@ -387,6 +420,8 @@ export type OutcomeSource = {
     driveFileId: string;
     title: string;
     displayTitle: string;
+    /** The document's text, so a renamed bill can still be matched to its register row. */
+    content?: string;
     outcomeClaim: "passed" | "not_passed" | "";
 };
 

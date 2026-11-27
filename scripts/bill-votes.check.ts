@@ -16,4 +16,12 @@ const direct = readBillVotingRecords(sheet('Second Reading','9/29/2026,1,https:/
 assert.equal(billVoteDecision({title:'renamed',driveFileId:'ABCDEFGHIJKLMNOPQRSTUVWX'},direct).status,'passed');
 const undated = readBillVotingRecords(sheet('Second Reading',',1,Example Bill.docx,Adopted'));
 assert.deepEqual(billVoteDecision({title:'Example Bill',driveFileId:'file'},undated),{status:'passed',when:null});
+// A file renamed after registration matches by bill number only when its own text names the registered bill.
+const numbered = readBillVotingRecords(sheet('First Reading','9/15/2026,S-B.114.09.15.26-4,Budget Reporting Act,Referred to Committee\n9/29/2026,S-B.114.10.06.26-1,Survey Tabling Bill,Referred to Committee\n')
+    + sheet('Second Reading','9/22/2026,S-B.114.09.15.26-4,Budget Reporting Act,Adopted\n10/6/2026,S-B.114.10.06.26-1,Nutrition Tabling Supplies Funding Bill,Adopted'));
+const renamed = {title:'S-B.114.09.15.26-4 | Budget Transparency Act.pdf', driveFileId:'file'};
+assert.deepEqual(billVoteDecision({...renamed, content:'This bill may be referred to as the “Budget Reporting Act”.'},numbered),{status:'passed',when:new Date('2026-09-22T12:00:00Z')});
+assert.equal(billVoteDecision(renamed,numbered).status,'unknown','a number alone never matches');
+assert.equal(billVoteDecision({...renamed, content:'The Budget Transparency Act.'},numbered).status,'unknown','the text must name the registered bill');
+assert.equal(billVoteDecision({title:'S-B.114.10.06.26-1 | Survey Tabling Bill v2', driveFileId:'file', content:'Survey Tabling Bill'},numbered).status,'unknown','a number the register gives two bills matches neither');
 console.log('all bill voting record checks passed');

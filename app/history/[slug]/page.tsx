@@ -12,7 +12,7 @@ import {
 import { sessionOrdinal } from "@/config/session";
 import { truncateAtWord } from "@/lib/cite";
 import { formatDate } from "@/lib/dates";
-import { academicYearKey, academicYearLabel, historySpanLabel } from "@/lib/history";
+import { academicYearKey, academicYearLabel, eventLabel, eventSummary, historySpanLabel } from "@/lib/history";
 import { pageMetadata } from "@/lib/seo";
 import { getHistoryTimeline, type HistoryEventRecord } from "@/server/history";
 
@@ -54,6 +54,8 @@ export default async function HistoryTopicPage({ params, searchParams }: PagePro
             precision: record.datePrecision,
             dateLabel: historySpanLabel(record.occurredAt, record.endedAt, record.datePrecision, { short: true }),
             title: record.title,
+            label: eventLabel(record.label, record.title),
+            summary: truncateAtWord(eventSummary(record.content), 180),
             thread: record.thread,
             kind: record.kind,
             involvement: record.involvement,

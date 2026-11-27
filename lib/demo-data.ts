@@ -459,21 +459,22 @@ type DemoHistoryTemplate = {
     thread: string;
     kind: HistoryEventKind;
     title: string;
+    label: string;
     content: string;
     weight: 1 | 2 | 3;
 };
 
 const DEMO_HISTORY_TEMPLATES: DemoHistoryTemplate[] = [
-    { thread: "policy", kind: "legislation", weight: 3, title: "Resolution on Title IX hearing procedures", content: "The Senate debated a resolution asking the university to publish its hearing procedures [1]. Senators cited the minutes of an earlier discussion [2]." },
-    { thread: "support", kind: "funding", weight: 2, title: "Funding for a survivor support peer group", content: "A funding bill allocated money to a student-run support group [1]." },
-    { thread: "prevention", kind: "programming", weight: 1, title: "Consent education workshop series", content: "The SGA co-sponsored a workshop series with a student group [1]." },
-    { thread: "accountability", kind: "report", weight: 2, title: "Report on campus climate survey results", content: "A committee presented survey results to the Senate [1] and recommended follow-up [2]." },
-    { thread: "advocacy", kind: "statement", weight: 2, title: "Statement on reporting transparency", content: "The executive board issued a statement calling for clearer reporting [1]." },
-    { thread: "policy", kind: "discussion", weight: 1, title: "Senate discussion of the misconduct policy review", content: "Senators discussed the university's policy review during open forum [1]." },
-    { thread: "prevention", kind: "funding", weight: 1, title: "Bystander intervention training for student groups", content: "The Senate funded training for student organization leaders [1]." },
-    { thread: "accountability", kind: "legislation", weight: 2, title: "Bill to publish annual misconduct data", content: "A bill asked for an annual public summary of reports and outcomes [1]." },
-    { thread: "support", kind: "policy", weight: 2, title: "Expanded confidential advocate hours", content: "The university expanded advocate hours after SGA requests [1]." },
-    { thread: "advocacy", kind: "programming", weight: 1, title: "Take Back the Night co-sponsorship", content: "The SGA co-sponsored the annual march [1]." },
+    { thread: "policy", kind: "legislation", weight: 3, title: "Resolution on Title IX hearing procedures", label: "Title IX hearings resolution", content: "The Senate debated a resolution asking the university to publish its hearing procedures [1]. Senators cited the minutes of an earlier discussion [2]." },
+    { thread: "support", kind: "funding", weight: 2, title: "Funding for a survivor support peer group", label: "Peer group funding", content: "A funding bill allocated money to a student-run support group [1]." },
+    { thread: "prevention", kind: "programming", weight: 1, title: "Consent education workshop series", label: "Consent workshops", content: "The SGA co-sponsored a workshop series with a student group [1]." },
+    { thread: "accountability", kind: "report", weight: 2, title: "Report on campus climate survey results", label: "Climate survey report", content: "A committee presented survey results to the Senate [1] and recommended follow-up [2]." },
+    { thread: "advocacy", kind: "statement", weight: 2, title: "Statement on reporting transparency", label: "Transparency statement", content: "The executive board issued a statement calling for clearer reporting [1]." },
+    { thread: "policy", kind: "discussion", weight: 1, title: "Senate discussion of the misconduct policy review", label: "Policy review discussion", content: "Senators discussed the university's policy review during open forum [1]." },
+    { thread: "prevention", kind: "funding", weight: 1, title: "Bystander intervention training for student groups", label: "Bystander training", content: "The Senate funded training for student organization leaders [1]." },
+    { thread: "accountability", kind: "legislation", weight: 2, title: "Bill to publish annual misconduct data", label: "Misconduct data bill", content: "A bill asked for an annual public summary of reports and outcomes [1]." },
+    { thread: "support", kind: "policy", weight: 2, title: "Expanded confidential advocate hours", label: "More advocate hours", content: "The university expanded advocate hours after SGA requests [1]." },
+    { thread: "advocacy", kind: "programming", weight: 1, title: "Take Back the Night co-sponsorship", label: "Take Back the Night", content: "The SGA co-sponsored the annual march [1]." },
 ];
 
 const DEMO_HISTORY_OUTCOMES: HistoryOutcome[] = ["passed", "not_passed", "inconclusive", "unrecorded"];
@@ -514,6 +515,7 @@ export function demoHistoryTimeline(topic: HistoryTopicDefinition): HistoryTimel
             endedAt: index % 9 === 4 ? new Date(occurredAt.getTime() + 75 * 86_400_000) : null,
             datePrecision: precision,
             title: template.title,
+            label: template.label,
             content: template.content,
             thread: topic.threads.some((thread) => thread.id === template.thread) ? template.thread : topic.threads[0]!.id,
             kind: template.kind,

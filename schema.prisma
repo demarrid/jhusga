@@ -696,6 +696,9 @@ model HistoryEvent {
     datePrecision String @default("day")
 
     title   String
+    // At most four words, e.g. "New SBP", for when the timeline is crowded.
+    // Empty on events merged before it existed; the page shortens the title.
+    label   String @default("")
     // Cited prose; [n] is the 1-based ordinal into `citations`.
     content String @default("")
 

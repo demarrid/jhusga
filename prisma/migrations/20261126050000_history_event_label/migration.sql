@@ -1,0 +1,1 @@
+ALTER TABLE "HistoryEvent" ADD COLUMN "label" TEXT NOT NULL DEFAULT '';

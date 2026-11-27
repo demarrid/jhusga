@@ -682,5 +682,23 @@
     "precision": "year",
     "date": "2018-01-01T12:00:00.000Z",
     "sourceKey": "18GjmDcubgvLnsRyoSLFk7lr5b3YOXouE"
+  },
+  "d6a993c2-27b9-4c2f-8431-dcd6275727db": {
+    "label": "December 2020",
+    "precision": "month",
+    "date": "2020-12-01T12:00:00.000Z",
+    "sourceKey": "1_8L8VPwFnD-AXdDcynufiwOIF0JfnmGh"
+  },
+  "41b9cf20-eafc-4a37-881a-5168fa0ff9b3": {
+    "label": "September 2021",
+    "precision": "month",
+    "date": "2021-09-01T12:00:00.000Z",
+    "sourceKey": "1HB1NKzmFwKdCYFFRTpdoTYTn69meHkCV"
+  },
+  "d1ad093e-570c-4281-8870-82da5bc88d21": {
+    "label": "c. 1925–1935",
+    "precision": "approximate",
+    "date": "1925-01-01T12:00:00.000Z",
+    "sourceKey": "1NLL76AHW809268d2oJxo-39nZJllmYpL"
   }
 }

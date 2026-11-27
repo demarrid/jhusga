@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 
+import { layoutFlags, type Flag, type FlagEvent } from "../app/history/[slug]/flags";
 import { historyTopic } from "../config/history";
 import { readBillVotingRecords } from "../lib/bill-votes";
 import { formatDate } from "../lib/dates";
 import {
     academicYearKey,
     academicYearLabel,
+    eventLabel,
     eventSpan,
+    eventSummary,
     historyDateLabel,
+    historyLabel,
     historySpanLabel,
     legislationOutcome,
     matchesTopic,
@@ -171,6 +175,29 @@ assert.deepEqual(
 );
 assert.deepEqual(resolveFindingDate("1979", yearOnly), { date: noon("1979-07-01"), precision: "year" });
 
+// A document the archive dated only to a session ("2026/2027") is stored at the
+// session's opening, 1 June; that is not a day anything happened.
+const sessionOnly = {
+    id: "history-check-session-only",
+    datedAt: noon("2026-06-01"),
+    driveCreatedTime: null,
+    sessionNumber: 114,
+    sessionOnly: true,
+};
+const sessionOnlyOwn = { date: noon("2026-12-01"), precision: "session" };
+assert.deepEqual(resolveFindingDate(null, sessionOnly), sessionOnlyOwn, "a session-only date stays the session");
+assert.deepEqual(resolveFindingDate("2026-06-01", sessionOnly), sessionOnlyOwn, "an echoed opening day stays the session");
+assert.deepEqual(
+    resolveFindingDate("2026-11-08", sessionOnly),
+    { date: noon("2026-11-08"), precision: "day" },
+    "a day the text states still wins",
+);
+assert.deepEqual(
+    resolveFindingDate(null, { ...sessionOnly, sessionOnly: false }),
+    { date: noon("2026-06-01"), precision: "day" },
+    "an ordinary 1 June date is a day",
+);
+
 assert.deepEqual(
     eventSpan([
         { date: noon("2019-02-01"), precision: "approximate" },
@@ -314,3 +341,69 @@ assert.equal(resolveFindingDate(null, workLog, 'FSL OIE Investigation Team - att
 assert.equal(resolveFindingDate(null, workLog, 'Unrelated project').date, null);
 assert.equal(resolveFindingDate(null, workLog, 'Requested that a special forum be held to discuss the drugging allegations').date?.toISOString(), '2020-11-15T12:00:00.000Z');
 assert.equal(resolveFindingDate(null, { ...workLog, id: '243b8b92-fdd0-40f8-9531-8b4c2fa84a31' }, 'Sexual Assault Resources/OIE Reform').date?.toISOString(), '2019-10-29T12:00:00.000Z');
+
+// Timeline flags --------------------------------------------------------------
+
+assert.equal(historyLabel("New SBP."), "New SBP");
+assert.equal(historyLabel("  CSE   constitution update "), "CSE constitution update");
+assert.equal(historyLabel("A label of far more than four words"), "", "a wordy label is dropped");
+assert.equal(eventLabel("Petition", "Students petition the university for an advocate"), "Petition");
+assert.equal(eventLabel("", "The resolution on Title IX hearing procedures"), "Resolution on Title IX");
+assert.equal(eventLabel("", "Funding for a survivor support peer group"), "Funding for a survivor", "only four words");
+assert.equal(eventLabel("", "Bill to publish annual misconduct data"), "Bill to publish annual");
+assert.equal(eventLabel("", "petition of the"), "Petition", "no dangling small words");
+assert.equal(
+    eventSummary("The Senate debated it [1]. Senators cited minutes [1][2].\n\nThe date comes from a review."),
+    "The Senate debated it. Senators cited minutes.",
+);
+
+const flagMeasure = (text: string, font: string) => text.length * Number.parseFloat(font.split(" ")[1]!) * 0.56;
+const flagEvents = (count: number, years: number): FlagEvent[] =>
+    Array.from({ length: count }, (_, index) => ({
+        id: `flag-${index}`,
+        start: Date.UTC(1990, 0, 1) + ((index * 7919) % count) * ((years * 365 * 86_400_000) / count),
+        dateLabel: "Mar 4, 2004",
+        title: `Senate resolution number ${index} on hearing procedures and support`,
+        label: `Resolution ${index}`,
+        summary: "A committee presented survey results to the Senate and recommended a follow-up review.",
+        weight: ((index % 3) + 1) as 1 | 2 | 3,
+    })).sort((a, b) => a.start - b.start);
+
+function layOut(events: FlagEvent[], width: number, maxHeight = 392) {
+    const start = events[0]!.start;
+    const span = events.at(-1)!.start - start || 1;
+    const toX = (time: number) => 20 + ((time - start) / span) * (width - 40);
+    return { flags: layoutFlags({ events, toX, usable: width, maxHeight, measure: flagMeasure, compact: false }), maxHeight, width };
+}
+
+function assertClear({ flags, maxHeight, width }: { flags: Flag[]; maxHeight: number; width: number }, name: string) {
+    for (const flag of flags) {
+        assert.ok(flag.y >= 0 && flag.y + flag.height <= maxHeight, `${name}: ${flag.key} fits the height`);
+        assert.ok(flag.left >= 0 && flag.left + flag.width <= width, `${name}: ${flag.key} fits the width`);
+        for (const other of flags) {
+            if (other === flag) continue;
+            const apart =
+                flag.left + flag.width <= other.left || other.left + other.width <= flag.left ||
+                flag.y + flag.height <= other.y || other.y + other.height <= flag.y;
+            assert.ok(apart, `${name}: ${flag.key} and ${other.key} do not overlap`);
+            const crosses = other.poleX >= flag.left && other.poleX <= flag.left + flag.width && other.y > flag.y;
+            assert.ok(!crosses, `${name}: ${other.key}'s pole does not run through ${flag.key}`);
+        }
+    }
+    const shown = new Set(flags.flatMap((flag) => flag.group.events.map((event) => event.id)));
+    return shown.size;
+}
+
+// A few events far apart each get a full flag with their description.
+const sparse = layOut(flagEvents(4, 40), 1400);
+assertClear(sparse, "sparse");
+assert.equal(sparse.flags.length, 4);
+assert.ok(sparse.flags.every((flag) => flag.type === "event" && flag.mode === "full" && flag.descLines > 0));
+
+// Crowded timelines fall back to lists, labels, and counts, but never overlap and still account for every event.
+for (const [count, width] of [[40, 1400], [150, 1400], [400, 1400], [150, 360]] as const) {
+    const crowded = layOut(flagEvents(count, 30), width);
+    const shown = assertClear(crowded, `${count} events at ${width}px`);
+    assert.ok(crowded.flags.some((flag) => flag.type !== "event" || flag.mode !== "full"), `${count} events are simplified`);
+    assert.ok(shown >= count * 0.9, `${count} events at ${width}px: ${shown} are on a flag`);
+}

@@ -1,5 +1,4 @@
 .timeline {
-  --gutter: 168px;
   --line: #c9d7e4;
   max-width: 96rem;
   margin: 0 auto;
@@ -134,7 +133,7 @@
 .stage {
   position: relative;
   display: grid;
-  grid-template-columns: var(--gutter) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -150,28 +149,6 @@
 .stage:focus-visible {
   outline: 2px solid #377ebc;
   outline-offset: 2px;
-}
-
-.gutter {
-  position: relative;
-  border-right: 1px solid var(--line);
-  background: #f7f9fb;
-}
-
-.gutterLabel {
-  position: absolute;
-  right: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 0.9rem 0 1rem;
-  border-top: 1px dashed #dde6ee;
-  color: var(--c);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.25;
-  text-transform: uppercase;
 }
 
 .track {
@@ -218,7 +195,6 @@
 
 .gridline {
   position: absolute;
-  bottom: 0;
   width: 1px;
   background: #edf2f6;
   pointer-events: none;
@@ -230,7 +206,7 @@
 
 .tick {
   position: absolute;
-  top: 25px;
+  bottom: 11px;
   padding-left: 4px;
   color: #7a8998;
   font-size: 0.66rem;
@@ -244,48 +220,36 @@
   font-weight: 700;
 }
 
-.lane {
+.axis {
   position: absolute;
   right: 0;
   left: 0;
-  border-top: 1px dashed #dde6ee;
-}
-
-.lane::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: 0;
-  left: 0;
-  height: 1px;
-  background: color-mix(in srgb, var(--c) 18%, transparent);
-}
-
-.laneInlineLabel {
-  display: none;
+  height: 2px;
+  background: #b9c9d8;
+  pointer-events: none;
+  transform: translateY(50%);
 }
 
 .spanBar {
   position: absolute;
-  top: 50%;
+  z-index: 3;
   height: 6px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--c) 32%, transparent);
+  background: color-mix(in srgb, var(--c) 40%, transparent);
   pointer-events: none;
-  transform: translateY(-50%);
+  transform: translateY(50%);
 }
 
 .marker {
   position: absolute;
-  z-index: 1;
-  top: 50%;
+  z-index: 4;
   padding: 0;
   border: 2px solid #ffffff;
   border-radius: 50%;
   background: var(--c);
   box-shadow: 0 1px 2px rgba(15, 37, 64, 0.25);
   cursor: pointer;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, 50%);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
@@ -295,7 +259,7 @@
 
 .marker[data-shape="diamond"] {
   border-radius: 2px;
-  transform: translate(-50%, -50%) rotate(45deg) scale(0.86);
+  transform: translate(-50%, 50%) rotate(45deg) scale(0.86);
 }
 
 .marker[data-context] {
@@ -311,70 +275,254 @@
 }
 
 .marker:hover {
-  z-index: 2;
-  transform: translate(-50%, -50%) scale(1.25);
+  z-index: 5;
+  transform: translate(-50%, 50%) scale(1.3);
 }
 
 .marker[data-shape="diamond"]:hover {
-  transform: translate(-50%, -50%) rotate(45deg) scale(1.08);
+  transform: translate(-50%, 50%) rotate(45deg) scale(1.1);
 }
 
 .marker[data-selected] {
-  z-index: 3;
+  z-index: 6;
   box-shadow:
     0 0 0 3px #ffffff,
     0 0 0 5px var(--c),
     0 4px 12px rgba(15, 37, 64, 0.25);
 }
 
-.markerLabel {
+/* Flags: a box on a pole down to the event's date on the axis. */
+
+.flagPole {
   position: absolute;
-  top: 50%;
-  overflow: hidden;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #22374f;
-  font-size: 0.74rem;
-  font-weight: 560;
-  line-height: 1.3;
+  z-index: 1;
+  width: 1px;
+  background: color-mix(in srgb, var(--c, #7a8998) 70%, #ffffff);
   pointer-events: none;
+}
+
+.flagPole[data-group] {
+  background: #9aabbc;
+}
+
+.flagBracket {
+  position: absolute;
+  z-index: 1;
+  height: 5px;
+  border: 1.5px solid #9aabbc;
+  border-bottom: 0;
+  border-radius: 2px 2px 0 0;
+  pointer-events: none;
+}
+
+/* Sizes here are measured in flags.ts (FLAG_METRICS, FLAG_FONTS); change both together. */
+.flag {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  margin: 0;
+  padding: 6px 9px 7px 8px;
+  border: 1px solid #d3dee8;
+  border-left: 3px solid var(--c, #607286);
+  border-radius: 2px 6px 6px 2px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 37, 64, 0.1);
+  color: #22374f;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.flag:hover {
+  z-index: 3;
+  border-color: color-mix(in srgb, var(--c, #607286) 55%, #d3dee8);
+  border-left-color: var(--c, #607286);
+  box-shadow: 0 4px 14px rgba(15, 37, 64, 0.16);
+}
+
+.flag[data-context] {
+  border-left-style: dashed;
+}
+
+.flag[data-selected] {
+  z-index: 3;
+  border-color: var(--c);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--c) 30%, transparent),
+    0 4px 14px rgba(15, 37, 64, 0.16);
+}
+
+.flag[data-mode="titles"],
+.flag[data-mode="labels"] {
+  border-left-color: #9aabbc;
+  cursor: default;
+  background: #fbfcfd;
+}
+
+.flag[data-mode="tag"] {
+  display: block;
+  padding: 3px 7px 3px 6px;
+  color: #22374f;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 15px;
   text-overflow: ellipsis;
-  transform: translateY(-50%);
   white-space: nowrap;
 }
 
-.markerLabel[data-selected] {
-  color: #002d72;
-  font-weight: 700;
-}
-
-.cluster {
-  position: absolute;
-  z-index: 1;
-  top: 50%;
+.flag[data-mode="count"] {
   display: grid;
   place-items: center;
-  padding: 0;
-  border: 2px solid #ffffff;
-  border-radius: 50%;
-  background: var(--c);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 24%, transparent);
-  color: #ffffff;
-  font: inherit;
-  font-size: 0.66rem;
+  padding: 0 10px;
+  border-left-width: 1px;
+  border-color: #9aabbc;
+  border-radius: 999px;
+  background: #eef3f8;
+  color: #002d72;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
-  font-weight: 750;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
   cursor: zoom-in;
-  transform: translate(-50%, -50%);
-  transition: transform 120ms ease;
 }
 
-.cluster:hover {
-  z-index: 2;
-  transform: translate(-50%, -50%) scale(1.12);
+.flagMeta {
+  display: block;
+  overflow: hidden;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #607286;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 13px;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
+button.flagMeta {
+  width: 100%;
+  cursor: zoom-in;
+}
+
+button.flagMeta:hover {
+  color: #002d72;
+}
+
+.flagMeta [data-outcome="passed"] {
+  color: #2a7a3d;
+}
+
+.flagMeta [data-outcome="not_passed"] {
+  color: #a33232;
+}
+
+.flagMeta [data-outcome="inconclusive"] {
+  color: #8a6214;
+}
+
+.flagTitle,
+.flagDesc {
+  display: -webkit-box;
+  overflow: hidden;
+  flex: none;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.flagTitle {
+  color: #172b44;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.flag[data-selected] .flagTitle {
+  color: #002d72;
+}
+
+.flagDesc {
+  margin-top: 2px;
+  color: #4d6074;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 15px;
+}
+
+.flagList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flagList li {
+  position: relative;
+  padding-left: 12px;
+}
+
+.flagList li::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c, #9aabbc);
+  transform: translateY(-50%);
+}
+
+.flagList button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #22374f;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.flag[data-mode="labels"] .flagList button {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.flagList button:hover,
+.flagList button[data-selected] {
+  color: #002d72;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.flagList .flagMore::before {
+  display: none;
+}
+
+.flagList .flagMore button {
+  color: #377ebc;
+  font-weight: 650;
+  cursor: zoom-in;
+}
 .noLanes {
   position: absolute;
   top: 50%;
@@ -629,13 +777,14 @@
 
 .minimapRow {
   display: grid;
-  grid-template-columns: var(--gutter) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.85rem;
   align-items: center;
   margin-top: 0.6rem;
 }
 
 .minimapLabel {
-  padding-left: 1rem;
+  padding-left: 0.25rem;
   color: #7a8998;
   font-size: 0.64rem;
   font-weight: 700;
@@ -729,32 +878,14 @@
   }
 }
 
+/* Must match COMPACT_QUERY in Timeline.tsx. */
 @media (max-width: 759px) {
-  .timeline {
-    --gutter: 0px;
-  }
-
-  .gutter,
   .minimapLabel {
     display: none;
   }
 
-  .stage,
   .minimapRow {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .laneInlineLabel {
-    position: absolute;
-    top: 4px;
-    left: 8px;
-    display: block;
-    color: var(--c);
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    pointer-events: none;
-    text-transform: uppercase;
   }
 
   .controls {
@@ -789,7 +920,7 @@
   .legendChip,
   .stage,
   .marker,
-  .cluster {
+  .flag {
     transition: none;
   }
 

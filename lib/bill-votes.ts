@@ -11,6 +11,8 @@ export function isBillVoteQuestion(question: string): boolean {
 }
 export type BillVoteRecord = {
     title: string;
+    /** The register's "Bill #" cell, e.g. "S-B.114.09.15.26-4"; "" when blank. */
+    number?: string;
     fileId?: string;
     status: "passed" | "not_passed" | "unknown";
     when: Date | null;
@@ -32,18 +34,18 @@ export function readBillVotingRecords(content: string): BillVoteRecord[] {
         const name = lines[0]?.trim() ?? "";
         const reading = /^second reading$/i.test(name) ? 2 : /^first reading$/i.test(name) ? 1 : 0;
         if (!reading) continue;
-        let columns: { title: number; status: number; date: number } | undefined;
+        let columns: { title: number; number: number; status: number; date: number } | undefined;
         for (const line of lines.slice(1)) {
             const cells = parseCsvLine(line);
             if (cells.includes("Bill #") && cells.includes("Link")) {
-                columns = {title: cells.indexOf("Link"), status: cells.findIndex(c => /^(?:Bill )?Status$/i.test(c)), date: cells.findIndex(c => /^Date/i.test(c))};
+                columns = {title: cells.indexOf("Link"), number: cells.indexOf("Bill #"), status: cells.findIndex(c => /^(?:Bill )?Status$/i.test(c)), date: cells.findIndex(c => /^Date/i.test(c))};
                 continue;
             }
             if (!columns || columns.status < 0 || !cells[columns.title]) continue;
             const statusText = cells[columns.status]?.trim() ?? "";
             const status = /^(?:passed|adopted)$/i.test(statusText) ? "passed"
                 : /^(?:failed|rejected|lost|tabled(?: indefinitely)?)$/i.test(statusText) ? "not_passed" : "unknown";
-            records.push({title: cells[columns.title]!, fileId: extractDocumentLinks(cells[columns.title]!)[0]?.fileId,
+            records.push({title: cells[columns.title]!, number: cells[columns.number]?.trim() ?? "", fileId: extractDocumentLinks(cells[columns.title]!)[0]?.fileId,
                 status, when: voteDate(cells[columns.date] ?? ""), reading, evidence: line});
         }
     }
@@ -53,14 +55,36 @@ export function votingTitleKey(title: string): string {
     return title.trim().replace(/^S[-.\s]*B\.[\d.-]+\s*\|\s*/i, "")
         .replace(/\.(?:docx?|pdf)$/i, "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
+const BILL_NUMBER = /^\s*(S[-.\s]*B\.[\d.]+-\d+)\b/i;
+function billNumberKey(value: string): string {
+    return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+/**
+ * Rows for a file renamed after the register was written ("S-B.114.09.15.26-4 |
+ * Budget Transparency Act.pdf", registered as "Budget Reporting Act"): the
+ * file's title carries the rows' bill number, every parsed row with that
+ * number names the same bill, and the file's own text names it.
+ */
+function numberedMatches(document: {title: string; displayTitle?: string; content?: string}, records: BillVoteRecord[]): BillVoteRecord[] {
+    if (!document.content) return [];
+    const number = [document.title, document.displayTitle ?? ""].map(title => BILL_NUMBER.exec(title)?.[1]).find(Boolean);
+    if (!number) return [];
+    const rows = records.filter(r => r.number && billNumberKey(r.number) === billNumberKey(number));
+    const titles = new Set(rows.map(r => votingTitleKey(r.title)));
+    if (titles.size !== 1) return [];
+    const [title] = titles;
+    return title && ` ${votingTitleKey(document.content)} `.includes(` ${title} `) ? rows : [];
+}
 /** Prefer exact Drive identity, then exact title. Bill numbers in this sheet
- * disagree between tabs, so a number alone is not sufficient to match a file. */
-export function billVoteDecision(document: {driveFileId: string; title: string; displayTitle?: string}, records: BillVoteRecord[]): {
+ * disagree between tabs, so a number alone is not sufficient to match a file:
+ * it also needs the file's own text to name the registered bill. */
+export function billVoteDecision(document: {driveFileId: string; title: string; displayTitle?: string; content?: string}, records: BillVoteRecord[]): {
     status: "passed" | "not_passed" | "unknown" | "ambiguous"; when: Date | null;
 } {
     const linked = records.filter(r => r.fileId === document.driveFileId);
     const keys = [document.title, document.displayTitle ?? ""].filter(Boolean).map(votingTitleKey);
-    let matches = (linked.length ? linked : records.filter(r => keys.includes(votingTitleKey(r.title))))
+    const titled = records.filter(r => keys.includes(votingTitleKey(r.title)));
+    let matches = (linked.length ? linked : titled.length ? titled : numberedMatches(document, records))
         .filter(r => r.status !== "unknown");
     if (!matches.length) return {status:"unknown", when:null};
     const reading = Math.max(...matches.map(r => r.reading));

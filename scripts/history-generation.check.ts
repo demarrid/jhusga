@@ -1,7 +1,40 @@
 import assert from "node:assert/strict";
 import { parseHistoryArgs } from "../lib/history-cli";
-import { generateHistoryTopic } from "../lib/history-generate";
+import { amendmentRows, editionChanges, generateHistoryTopic, isSgaEdition, rosterOffices } from "../lib/history-generate";
 import { historyTopic } from "../config/history";
+
+assert.deepEqual(
+    rosterOffices(["Registered Student Organization Senator", "Co-Chair of the Committee on Internal Affairs", "Declared RSO Category: Religious and Spiritual Life"]),
+    ["Religious and Spiritual Life RSO Senator", "Co-Chair of the Committee on Internal Affairs"],
+    "a roster's RSO seat and category read as one title",
+);
+assert.deepEqual(rosterOffices(["Transfer Students Caucus Senator"]), ["Transfer Students Caucus Senator"]);
+
+// An edition is read against the one before it, so its findings can say what changed.
+const article = (n: number) => `Section ${n}. Unchanged text of section ${n}.`;
+const before = [...Array.from({ length: 8 }, (_, i) => article(i + 1)), "5. The signatures of at least 50 interested individuals."].join("\n");
+const after = [...Array.from({ length: 8 }, (_, i) => article(i + 1)), "5. The signatures of at least 40   interested individuals."].join("\n");
+assert.equal(editionChanges(before, after), "- 5. The signatures of at least 50 interested individuals.\n+ 5. The signatures of at least 40 interested individuals.");
+assert.equal(editionChanges(before, before.replace(/\n/g, "\n\n")), "", "blank lines and spacing are no change");
+assert.equal(editionChanges(before, "An unrelated document.\nWith other text."), "", "documents too different are not editions of one text");
+assert.ok(isSgaEdition({ kind: "guiding.constitution", title: "JHU SGA Constitution (Amended September 18th 2026)" }));
+assert.ok(!isSgaEdition({ kind: "guiding.constitution", title: "CSE Constitution" }));
+assert.ok(!isSgaEdition({ kind: "guiding.bylaws", title: "Proposed Amendment to SGA Bylaws Word" }));
+
+// A bill's current/proposed tables are read row by row, under their section headings.
+assert.deepEqual(amendmentRows([
+    "3. **AMENDMENTS**",
+    "| Constitution |  |",
+    "| ----- | ----- |",
+    "| Current Language | Proposed Language |",
+    "| Chair of Programming. Shall oversee councils. | Chair of Programming. Shall oversee councils. Shall lead programming. |",
+    "",
+    "| Bylaws |  |",
+    "| ----- | ----- |",
+    "| Current Language | Proposed Language |",
+    "| [https://docs.google.com/document/d/1BZ9/edit](https://docs.google.com/document/d/1BZ9/edit) | [https://docs.google.com/document/d/1e_1/edit](https://docs.google.com/document/d/1e_1/edit) |",
+].join("\n")).map((row) => row.section), ["Constitution", "Bylaws"]);
+assert.deepEqual(amendmentRows("| Name | Vote |\n| --- | --- |\n| Amy | Yes |"), [], "other tables are not amendments");
 
 assert.deepEqual(parseHistoryArgs(["sexual-violence"]).slugs, ["sexual-violence"]);
 assert.deepEqual(parseHistoryArgs(["one", "--limit", "25", "two"]).slugs, ["one", "two"]);
@@ -30,6 +63,8 @@ const storage = {
     document: { findMany: async (args: { where: { title?: unknown } }) => args.where.title
         ? [{ title: "Bill Voting Records", content: register }] : [document] },
     historyTopic: {
+        // The dry run only reads the stored topic; before the first run there is none.
+        findUnique: async () => (cache.length ? status : null),
         upsert: async () => status,
         update: async ({ data }: { data: Row }) => { status = { ...status, ...data }; return status; },
     },
