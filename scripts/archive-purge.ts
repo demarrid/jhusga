@@ -8,8 +8,8 @@
  * this cleans what was stored before the filter existed or before a rule was
  * added. Quotes and derived text are rewritten first, then each document's
  * text, its image positions, citation offsets and search passages, so nothing
- * still points at a removed value. News-Letter articles are left alone: the
- * paper's published phone numbers are part of the reporting.
+ * still points at a removed value. News-Letter and Gazette articles are left
+ * alone: a paper's published phone numbers are part of the reporting.
  *
  * The report holds counts only, never the values removed.
  */
@@ -18,7 +18,7 @@ import {writeFile} from 'node:fs/promises';
 import {redactPersonalData, redactedOffset} from '../lib/archive-redaction';
 process.loadEnvFile('.env');
 
-const notNewsletter = `"documentId" IN (SELECT id FROM "Document" WHERE "discoveredVia" <> 'newsletter')`;
+const notNewsletter = `"documentId" IN (SELECT id FROM "Document" WHERE "discoveredVia" NOT IN ('newsletter', 'gazette'))`;
 const derived: {table: string; where?: string}[] = [
     {table: 'DocumentAnnotation', where: notNewsletter},
     {table: 'DocumentRevision', where: notNewsletter},
@@ -52,7 +52,7 @@ async function main() {
         }
 
         const documents = await prisma.document.findMany({
-            where: {discoveredVia: {not: 'newsletter'}}, select: {id: true, content: true, contentHash: true}});
+            where: {discoveredVia: {notIn: ['newsletter', 'gazette']}}, select: {id: true, content: true, contentHash: true}});
         let changed = 0;
         for (const document of documents) {
             const content = redactPersonalData(document.content);

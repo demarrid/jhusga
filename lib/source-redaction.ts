@@ -91,7 +91,7 @@ export function sourceAccess(document: {
     if (document.redactedSourceStatus === "approved") {
         return { mode: "redacted", href: `/api/documents/${document.id}/source`, protectedIds: ids };
     }
-    if (document.discoveredVia !== "newsletter" && hasRedactions(document.content)) {
+    if (document.discoveredVia !== "newsletter" && document.discoveredVia !== "gazette" && hasRedactions(document.content)) {
         return { mode: "withheld", href: null, protectedIds: ids };
     }
     return { mode: "original", href: document.source, protectedIds: [] };
@@ -204,17 +204,26 @@ export function neighbours(line: PageLine, page: SourcePage): { before: string; 
     };
 }
 
+/**
+ * The text filter's findings on one line, read with the lines stacked above
+ * and below it in the same column, as the filter reads running text: "Tel:"
+ * under a rental company's name and showroom is the company's number, not a
+ * person's.
+ */
+function spansInContext(line: PageLine, page: SourcePage) {
+    const { text } = lineText(line.words);
+    const { before, after } = neighbours(line, page);
+    const prefix = before ? before + "\n" : "";
+    return findSensitiveSpans(prefix + text + (after ? "\n" + after : ""))
+        .filter(span => span.start >= prefix.length && span.end <= prefix.length + text.length)
+        .map(span => ({ ...span, start: span.start - prefix.length, end: span.end - prefix.length }));
+}
+
 /** Boxes over the words of one line that a detected span touches. A partly covered word is covered whole. */
 export function valueBoxes(line: PageLine, page: SourcePage, pageNumber: number): RedactionBox[] {
     const { text, ranges } = lineText(line.words);
-    // Detect with the lines stacked above and below in the same column, as the
-    // text filter does in running text: "Tel:" under a rental company's name
-    // and showroom is the company's number, not a person's.
     const { before, after } = neighbours(line, page);
-    const prefix = before ? before + "\n" : "";
-    const spans = findSensitiveSpans(prefix + text + (after ? "\n" + after : ""))
-        .filter(span => span.start >= prefix.length && span.end <= prefix.length + text.length)
-        .map(span => ({ ...span, start: span.start - prefix.length, end: span.end - prefix.length }));
+    const spans = spansInContext(line, page);
     if (line.source === "ocr") {
         for (const match of text.matchAll(OCR_SSN)) {
             if ((match[0].match(/\d/g) ?? []).length >= 5) spans.push({ start: match.index, end: match.index + match[0].length, kind: "personal identifier",
@@ -321,8 +330,12 @@ export function planRedactions(pages: SourcePage[], manual?: ManualRedactions): 
     return boxes;
 }
 
-/** What a re-read of the finished copy still finds: must be empty before it is stored. */
+/**
+ * What a re-read of the finished copy still finds: must be empty before it is
+ * stored. Read with the same neighbouring lines the boxes were placed with, so
+ * a business number the plan rightly left alone is not reported as missed.
+ */
 export function remainingFindings(pages: SourcePage[]): { page: number; kind: RedactionKind }[] {
     return pages.flatMap((page, index) => page.lines.flatMap(line =>
-        findSensitiveSpans(lineText(line.words).text).map(span => ({ page: index + 1, kind: span.kind }))));
+        spansInContext(line, page).map(span => ({ page: index + 1, kind: span.kind }))));
 }

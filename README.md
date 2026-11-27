@@ -248,6 +248,35 @@ reads the articles too: they stay eligible even when the question is about the
 rules now, because reporting is not a superseded edition of the constitution.
 They are still attributed as reporting, never as an SGA record.
 
+### The third source: the university's own paper
+
+The Johns Hopkins Gazette, the administration's newspaper for faculty and staff,
+was online from 1994 until it closed in 2015, and it reported the Student
+Council's elections and budgets from the other side of the table. It is held
+exactly as News-Letter articles are -- kind `gazette.article`, in
+`SECONDARY_KINDS`, summarized to its own prompt ("the Gazette reported that ..."),
+with the body withheld from the public page and a link to the live JHU copy.
+
+It is read from the Internet Archive's Wayback Machine, not from JHU. The
+Gazette's search is a Google box under a `robots.txt`-forbidden `/search/`, and
+every JHU host that serves it (`pages.jh.edu`, `gazette.jhu.edu`,
+`hub.jhu.edu`) answers an honestly identified crawler with a Cloudflare 403. The
+archive does not disguise itself to get past that. `lib/gazette.ts` lists each
+year's captured articles from the Wayback CDX index -- the paper lived on three
+sites in three templates, and one article captured under several hosts is one
+key -- fetches each capture's raw bytes, and runs the same phrase test as the
+News-Letter on the article's own text. `lib/gazette-coverage.ts` stores what
+passes through the shared `storeSecondaryArticle` in `lib/coverage.ts`, and
+records refusals in `NewsletterMiss` under the `gazette:` prefix. The stored
+text ends by naming the capture it was read from.
+
+There is no search to narrow the candidates, so every article is read: roughly
+twelve thousand over 1994-2015, at four seconds a request
+(`GAZETTE_REQUEST_DELAY_MS`). `npm run gazette` works oldest year first and stops
+at its article budget (400 by default, `--all` for none); anything stored or
+refused is skipped next time, so repeated runs finish the backfill. There is no
+cron: the paper is not publishing any more.
+
 ### Layout
 
 | Path | What lives there |
@@ -256,7 +285,9 @@ They are still attributed as reporting, never as an SGA record.
 | `config/newsletter.ts` | The other source: phrases searched for, crawl delay, per-run budget, earliest year. |
 | `schema.prisma` | Documents, revisions, annotations, generated sections, citations, sync runs, affiliates. |
 | `lib/` | The pipeline: `drive`, `sync`, `generate`, `ai`, `anchor`, `kinds`, `lineage`, `diff`, `sections`, `passages`, `search`, `integrity`. |
+| `config/gazette.ts` | The third source: Wayback hosts per era, skipped departments, request delay, per-run budget. |
 | `lib/` (the paper) | `newsletter` (reads jhunewsletter.com, no database) and `coverage` (stores what it read). |
+| `lib/` (the Gazette) | `gazette` (lists and parses Wayback captures, no database) and `gazette-coverage` (stores what it read). |
 | `lib/` (forum) | `login`, `ratelimit`, `moderate`, `resend`, `prune` -- the only modules that touch identity, and the reason each keeps so little. |
 | `config/` | Everything meant to be edited: `sga`, `search`, `office-hours`, `forum` (categories, limits), `integrity` (large-removal thresholds). |
 | `server/` | Internal data modules and server actions the pages read: `documents`, `sections`, `archive`, `search`, `community`, `auth`, `forum`. |
@@ -281,6 +312,7 @@ npm run dev          # develop
 npm run sync         # Drive, then new News-Letter coverage; --dry to walk without writing
 npm run reprocess    # re-parse stored text (people, dates, links); no Drive walk
 npm run newsletter   # News-Letter coverage; -- --backfill for every year, --dry to search only
+npm run gazette      # Gazette coverage via the Wayback Machine; -- --year Y, --dry to list only, --all for no budget
 npm run summarize    # restate the documents a sync left over; -- --force to redo
 npm run search       # -- --index to build the search index; -- "a question" to try it
 npm run review       # changes the sync held back; -- --show/--approve/--reject <id>

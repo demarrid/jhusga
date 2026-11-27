@@ -67,6 +67,11 @@ npm run redact:sources -- --withdraw ID
 npm run redact:sources -- --explain ID       # rationale.html: every box and why
 ```
 
+Vercel's CDN keeps a served copy for a day (`Vercel-CDN-Cache-Control`), so
+repeat opens don't use origin transfer. After `--withdraw` or a re-upload,
+purge the CDN cache (project Settings → Caches, or `vercel cache purge`) if
+the old copy must stop being served before then.
+
 For each document, `scripts/source-redact.ts`:
 
 1. takes the source file(s) from `.archive-local/originals` or Drive (a Google

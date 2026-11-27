@@ -126,10 +126,10 @@ function hashContent(content: string): string {
  * site formats dates in Baltimore, and an instant at midnight UTC is the
  * previous evening there.
  */
-function publishedAt(article: NewsletterArticle): Date | null {
-    if (!article.publishedOn) return null;
+function publishedAt(publishedOn: string | null): Date | null {
+    if (!publishedOn) return null;
 
-    const [year, month, day] = article.publishedOn.split("-").map(Number);
+    const [year, month, day] = publishedOn.split("-").map(Number);
     if (!year || !month || !day) return null;
 
     return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
@@ -196,8 +196,38 @@ function searchableText(article: NewsletterArticle): string {
     return [article.headline, article.subhead, ...article.paragraphs].join("\n");
 }
 
+/** One newspaper article, in the shape every paper's ingest hands to storage. */
+export type SecondaryArticleInput = {
+    /** The archive key, e.g. "newsletter:2025/11/<slug>" or "gazette:static/...". */
+    fileId: string;
+    /** Where a reader follows it: the paper's own page. */
+    url: string;
+    headline: string;
+    publishedOn: string | null;
+    /** Headline, deck and body: what the phrase test reads. Never the site's navigation. */
+    searchableText: string;
+    /** The stored text, laid out as the paper's markdown builder lays it out. */
+    content: string;
+    /** The body alone, for the listing blurb. */
+    body: string;
+    kind: string;
+    discoveredVia: string;
+    mimeType: string;
+};
+
+export type StoredSecondaryArticle = {
+    status: "created" | "updated" | "unchanged" | "rejected";
+    sessionNumber: number | null;
+    phrases: string[];
+};
+
 /**
- * Store one article, or say why it was not stored.
+ * Store one newspaper article, or say why it was not stored.
+ *
+ * Shared by every paper the archive reads (the News-Letter here, the Gazette
+ * in lib/gazette-coverage.ts), so that an article from either is kept by the
+ * same phrase test, stored with the same provenance columns and refused the
+ * same way.
  *
  * An article is never held for review the way a Drive document can be. A hold
  * exists because a world-editable Google Doc can be rewritten by a stranger
@@ -205,18 +235,8 @@ function searchableText(article: NewsletterArticle): string {
  * published article has no such failure mode, and `anyoneCanEdit` is written
  * false rather than left null to say so positively.
  */
-async function storeArticle(
-    article: NewsletterArticle,
-    summary: CoverageSummary,
-): Promise<CoverageEvent> {
-    const phrases = matchedPhrases(searchableText(article));
-
-    const base = {
-        url: article.url,
-        headline: article.headline,
-        publishedOn: article.publishedOn,
-        phrases: [...phrases],
-    };
+export async function storeSecondaryArticle(article: SecondaryArticleInput): Promise<StoredSecondaryArticle> {
+    const phrases = matchedPhrases(article.searchableText);
 
     // The paper's engine stems and matches across the whole page, so it offers
     // articles that never use any of these phrases. Fetching was the only way
@@ -231,21 +251,21 @@ async function storeArticle(
             update: { headline: article.headline, checkedAt: new Date() },
         });
 
-        summary.articlesRejected += 1;
-        return { ...base, status: "rejected", sessionNumber: null };
+        return { status: "rejected", sessionNumber: null, phrases: [] };
     }
 
     // Kept after having once been refused, which happens when the phrase list
     // grows or the paper corrected the piece. The refusal must not outlive it.
     await prisma.newsletterMiss.deleteMany({ where: { fileId: article.fileId } });
 
-    const datedAt = publishedAt(article);
+    const datedAt = publishedAt(article.publishedOn);
     // An article dates itself, so its session comes from that date and never
     // from a folder: there is no folder. June is the boundary, so the
     // September-to-May coverage of one session lands on that session.
     const sessionNumber = datedAt ? sessionForDate(datedAt) : null;
+    const found = [...phrases];
 
-    const content = articleMarkdown(article);
+    const content = article.content;
     const contentHash = hashContent(content);
 
     const existing = await prisma.document.findUnique({
@@ -255,17 +275,17 @@ async function storeArticle(
 
     const stored = {
         source: article.url,
-        mimeType: NEWSLETTER_MIME,
+        mimeType: article.mimeType,
         title: article.headline,
         // Shown as printed. There is no tidier name for a headline, and
         // lib/titles.ts is told not to invent one; see `canonicalTitle`.
         displayTitle: article.headline,
-        description: deriveDescription(articleBody(article)),
+        description: deriveDescription(article.body),
         content,
         contentHash,
-        kind: "newsletter.article",
+        kind: article.kind,
         folderPath: "",
-        discoveredVia: NEWSLETTER_DISCOVERED_VIA,
+        discoveredVia: article.discoveredVia,
         sessionNumber,
         // Deliberately empty. A lineage key groups the copies of one document
         // that each session adopts, and two articles about two years of the
@@ -297,7 +317,7 @@ async function storeArticle(
             where: { id: existing.id },
             data: { lastSyncedAt: stored.lastSyncedAt, matchedPhrases: stored.matchedPhrases },
         });
-        return { ...base, status: "unchanged", sessionNumber };
+        return { status: "unchanged", sessionNumber, phrases: found };
     }
 
     const document = await prisma.$transaction(async tx => {
@@ -326,12 +346,8 @@ async function storeArticle(
 
     await indexDocumentPassages(document.id, content);
 
-    if (!existing) {
-        summary.articlesCreated += 1;
-        return { ...base, status: "created", sessionNumber };
-    }
+    if (!existing) return { status: "created", sessionNumber, phrases: found };
 
-    summary.articlesUpdated += 1;
     await reanchorDocument(document.id, content);
     // Including "empty", for the reason given where recordDocument does the
     // same: a verdict of nothing-to-restate was a reading of the old text.
@@ -340,7 +356,37 @@ async function storeArticle(
         data: { status: "stale" },
     });
 
-    return { ...base, status: "updated", sessionNumber };
+    return { status: "updated", sessionNumber, phrases: found };
+}
+
+/** Store one News-Letter article and count the outcome. */
+async function storeArticle(
+    article: NewsletterArticle,
+    summary: CoverageSummary,
+): Promise<CoverageEvent> {
+    const stored = await storeSecondaryArticle({
+        fileId: article.fileId,
+        url: article.url,
+        headline: article.headline,
+        publishedOn: article.publishedOn,
+        searchableText: searchableText(article),
+        content: articleMarkdown(article),
+        body: articleBody(article),
+        kind: "newsletter.article",
+        discoveredVia: NEWSLETTER_DISCOVERED_VIA,
+        mimeType: NEWSLETTER_MIME,
+    });
+
+    if (stored.status === "rejected") summary.articlesRejected += 1;
+    if (stored.status === "created") summary.articlesCreated += 1;
+    if (stored.status === "updated") summary.articlesUpdated += 1;
+
+    return {
+        url: article.url,
+        headline: article.headline,
+        publishedOn: article.publishedOn,
+        ...stored,
+    };
 }
 
 /**

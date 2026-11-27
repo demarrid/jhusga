@@ -396,15 +396,23 @@ function layOut(events: FlagEvent[], width: number, maxHeight = 240) {
     const start = events[0]!.start;
     const span = events.at(-1)!.start - start || 1;
     const toX = (time: number) => 20 + ((time - start) / span) * (width - 40);
-    const flags = layoutFlags({ events, toX, usable: width, maxAbove: maxHeight, maxBelow: maxHeight, measure: flagMeasure, compact: false });
+    const flags = layoutFlags({ events, toX, maxAbove: maxHeight, maxBelow: maxHeight, measure: flagMeasure, compact: false });
     return { flags, maxHeight, width };
 }
 
+/** The same layout drawn zoomed in by `factor`, as the page does between layout steps. */
+function stretched(layout: ReturnType<typeof layOut>, factor: number) {
+    const flags = layout.flags.map((flag) => {
+        const poleX = 20 + (flag.poleX - 20) * factor;
+        return { ...flag, poleX, left: poleX - 1 };
+    });
+    return { ...layout, flags };
+}
+
 // Each side of the axis is its own stack: boxes and poles only meet flags on the same side.
-function assertClear({ flags, maxHeight, width }: { flags: Flag[]; maxHeight: number; width: number }, name: string) {
+function assertClear({ flags, maxHeight }: { flags: Flag[]; maxHeight: number }, name: string) {
     for (const flag of flags) {
         assert.ok(flag.y >= 0 && flag.y + flag.height <= maxHeight, `${name}: ${flag.key} fits the height`);
-        assert.ok(flag.poleX >= -flag.width && flag.poleX <= width, `${name}: ${flag.key}'s pole is near the track`);
         assert.equal(flag.left, flag.poleX - 1, `${name}: ${flag.key} starts at its pole and is clipped, not pushed in`);
         for (const other of flags) {
             if (other === flag || other.side !== flag.side) continue;
@@ -426,8 +434,8 @@ assertClear(sparse, "sparse");
 assert.equal(sparse.flags.length, 4);
 assert.ok(sparse.flags.every((flag) => flag.type === "event" && flag.mode === "full" && flag.descLines > 0));
 
-// Neighbours that would stack fan out to both sides of the axis.
-const pair = layOut(flagEvents(2, 1), 1400);
+// Neighbours whose flags would overlap fan out to both sides of the axis.
+const pair = layOut(flagEvents(2, 1), 200);
 assert.deepEqual(new Set(pair.flags.map((flag) => flag.side)), new Set(["above", "below"]));
 
 // Crowded timelines fall back to lists, labels, and counts, but never overlap and still account for every event.
@@ -436,4 +444,6 @@ for (const [count, width] of [[40, 1400], [150, 1400], [400, 1400], [150, 360]] 
     const shown = assertClear(crowded, `${count} events at ${width}px`);
     assert.ok(crowded.flags.some((flag) => flag.type !== "event" || flag.mode !== "full"), `${count} events are simplified`);
     assert.ok(shown >= count * 0.9, `${count} events at ${width}px: ${shown} are on a flag`);
+    // Zooming in up to the next layout step only spreads the flags apart.
+    for (const factor of [1.05, 1.19]) assertClear(stretched(crowded, factor), `${count} events at ${width}px, ${factor}x`);
 }

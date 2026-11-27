@@ -61,6 +61,9 @@ assert.deepEqual(plan.map(b => [b.page, b.method, b.box.map(Math.round)]), [[1, 
 // The check that runs on the finished copy.
 assert.deepEqual(remainingFindings([page([typed]), page([])]), [{page: 1, kind: 'financial identifier'}]);
 assert.deepEqual(remainingFindings([page([{source: 'ocr', words: words('Social security number: [blacked out]')}])]), []);
+// The re-read keeps a business's number that the plan left alone, and still reports a person's.
+assert.deepEqual(remainingFindings([page(shop)]), []);
+assert.deepEqual(remainingFindings([page(home)]).map(f => f.kind), ['phone number']);
 
 // Source files: listed in the footer, else the document's own.
 const id = '1NRkwj-eASJ_AG6JSIF3vGII42Kw4iXL4', other = '1ppcLSn_xI7bVLl0aGo1lCZJae-55TIMI';

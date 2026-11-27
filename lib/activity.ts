@@ -320,6 +320,7 @@ export function legislationLane(input: {
     if (
         kind.startsWith("minutes.") ||
         kind.startsWith("newsletter.") ||
+        kind.startsWith("gazette.") ||
         kind.startsWith("guiding.") ||
         kind.startsWith("judicial.")
     ) {

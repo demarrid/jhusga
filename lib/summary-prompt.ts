@@ -126,12 +126,34 @@ Grounding:
 
 ${REPLY_FORMAT}`;
 
+/**
+ * The same instructions for a Gazette article.
+ *
+ * Derived from the News-Letter prompt rather than written out again, so the
+ * two cannot drift apart on anything but the paper's name. The one thing worth
+ * saying differently is who the paper was: the Gazette was the university's
+ * own newspaper, so its account of the student government is the
+ * administration's view of it, which is still reporting and still not an SGA
+ * record. Its own version, so writing it did not invalidate a single
+ * News-Letter summary.
+ */
+const GAZETTE_SYSTEM_PROMPT = SECONDARY_SYSTEM_PROMPT
+    .replace(
+        "article from The Johns Hopkins News-Letter, the student newspaper of Johns Hopkins University,",
+        "article from The Johns Hopkins Gazette, the newspaper the university administration published for its faculty and staff,",
+    )
+    .replaceAll("a News-Letter article", "a Gazette article")
+    .replaceAll("the News-Letter", "the Gazette");
+const GAZETTE_PROMPT_VERSION = "gazette-summary-v1";
+
 /** Which prompt a document of this kind is read under. */
 export function summarySystemPrompt(kind: string): string {
+    if (kind === "gazette.article") return GAZETTE_SYSTEM_PROMPT;
     return isSecondaryKind(kind) ? SECONDARY_SYSTEM_PROMPT : SYSTEM_PROMPT;
 }
 
 /** The version of that prompt, for the cache fingerprint. */
 export function summaryPromptVersion(kind: string): string {
+    if (kind === "gazette.article") return GAZETTE_PROMPT_VERSION;
     return isSecondaryKind(kind) ? SECONDARY_PROMPT_VERSION : PROMPT_VERSION;
 }

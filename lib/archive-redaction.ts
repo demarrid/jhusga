@@ -108,7 +108,8 @@ const TOLL_FREE = new Set(["800", "833", "844", "855", "866", "877", "888"]);
 const BUSINESS_CONTEXT = /\b(?:inc\.?|llc|ltd|company|co\.|restaurant|hotel|cater(?:ing|er)|stadium|arena|ballpark|yards|theat(?:re|er)|museum|church|synagogue|consulting|tickets|box office|reservations|rentals?|showroom|invoice|remit to)\b|www\.|https?:\/\/|\binfo@|\bfax\b|fax\s*[:#.]/i;
 /** Text naming a business, venue or website, so an address or number in it is the business's. */
 export const isBusinessContext = (text: string) => BUSINESS_CONTEXT.test(text);
-const PERSONAL_PHONE_CONTEXT = /\b(?:cell|mobile|home phone|personal|my (?:number|phone)|text me|call me)\b/i;
+// "Personal" only next to a number: "Personal Automobiles" is a heading, not a phone.
+const PERSONAL_PHONE_CONTEXT = /\b(?:cell|mobile|home phone|personal (?:phone|cell|number|line|contact)|my (?:number|phone)|text me|call me)\b/i;
 const OFFICE_PHONE_CONTEXT = /\b(?:fax|facsimile|office|department|dept|university|hopkins|cent(?:er|re)|suite|ext\.?|extension|hotline|helpline|main line|services|police|security|switchboard|reservations|box office|tickets|restaurant|hotel|cater(?:ing|er)|inc\.?|llc|company|co\.|zoom|dial|meeting id|for (?:more )?information|for details|directions|rentals?|showroom|invoice|remit to)\b|www\.|https?:\/\/|\binfo@|fax\s*[:#.]/i;
 
 /** A street address carrying an apartment or unit, anywhere in the text. */

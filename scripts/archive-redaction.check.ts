@@ -45,6 +45,10 @@ assert.equal(r('Office of Student Activities | Baltimore, MD 21218 | 410-516-820
 assert.equal(r('Join by phone\n+1 253 555 0100 US (Tacoma)\nMeeting ID: 123 4567 8901'),'Join by phone\n+1 253 555 0100 US (Tacoma)\nMeeting ID: 123 4567 8901');
 assert.equal(r('Mount Vernon Hotel\nBaltimore, MD 21201\n(410) 555-0123\nwww.example.com'),'Mount Vernon Hotel\nBaltimore, MD 21201\n(410) 555-0123\nwww.example.com');
 assert.equal(r('Reach me on my cell, 410-516-0001'),'Reach me on my cell, [REDACTED: phone number]');
+// A heading that happens to say "Personal" is not a personal number.
+assert.equal(r('•  Contact the CSC office during business hours (410) 555-0123 •  Contact your advisor Personal Automobiles:'),
+    '•  Contact the CSC office during business hours (410) 555-0123 •  Contact your advisor Personal Automobiles:');
+assert.equal(r('Personal phone: (410) 555-0123'),'Personal phone: [REDACTED: phone number]');
 assert.equal(r('Budget line 2013-14 allocated $4,500.00 to account 1234567890'),'Budget line 2013-14 allocated $4,500.00 to account 1234567890');
 
 // A label's value is the number, not the rest of the line.

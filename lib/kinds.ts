@@ -41,6 +41,7 @@ export const DOCUMENT_KINDS = [
     "presentation",
     "template",
     "newsletter.article",
+    "gazette.article",
     "minutes.class_council",
     "minutes.other",
     "notes.meeting",
@@ -89,6 +90,7 @@ export function isDocumentKind(value: string): value is DocumentKind {
  */
 const KIND_LABELS: Partial<Record<DocumentKind, string>> = {
     "newsletter.article": "News-Letter article",
+    "gazette.article": "Gazette article",
     "judicial.writ_of_certiorari": "Judiciary / Writ of certiorari",
     "judicial.writ_of_mandamus": "Judiciary / Writ of mandamus",
     "judicial.advisory_opinion": "Judiciary / Advisory opinion",
@@ -170,8 +172,18 @@ export function documentCategoryFilter(category?: string) {
  * them: see `meetingFor`, `canonicalTitle`, and the corpus passes in
  * lib/sync.ts. lib/search.ts keeps them in a current-focus question: they
  * are reporting, not superseded editions of the rules.
+ *
+ * The same holds for The Johns Hopkins Gazette, the university's own paper,
+ * which reported on the student government from the administration's side.
  */
-export const SECONDARY_KINDS: DocumentKind[] = ["newsletter.article"];
+export const SECONDARY_KINDS: DocumentKind[] = ["newsletter.article", "gazette.article"];
+
+/** The paper a secondary kind was published in, as a reader would name it. */
+export function secondaryPublisher(kind: string | null | undefined): { name: string; short: string } | null {
+    if (kind === "newsletter.article") return { name: "The Johns Hopkins News-Letter", short: "the News-Letter" };
+    if (kind === "gazette.article") return { name: "The Johns Hopkins Gazette", short: "the Gazette" };
+    return null;
+}
 
 export function isSecondaryKind(kind: string | null | undefined): boolean {
     return (SECONDARY_KINDS as readonly string[]).includes(kind ?? "");

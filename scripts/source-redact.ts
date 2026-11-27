@@ -15,8 +15,8 @@
  *       was placed. Uses the cached OCR; rebuilds and stores nothing.
  *
  * `--flagged` is every document whose stored text the personal-data filter
- * changed (it carries a "[REDACTED: ...]" placeholder), News-Letter articles
- * aside. Until an approved copy exists the document page withholds the Drive
+ * changed (it carries a "[REDACTED: ...]" placeholder), News-Letter and
+ * Gazette articles aside. Until an approved copy exists the document page withholds the Drive
  * link for these, so the original is not one click away.
  *
  * For each document: download the source file(s) (or use .archive-local/
@@ -216,7 +216,7 @@ async function main() {
         const docs: Doc[] = ids.length
             ? await prisma.document.findMany({ where: { id: { in: ids } }, select })
             : process.argv.includes("--flagged")
-                ? (await prisma.document.findMany({ where: { discoveredVia: { not: "newsletter" }, content: { contains: "[REDACTED: " } }, select }))
+                ? (await prisma.document.findMany({ where: { discoveredVia: { notIn: ["newsletter", "gazette"] }, content: { contains: "[REDACTED: " } }, select }))
                 : [];
         if (!docs.length && !argValues("--approve").length && !argValues("--withdraw").length) {
             throw new Error("Usage: source-redact.ts (--document ID ... | --flagged) [--upload] | --approve ID | --withdraw ID");

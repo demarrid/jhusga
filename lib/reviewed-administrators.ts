@@ -65,8 +65,8 @@ export function findReviewedMentions(
     roster: RosterEntry[],
     alreadyCredited: ReadonlySet<string> = new Set(),
 ): ReviewedMention[] {
-    // Articles are the News-Letter's reporting, not the SGA's own record.
-    if (document.kind === "newsletter.article") return [];
+    // Articles are a newspaper's reporting, not the SGA's own record.
+    if (document.kind === "newsletter.article" || document.kind === "gazette.article") return [];
 
     const span = documentSpan(document);
     const lines = [document.title, ...document.content.split(/\r?\n|\v/)];

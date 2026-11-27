@@ -20,8 +20,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ doc
         "Content-Length": String(copy.bytes.length),
         "Content-Disposition": `inline; filename="${name.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`,
         "ETag": `"${copy.sha256}"`,
-        // Short, so withdrawing a copy takes effect quickly.
+        // Browsers recheck after five minutes (a 304 against the ETag). Vercel's
+        // CDN keeps the file for a day, so repeat opens don't run this function
+        // or count as origin transfer; withdrawing or replacing a copy reaches
+        // readers within a day unless the CDN cache is purged.
         "Cache-Control": "public, max-age=300",
+        "Vercel-CDN-Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
         "X-Content-Type-Options": "nosniff",
         "X-Robots-Tag": "noindex",
         // No CSP sandbox: browsers refuse to run their PDF viewer under one.

@@ -22,7 +22,7 @@ import {
 } from "@/config/history";
 import { sessionOrdinal } from "@/config/session";
 
-import { FLAG_METRICS, layoutFlags, type Flag, type Measure } from "./flags";
+import { flagTime, layoutFlags, type Flag, type Measure } from "./flags";
 import styles from "./Timeline.module.css";
 
 export type TimelineEvent = {
@@ -62,6 +62,8 @@ const YEAR = 365.2425 * DAY;
 const MONTH = YEAR / 12;
 const MIN_SPAN = 60 * DAY;
 const REVEAL_SPAN = 4 * YEAR;
+/** Flags are re-laid out this many times per doubling of the zoom. */
+const ZOOM_STEPS = 4;
 const STAGE_HEIGHT = 580;
 const COMPACT_STAGE_HEIGHT = 500;
 /** Shortest pole, so even the nearest flag stands clear of the markers. */
@@ -383,6 +385,32 @@ function sessionBands(view: View): Band[] {
     return bands;
 }
 
+type LayoutInput = {
+    events: TimelineEvent[];
+    origin: number;
+    maxAbove: number;
+    maxBelow: number;
+    measure: Measure;
+    compact: boolean;
+};
+
+/** Each zoom step's layout for one set of inputs, so zooming back and forth lays nothing out twice. */
+const layoutCache = new WeakMap<LayoutInput, Map<number, Flag<TimelineEvent>[]>>();
+
+function cachedLayout(input: LayoutInput, scale: number): Flag<TimelineEvent>[] {
+    let byScale = layoutCache.get(input);
+    if (!byScale) {
+        byScale = new Map();
+        layoutCache.set(input, byScale);
+    }
+    let flags = byScale.get(scale);
+    if (!flags) {
+        flags = layoutFlags({ ...input, toX: (time) => (time - input.origin) * scale });
+        byScale.set(scale, flags);
+    }
+    return flags;
+}
+
 const markerRadius = (event: TimelineEvent) => (event.weight === 3 ? 7 : event.weight === 2 ? 5.5 : 4.5);
 
 function histogram(events: TimelineEvent[], lanes: HistoryThread[], domain: Domain, bins: number) {
@@ -486,24 +514,39 @@ export default function Timeline({ events, threads, details, initialEventId }: P
             visible.filter((event) => {
                 const from = ((event.start - view.start) / view.span) * width;
                 const to = event.end ? ((event.end - view.start) / view.span) * width : from;
-                // Wide enough on the left that a flag whose pole is off screen still shows its clipped box.
-                return to >= -FLAG_METRICS.width - 40 && from <= width + 40;
+                return to >= -40 && from <= width + 40;
             }),
         [visible, view, width],
     );
-    const flags = useMemo(
-        () =>
-            layoutFlags({
-                events: inView,
-                toX: (time) => ((time - view.start) / view.span) * width,
-                usable: width - cover,
-                maxAbove: axisY - TOP_PAD - POLE_MIN,
-                maxBelow: stageHeight - TICK_AREA - axisY - POLE_MIN,
-                measure,
-                compact,
-            }),
-        [inView, view, width, cover, stageHeight, axisY, measure, compact],
+    /*
+     * Flags are laid out for the whole timeline at a zoom rounded down to a quarter
+     * of a doubling, in pixels from the domain's start. Panning never re-lays them,
+     * and a zoom only does at each step. Drawing at the real zoom only spreads poles
+     * further apart than they were laid out, which cannot create an overlap.
+     */
+    const layoutScale = 2 ** (Math.floor(Math.log2(width / view.span) * ZOOM_STEPS) / ZOOM_STEPS);
+    const layoutInput = useMemo(
+        () => ({
+            events: visible,
+            origin: domain.start,
+            maxAbove: axisY - TOP_PAD - POLE_MIN,
+            maxBelow: stageHeight - TICK_AREA - axisY - POLE_MIN,
+            measure,
+            compact,
+        }),
+        [visible, domain.start, stageHeight, axisY, measure, compact],
     );
+    const layout = useMemo(() => cachedLayout(layoutInput, layoutScale), [layoutInput, layoutScale]);
+    // Only flags that reach into the track are drawn.
+    const flags: Flag<TimelineEvent>[] = [];
+    for (const flag of layout) {
+        const poleX = toX(flagTime(flag));
+        if (poleX - 1 + flag.width < 0 || poleX - 1 > width) continue;
+        const { group } = flag;
+        const x0 = toX(group.events[0]!.start);
+        const x1 = toX(group.events.at(-1)!.start);
+        flags.push({ ...flag, poleX, left: poleX - 1, group: { ...group, x0, x1 } });
+    }
     const ticks = useMemo(() => axisTicks(view, width), [view, width]);
     const bands = useMemo(() => sessionBands(view), [view]);
     const bins = clamp(Math.floor(width / 6), 24, 240);

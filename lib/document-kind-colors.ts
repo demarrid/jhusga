@@ -34,6 +34,7 @@ const DOCUMENT_KIND_COLORS: Record<DocumentKind, string> = {
     presentation: "#E87D9D",
     template: "#8D8274",
     "newsletter.article": "#632E18",
+    "gazette.article": "#1F3F73",
     "minutes.class_council": "#64748B",
     "minutes.other": "#64748B",
     "notes.meeting": "#64748B",

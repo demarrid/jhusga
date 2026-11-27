@@ -432,7 +432,9 @@ function extractionUserPrompt(document: CandidateDocument, excerpt: string): str
     const source =
         document.discoveredVia === "newsletter"
             ? "Article in The Johns Hopkins News-Letter (secondary reporting)"
-            : "SGA record";
+            : document.discoveredVia === "gazette"
+                ? "Article in The Johns Hopkins Gazette, the university's newspaper (secondary reporting)"
+                : "SGA record";
     const dated = formatDate(document.datedAt) ?? "undated";
     const partial = excerpt.length < document.content.length ? ' excerpted="true"' : "";
     const prior = document.priorEdition;

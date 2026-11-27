@@ -317,8 +317,16 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
                 "say was confirmed; \"confirmed as\" when the Senate approved someone an officer nominated; " +
                 "\"appointed as\" when an officer named them without a vote; never \"selected\". The office already held is the highest they held " +
                 "on that date (an executive or Senate office, then a committee chair, then their Senate seat), " +
-                "never the office being taken; leave it out only when nothing given supplies one. The new " +
-                "office takes its full title, never a short form such as \"Finance Chair\" or \"IA Chair\".",
+                "never the office being taken; leave it out only when nothing given supplies one. Both offices " +
+                "take their full titles, never a short form such as \"Finance Chair\", \"Chair of Finance\", " +
+                "\"IA Chair\", \"Internal Affairs Chair\", or \"Vice President\" for Vice President of the Senate, " +
+                "and an RSO senator's seat keeps \"RSO\" (\"Religious and Spiritual Life RSO Senator\"). Such a " +
+                "title is exempt from the twelve-word limit: write it in full however long it runs, and never " +
+                "shorten an office to fit.",
+            "Someone sworn in, seated, or elected to a Senate seat is named with the seat's title as the " +
+                "roster gives it, in titles and prose alike: \"Transfer Students Caucus Senator Lauryn Carr " +
+                "sworn in\", never \"sworn in as transfer student caucus representative\", even where the " +
+                "records of the time say representative.",
             "Every person named in a title or in prose carries the office they held then, before the name: " +
                 "\"Finance Chair Peter Tarpley introduced\", \"Internal Affairs appoints Religious and Spiritual " +
                 "Life RSO Senator Cole Liazos-Coffey vice chair\", \"Sophomore Class President Veda Kommineni " +
@@ -490,6 +498,16 @@ export const REVIEWED_FINDINGS: ReviewedFinding[] = [
         kind: "policy",
         weight: 2,
         reason: "MINUTES 11 records the same vote as \"Voting for chair of IA ... Confirmed unanimously\"; it is the 11/3 election, not a separate confirmation.",
+    },
+    {
+        documentId: "4c0c38ff-f5ec-4b2c-b547-5f2e30dca92e",
+        quotePattern: /Lauryn as transfer student caucus representative/,
+        quote: "Swearing in of Shreemann as VP and Lauryn as transfer student caucus representative",
+        summary: "Student Body Vice President Shreemann Patel and Transfer Students Caucus Senator Lauryn Carr were sworn in.",
+        thread: "officers",
+        kind: "policy",
+        weight: 1,
+        reason: "The minutes say \"transfer student caucus representative\", but the seat is a Caucus Senator: the Sept 18, 2026 constitution replaced caucus chairs with Caucus Senators, and the 114th roster lists Lauryn Carr as \"Transfer Students Caucus Senator\". Demarri asked for the senator title on 11/27/26.",
     },
     {
         documentId: "26a7e82c-1763-4dcf-9d33-4a004963b169",

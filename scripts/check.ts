@@ -91,6 +91,7 @@ const SUITES = [
     "history-generation",
     "newsletter",
     "newsletter-ingest",
+    "gazette",
     "office",
     "passages",
     "search",

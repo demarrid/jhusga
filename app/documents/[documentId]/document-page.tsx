@@ -21,7 +21,7 @@ import { largeRemoval } from "@/lib/integrity";
 import { proseLine } from "@/lib/cite";
 import { compareNamesBySurname, contributorRoleLabel, contributorRoleOrder } from "@/lib/contributors";
 import { documentDateText, formatDate } from "@/lib/dates";
-import { documentKindLabel, isComparableKind, isSecondaryKind } from "@/lib/kinds";
+import { documentKindLabel, isComparableKind, isSecondaryKind, secondaryPublisher } from "@/lib/kinds";
 import { documentSections } from "@/lib/outline";
 import { meetingOutline } from "@/lib/meeting-outline";
 import { relevantDocuments, uniqueUnresolvedLinks } from "@/lib/relevant-documents";
@@ -186,8 +186,8 @@ export async function DocumentPageBody({ documentId, version, comparing = false 
               */}
             {isSecondaryKind(document.kind) && (
                 <p className={styles.fileNote}>
-                    {`Reporting about the SGA, not a record of it: The Johns Hopkins
-                    News-Letter published this and the SGA did not write it, file it,
+                    {`Reporting about the SGA, not a record of it: ${secondaryPublisher(document.kind)?.name ?? "a newspaper"}
+                    published this and the SGA did not write it, file it,
                     or approve it. The archive holds it because the article itself
                     uses the ${phraseList(document.matchedPhrases)}.`}
                 </p>
@@ -295,7 +295,7 @@ export async function DocumentPageBody({ documentId, version, comparing = false 
             <div className={secondary ? `${styles.readerLayout} ${styles.noBody}` : styles.readerLayout}>
                 {secondary ? (
                 <article className={styles.documentPane}>
-                    <p className={styles.withheld}>This content is available only on the News-Letter.</p>
+                    <p className={styles.withheld}>This content is available only on {secondaryPublisher(document.kind)?.short ?? "the publisher's site"}.</p>
                 </article>
                 ) : (
                 <article className={styles.documentPane}>
@@ -450,6 +450,9 @@ function originalLabel(source: string): string {
     if (/drive\.google\.com/i.test(source)) return "Open the original in Google Drive";
     // "Read" rather than "open", and named: the publisher is the point.
     if (/jhunewsletter\.com/i.test(source)) return "Read this article in The News-Letter";
+    if (/(?:pages\.jh\.edu\/gazette|gazette\.jhu\.edu|hub\.jhu\.edu\/gazette)\//i.test(source)) {
+        return "Read this article in The Gazette";
+    }
     return "Open the original";
 }
 

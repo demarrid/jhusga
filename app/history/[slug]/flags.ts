@@ -90,6 +90,7 @@ const GROUP_GAP_PX = 44;
 /** And a group spans no more than this. */
 const GROUP_SPAN_PX = 170;
 const MAX_ROUNDS = 60;
+const MAX_UPGRADES = 48;
 
 export function lineCount(text: string, width: number, font: string, measure: Measure, max: number): number {
     if (!text) return 0;
@@ -200,11 +201,19 @@ type Placement = { y: number; side: FlagSide } | null;
 function lowest(flag: Flag, placed: Placed[], maxHeight: number): number | null {
     const left = flag.left;
     const right = flag.left + flag.width;
-    const near = placed.filter(
-        (other) =>
+    // Flags are placed right to left, so each side's list runs right to left too and only its
+    // tail can reach this flag: stop at the first one that starts past this flag's right edge.
+    const near: Placed[] = [];
+    for (let index = placed.length - 1; index >= 0; index -= 1) {
+        const other = placed[index]!;
+        if (other.left >= right + GAP_X && other.pole > right + POLE_CLEAR) break;
+        if (
             (other.left < right + GAP_X && other.right > left - GAP_X) ||
-            (other.pole >= left - POLE_CLEAR && other.pole <= right + POLE_CLEAR),
-    );
+            (other.pole >= left - POLE_CLEAR && other.pole <= right + POLE_CLEAR)
+        ) {
+            near.push(other);
+        }
+    }
     const candidates = [0, ...near.map((other) => other.top + GAP_Y)].sort((a, b) => a - b);
     for (const y of candidates) {
         const top = y + flag.height;
@@ -255,54 +264,93 @@ function place(flags: Flag[], maxAbove: number, maxBelow: number): Placement[] {
     }
     return placements;
 }
+
+/** The time a flag's pole stands at: its event, or the first event of its group. */
+export const flagTime = (flag: Flag) => (flag.type === "event" ? flag.event.start : flag.group.events[0]!.start);
+
+/**
+ * Lays out every event, not just those in view, so the result depends only on
+ * the zoom: panning slides it along without moving any flag. `toX` must be a
+ * linear scale; positions it gives are in that scale's own pixels.
+ */
 export function layoutFlags<E extends FlagEvent>(options: {
-    /** Visible events, in date order. */
+    /** Every visible event, in date order. */
     events: E[];
     toX: (time: number) => number;
-    /** Width of the track not covered by the detail panel. */
-    usable: number;
     /** Room above and below the axis for flags, past the shortest pole. */
     maxAbove: number;
     maxBelow: number;
     measure: Measure;
     compact: boolean;
 }): Flag<E>[] {
-    const { toX, usable, maxAbove, maxBelow, measure, compact } = options;
-    const events = options.events.filter((event) => {
-        const x = toX(event.start);
-        // A flag whose pole is just off the left edge still shows the part of its box that is in view.
-        return x >= -(compact ? FLAG_METRICS.compactWidth : FLAG_METRICS.width) && x <= usable;
-    });
-    const groups = groupEvents(events, toX);
+    const { events, toX, maxAbove, maxBelow, measure, compact } = options;
+    const reach = (compact ? FLAG_METRICS.compactWidth : FLAG_METRICS.width) + GAP_X + POLE_CLEAR;
+    // Groups further apart than a flag's width can never touch, so each run of nearer ones
+    // is laid out on its own: zoomed in, that is most events alone.
+    const stretches: FlagGroup<E>[][] = [];
+    let end = Number.NEGATIVE_INFINITY;
+    for (const group of groupEvents(events, toX)) {
+        if (group.x0 > end) stretches.push([]);
+        stretches.at(-1)!.push(group);
+        end = Math.max(end, group.x1 + reach);
+    }
+    return stretches.flatMap((groups) => layoutStretch(groups, toX, maxAbove, maxBelow, measure, compact));
+}
+
+function layoutStretch<E extends FlagEvent>(
+    groups: FlagGroup<E>[],
+    toX: (time: number) => number,
+    maxAbove: number,
+    maxBelow: number,
+    measure: Measure,
+    compact: boolean,
+): Flag<E>[] {
     const levels = groups.map(() => 0);
     const reach = compact ? FLAG_METRICS.compactWidth : FLAG_METRICS.width;
+    const indexOf = new Map(groups.map((group, index) => [group, index]));
+    // A group's flags at a level never change, so each is built once.
+    const built = groups.map(() => new Map<number, Flag<E>[]>());
+    const build = () =>
+        groups.flatMap((group, index) => {
+            const level = levels[index]!;
+            let flags = built[index]!.get(level);
+            if (!flags) {
+                flags = shapes(group, level, toX, measure, compact);
+                built[index]!.set(level, flags);
+            }
+            return flags;
+        });
 
     let flags: Flag<E>[] = [];
     let heights: Placement[] = [];
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
-        flags = groups.flatMap((group, index) => shapes(group, levels[index]!, toX, measure, compact));
+        flags = build();
         heights = place(flags, maxAbove, maxBelow);
         const failed = new Set<FlagGroup>();
         heights.forEach((height, index) => height === null && failed.add(flags[index]!.group));
         if (failed.size === 0) break;
 
         // Simplify the most detailed group near each failure, the busiest first, so crowding is
-        // resolved where it is rather than by whichever flag happened to be placed last.
+        // resolved where it is rather than by whichever flag happened to be placed last. Groups
+        // are in date order, so the search walks out from the failure only as far as a flag reaches.
         const simplify = new Set<number>();
         for (const group of failed) {
+            const home = indexOf.get(group as FlagGroup<E>)!;
             let best = -1;
-            groups.forEach((other, index) => {
+            const consider = (index: number) => {
+                const other = groups[index]!;
                 if (levels[index]! >= maxLevel(other)) return;
-                if (other.x1 + reach < group.x0 || other.x0 > group.x1 + reach) return;
                 if (
                     best < 0 ||
                     levels[index]! < levels[best]! ||
                     (levels[index] === levels[best] && other.events.length > groups[best]!.events.length) ||
-                    (levels[index] === levels[best] && other.events.length === groups[best]!.events.length && other === group)
+                    (levels[index] === levels[best] && other.events.length === groups[best]!.events.length && index === home)
                 ) {
                     best = index;
                 }
-            });
+            };
+            for (let index = home; index >= 0 && groups[index]!.x1 + reach >= group.x0; index -= 1) consider(index);
+            for (let index = home + 1; index < groups.length && groups[index]!.x0 <= group.x1 + reach; index += 1) consider(index);
             if (best >= 0) simplify.add(best);
         }
         if (simplify.size === 0) break;
@@ -311,16 +359,19 @@ export function layoutFlags<E extends FlagEvent>(options: {
 
     // Simplifying in batches overshoots, so give detail back wherever it still fits: weightier
     // and smaller groups first.
-    const build = () => groups.flatMap((group, index) => shapes(group, levels[index]!, toX, measure, compact));
     const fits = (candidate: Flag<E>[]) => place(candidate, maxAbove, maxBelow).every((height) => height !== null);
     if (heights.every((height) => height !== null)) {
         const priority = groups
             .map((group, index) => ({ index, weight: Math.max(...group.events.map((event) => event.weight)), size: group.events.length }))
             .sort((a, b) => b.weight - a.weight || a.size - b.size || a.index - b.index);
-        for (let pass = 0; pass < 3; pass += 1) {
+        let attempts = 0;
+        for (let pass = 0; pass < 3 && attempts < MAX_UPGRADES; pass += 1) {
             let improved = false;
             for (const { index } of priority) {
                 if (levels[index] === 0) continue;
+                // Each try re-places the whole stretch; past this many, a long crowded stretch
+                // keeps the simpler flags rather than stall a zoom.
+                if ((attempts += 1) > MAX_UPGRADES) break;
                 levels[index]! -= 1;
                 const candidate = build();
                 if (fits(candidate)) {
