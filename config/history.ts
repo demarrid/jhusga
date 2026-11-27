@@ -301,7 +301,10 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
             "Copies and editions of the same governing document from one year, and the bill, minutes, and " +
                 "reporting on the same change, are one event.",
             "An officer announcing a resignation or departure from an office or from the student government " +
-                "is an Officers and leadership event, never a mere discussion.",
+                "is an Officers and leadership event, never a mere discussion. So is a record that an officer " +
+                "was impeached, even one noted in passing.",
+            "\"Executive Board\" is a body, never an office in front of a name: give the person's own office " +
+                "(\"Director of Research Jason Shumsky\"), or none.",
             "One election and its results, one nomination and its confirmation, and one impeachment with " +
                 "its trial and outcome are each one event. Titles name the person with the office, either " +
                 "office first (\"Executive President Jane Doe resigns\", \"Chief Justice Jane Doe sworn in\") " +
@@ -392,6 +395,8 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
             // Bodies inside the SGA go by their own names; a document title such as
             // "112th SGA Senate Meeting" is left alone.
             { pattern: "\\bSGA Senate\\b(?! [Mm]eeting)", replacement: "Senate" },
+            // "Executive Board Jason Shumsky": a body is not an office.
+            { pattern: "\\bExecutive Board (?=[A-Z][a-z]+ [A-Z])", replacement: "" },
         ],
     },
 ];
@@ -415,6 +420,36 @@ export type ReviewedFinding = {
  * so they outlive re-extraction, which would otherwise repeat the misreading.
  */
 export const REVIEWED_FINDINGS: ReviewedFinding[] = [
+    {
+        documentId: "d1592e53-4638-49a0-8d4a-92a45f133653",
+        quotePattern: /Peter Jackson is technically impeached/,
+        quote: "Peter Jackson is technically impeached due to attendance issues.",
+        summary: "A point of information noted that Senior Class Senator Peter Jackson was technically impeached because of attendance issues.",
+        thread: "officers",
+        kind: "policy",
+        weight: 2,
+        reason: "The 3/31/26 GBM #25 minutes record it; re-extraction stopped picking the line up. The 113th roster lists him as Senior Class Senator.",
+    },
+    {
+        documentId: "718249ac-3ada-4e7d-a1ad-c0f4fc4362db",
+        quotePattern: /Vishnu presented the amendment to the constitution/,
+        quote: "Vishnu presented the amendment to the constitution for removing some SGA positions.",
+        summary: "Student Body President Vishnu Dontu presented a constitutional amendment proposing the removal of some SGA positions.",
+        thread: "structure",
+        kind: "legislation",
+        weight: 2,
+        reason: "4/15/25 is the 113th Senate's first meeting; Vishnu Dontu had been elected Student Body President (News-Letter, 4/16/25). The batch's roster and a campaign article still called him Sophomore Class President.",
+    },
+    {
+        documentId: "ae5d1c16-e907-4256-87fa-4f1831583bc9",
+        quotePattern: /Vishnu reintroduced the constitutional amendment/,
+        quote: "Vishnu reintroduced the constitutional amendment to discuss potentially removing the RSO senator position.",
+        summary: "Student Body President Vishnu Dontu reintroduced a constitutional amendment concerning the RSO Senator position and discussed alternatives for Senate representation.",
+        thread: "structure",
+        kind: "legislation",
+        weight: 2,
+        reason: "As above: by 4/22/25 Vishnu Dontu was Student Body President (\"Executive President Vishnu Dontu\", News-Letter 4/22/25).",
+    },
     {
         documentId: "58442442-9ef8-486e-897b-4d0ca731310a",
         // Extraction quotes either the tally or the announcement after it.

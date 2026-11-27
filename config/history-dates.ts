@@ -48,6 +48,16 @@ type ReviewedFindingDate = {
  */
 export const HISTORY_FINDING_DATES: ReviewedFindingDate[] = [
     {
+        // "SGA Elected Positions 2026" carries no date of its own (the archive
+        // has it as 2026), so it fell in a different year than the minutes
+        // passing it and came out as a second event.
+        documentId: "41651f93-d907-4978-803d-10a73dd5f0ec",
+        quotePattern: /[\s\S]/,
+        date: "2026-03-15T12:00:00.000Z",
+        precision: "month",
+        note: "Dated to March 2026: the bill is undated; the Senate passed it on March 3, 2026, before the 3/9/2026 election period it names.",
+    },
+    {
         documentId: TRAINING_HISTORY,
         quotePattern: /Emergence of SGA website|earliest known use of SGA email/i,
         date: null,

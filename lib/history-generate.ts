@@ -831,21 +831,33 @@ function validateMergedEvents(topic: HistoryTopicDefinition, findings: PlacedFin
 }
 
 /**
- * Documents the archive could date only to a session: their accepted AI date
- * is a range such as "2026/2027", and datedAt is that session's opening day.
- * Read at merge time, so the extraction cache is unaffected.
+ * Documents the archive could date only to a session, month, or year: their
+ * accepted AI date is "2026/2027", "2018-06", or "2026", and datedAt is that
+ * period's anchor (lib/document-date-value.ts normalizedDateSortAnchor), not a
+ * day anything happened. Read at merge time, so the extraction cache is
+ * unaffected.
  */
-async function sessionOnlyDocuments(ids: string[]): Promise<Set<string>> {
-    if (!ids.length) return new Set();
-    const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
-        `select id from "Document"
+async function coarselyDatedDocuments(ids: string[]): Promise<Map<string, "session" | "month" | "year">> {
+    if (!ids.length) return new Map();
+    const rows = await prisma.$queryRawUnsafe<{ id: string; precision: "session" | "month" | "year" }[]>(
+        `select id, case
+                 when "aiDateValue" ~ '^[0-9]{4}/[0-9]{4}$' then 'session'
+                 when "aiDateValue" ~ '^[0-9]{4}-[0-9]{2}$' then 'month'
+                 else 'year' end as precision
+           from "Document"
           where id = any($1::text[])
-            and "aiDateValue" ~ '^[0-9]{4}/[0-9]{4}$'
-            and to_char("datedAt", 'YYYY') = split_part("aiDateValue", '/', 1)
-            and to_char("datedAt", 'MM-DD') = '06-01'`,
+            and (("aiDateValue" ~ '^[0-9]{4}/[0-9]{4}$'
+                    and to_char("datedAt", 'YYYY') = split_part("aiDateValue", '/', 1)
+                    and to_char("datedAt", 'MM-DD') = '06-01')
+              or ("aiDateValue" ~ '^[0-9]{4}-[0-9]{2}$'
+                    and to_char("datedAt", 'YYYY-MM') = "aiDateValue"
+                    and to_char("datedAt", 'DD') = '01')
+              or ("aiDateValue" ~ '^[0-9]{4}$'
+                    and to_char("datedAt", 'YYYY') = "aiDateValue"
+                    and to_char("datedAt", 'MM-DD') = '01-01'))`,
         ids,
     );
-    return new Set(rows.map((row) => row.id));
+    return new Map(rows.map((row) => [row.id, row.precision]));
 }
 
 /**
@@ -1149,12 +1161,12 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
 
     // Only findings that are current for their document's text are merged;
     // a document whose extraction is still pending is left out, not guessed at.
-    const sessionOnly = await sessionOnlyDocuments(documents.map((document) => document.id));
+    const coarse = await coarselyDatedDocuments(documents.map((document) => document.id));
     const placed: PlacedFinding[] = [];
     for (const document of documents) {
         const row = cached.get(document.id);
         if (!row || row.status !== "found" || row.promptHash !== findingHash(extractHash, document)) continue;
-        const datable = { ...document, sessionOnly: sessionOnly.has(document.id) };
+        const datable = { ...document, datedOnlyTo: coarse.get(document.id) };
         withReviewedFindings(document, row.findings as HistoryFindingItem[]).forEach((finding, index) => {
             const { date, precision } = resolveFindingDate(finding.statedDate, datable, finding.quote);
             placed.push({ ...finding, key: `${document.id}:${index}`, document, date, precision });

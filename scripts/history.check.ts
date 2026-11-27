@@ -182,7 +182,7 @@ const sessionOnly = {
     datedAt: noon("2026-06-01"),
     driveCreatedTime: null,
     sessionNumber: 114,
-    sessionOnly: true,
+    datedOnlyTo: "session" as const,
 };
 const sessionOnlyOwn = { date: noon("2026-12-01"), precision: "session" };
 assert.deepEqual(resolveFindingDate(null, sessionOnly), sessionOnlyOwn, "a session-only date stays the session");
@@ -193,9 +193,32 @@ assert.deepEqual(
     "a day the text states still wins",
 );
 assert.deepEqual(
-    resolveFindingDate(null, { ...sessionOnly, sessionOnly: false }),
+    resolveFindingDate(null, { ...sessionOnly, datedOnlyTo: undefined }),
     { date: noon("2026-06-01"), precision: "day" },
     "an ordinary 1 June date is a day",
+);
+// Month-only ("2018-06") and year-only ("2026") AI dates anchor at the 1st and 1 January.
+assert.deepEqual(
+    resolveFindingDate(null, { ...sessionOnly, datedAt: noon("2018-06-01"), datedOnlyTo: "month" as const }),
+    { date: noon("2018-06-15"), precision: "month" },
+    "a month-only date stays the month",
+);
+assert.deepEqual(
+    resolveFindingDate("2018-06-01", { ...sessionOnly, datedAt: noon("2018-06-01"), datedOnlyTo: "month" as const }),
+    { date: noon("2018-06-15"), precision: "month" },
+    "an echoed first of the month stays the month",
+);
+assert.deepEqual(
+    resolveFindingDate(null, { ...sessionOnly, datedAt: noon("2026-01-01"), datedOnlyTo: "year" as const }),
+    { date: noon("2026-07-01"), precision: "year" },
+    "a year-only date stays the year",
+);
+// A finding extracted while its document sat at the session-start anchor keeps
+// stating 1 June after the document is re-dated; the anchor is not a date.
+assert.deepEqual(
+    resolveFindingDate("2018-06-01", { id: "history-check-redated", datedAt: noon("2018-06-04"), driveCreatedTime: null, sessionNumber: 106 }),
+    { date: noon("2018-06-04"), precision: "day" },
+    "a stale session-start echo yields to the document's own date",
 );
 
 assert.deepEqual(

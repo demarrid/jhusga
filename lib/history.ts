@@ -202,10 +202,11 @@ export type DatableDocument = {
     driveCreatedTime: Date | null;
     sessionNumber: number | null;
     /**
-     * The archive could date it only to a session ("2026/2027"), and datedAt is
-     * that session's opening day, not a day anything happened.
+     * The archive could date it only this finely ("2026/2027", "2018-06",
+     * "2026"), and datedAt is that period's first day, not a day anything
+     * happened.
      */
-    sessionOnly?: boolean;
+    datedOnlyTo?: "session" | "month" | "year";
 };
 
 export type ResolvedDate = { date: Date | null; precision: HistoryDatePrecision };
@@ -244,6 +245,13 @@ export function resolveFindingDate(statedDate: string | null, document: DatableD
 
     const stated = statedDate ? parseStatedDate(statedDate) : null;
     if (!stated) return own;
+    // The opening day of the document's own session (1 June) is the anchor a
+    // session-only date is stored at; a finding extracted while the document
+    // carried it echoes it even after the document is re-dated.
+    if (stated.precision === "day" && document.sessionNumber &&
+        stated.date.toISOString().slice(0, 10) === sessionStartDate(document.sessionNumber).toISOString().slice(0, 10)) {
+        return own;
+    }
     // The model is shown the stored date, so a year-only "1967" stored as
     // 1 January comes back as a stated "1967-01-01". That is the document's
     // date echoed, not a finer one, and keeps the precision established for it.
@@ -295,8 +303,10 @@ function parseStatedDate(value: string): { date: Date; precision: HistoryDatePre
 }
 
 function documentDate(document: DatableDocument): ResolvedDate {
-    if (document.datedAt && document.sessionOnly) {
+    if (document.datedAt && document.datedOnlyTo) {
         const at = document.datedAt;
+        if (document.datedOnlyTo === "month") return { date: utcNoon(at.getUTCFullYear(), at.getUTCMonth() + 1, 15), precision: "month" };
+        if (document.datedOnlyTo === "year") return { date: utcNoon(at.getUTCFullYear(), 7, 1), precision: "year" };
         const start = at.getUTCMonth() >= 5 ? at.getUTCFullYear() : at.getUTCFullYear() - 1;
         return { date: utcNoon(start, 12, 1), precision: "session" };
     }
