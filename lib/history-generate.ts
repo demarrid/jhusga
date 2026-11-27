@@ -130,6 +130,17 @@ function topicFingerprint(topic: HistoryTopicDefinition): string {
         .digest("hex");
 }
 
+/**
+ * The part of a topic extraction reads: all of it but the merge rules, so
+ * changing those re-merges without paying to re-extract every document. A
+ * topic without merge rules fingerprints exactly as topicFingerprint does.
+ */
+function extractionFingerprint(topic: HistoryTopicDefinition): string {
+    const read = { ...topic };
+    delete read.mergeRules;
+    return topicFingerprint(read);
+}
+
 function findingHash(topicHash: string, document: CandidateDocument): string {
     return createHash("sha256").update(topicHash).update(JSON.stringify(document)).digest("hex");
 }
@@ -145,6 +156,13 @@ const KIND_GUIDE = `- legislation: an SGA bill or resolution being introduced, r
 - discussion: the topic raised at an SGA meeting -- a presentation, an officer's report, a guest, a debate.
 - policy: a change to a university or SGA policy, office, or process.
 - report: a survey, report, or release of data.`;
+
+/** A topic's own rules, after the shared ones. Nothing at all when it has none,
+ * so a topic without them keeps its prompt, and its caches, unchanged. */
+function topicRules(rules: string[] | undefined): string {
+    return rules?.length ? rules.map((rule) => `
+- ${rule}`).join("") : "";
+}
 
 function extractionSystemPrompt(topic: HistoryTopicDefinition): string {
     const threads = topic.threads.map((thread) => `- ${thread.id}: ${thread.description}`).join("\n");
@@ -164,7 +182,7 @@ Rules:
 - Only what this document records. No outside knowledge, and nothing about motives or effects the text does not state.
 - A development outside the SGA belongs only when this document ties it to the SGA; mark its involvement "context". Otherwise "sga".
 - Skip mentions where nothing happened: a committee name in a list, a template, a hotline number in a footer, a résumé line.
-- Never name or identify a survivor, complainant, or accused person, or describe the details of an individual case. Name SGA bodies and offices rather than individual students. If no quote for a finding can avoid identifying such a person, leave the finding out.
+- Never name or identify a survivor, complainant, or accused person, or describe the details of an individual case. Name SGA bodies and offices rather than individual students. If no quote for a finding can avoid identifying such a person, leave the finding out.${topicRules(topic.extractionRules)}
 
 Fields:
 - "summary": one neutral sentence in the past tense, under 30 words, saying who did what.
@@ -286,7 +304,7 @@ You are given findings, each read from one document, with an id, a date, the doc
 
 Rules:
 - An event is one thing that happened: one piece of legislation from introduction to vote, one program, one statement, one presentation. Do not bundle unrelated things because they share a month.
-- Every finding belongs to exactly one event. Leave a finding out only if it is plainly off-topic.
+- Every finding belongs to exactly one event. Leave a finding out only if it is plainly off-topic.${topicRules(topic.mergeRules)}
 - "title": under 12 words, sentence case, no final period, naming what happened. Never say whether legislation passed or failed; that is shown separately from the record.
 - "content": one to three short, neutral sentences using only what the summaries say. End each sentence with markers like [1] or [1][2] giving the 1-based position of supporting findings in this event's "findings" list. Never state whether legislation passed or failed. Never name or identify a survivor, complainant, or accused person.
 - "thread": one of
@@ -483,7 +501,8 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
     const log = options.log ?? (() => {});
     const patterns = topicPatterns(topic);
     const documents = await candidateDocuments(topic, patterns);
-    const topicHash = topicFingerprint(topic);
+    const extractHash = extractionFingerprint(topic);
+    const mergeHash = topicFingerprint(topic);
 
     const result: HistoryRunResult = {
         slug,
@@ -516,7 +535,7 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
     // Pass 1.
     const pending = documents.filter((document) => {
         const row = cached.get(document.id);
-        return options.force || !row || row.status === "failed" || row.promptHash !== findingHash(topicHash, document);
+        return options.force || !row || row.status === "failed" || row.promptHash !== findingHash(extractHash, document);
     });
     const toExtract = options.limit === undefined ? pending : pending.slice(0, options.limit);
     log(`${documents.length} candidate documents, ${pending.length} need extraction, extracting ${toExtract.length}`);
@@ -531,14 +550,14 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
             create: {
                 topicId: topicRow.id,
                 documentId: document.id,
-                promptHash: findingHash(topicHash, document),
+                promptHash: findingHash(extractHash, document),
                 status: outcome.status,
                 findings: outcome.findings,
                 model: outcome.model,
                 error: outcome.error ?? null,
             },
             update: {
-                promptHash: findingHash(topicHash, document),
+                promptHash: findingHash(extractHash, document),
                 status: outcome.status,
                 findings: outcome.findings,
                 model: outcome.model,
@@ -585,7 +604,7 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
     const placed: PlacedFinding[] = [];
     for (const document of documents) {
         const row = cached.get(document.id);
-        if (!row || row.status !== "found" || row.promptHash !== findingHash(topicHash, document)) continue;
+        if (!row || row.status !== "found" || row.promptHash !== findingHash(extractHash, document)) continue;
         (row.findings as HistoryFindingItem[]).forEach((finding, index) => {
             const { date, precision } = resolveFindingDate(finding.statedDate, document, finding.quote);
             placed.push({ ...finding, key: `${document.id}:${index}`, document, date, precision });
@@ -618,7 +637,7 @@ export async function generateHistoryTopic(slug: string, options: HistoryRunOpti
         for (let index = 0; index < count; index += 1) {
             const chunk = findings.slice(index * MERGE_CHUNK, (index + 1) * MERGE_CHUNK);
             const key = chunkKey(year, index, count);
-            const hash = batchHash(topicHash, chunk, records);
+            const hash = batchHash(mergeHash, chunk, records);
             liveKeys.add(key);
 
             if (!options.force && existingHash.get(key) === hash) {

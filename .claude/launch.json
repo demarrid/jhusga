@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "wsl",
+      "runtimeArgs": ["-d", "kali-linux", "--cd", "/home/thera/jhusga", "--", "npm", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}

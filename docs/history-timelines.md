@@ -40,7 +40,8 @@ There is deliberately no cron or sync-triggered paid generation. Check the dry
 run first when the scope or candidate count changes materially.
 
 Extraction caches include prompt version, topic configuration, document content,
-and metadata. Merge caches also include all findings and parsed voting records.
+and metadata. A topic's `mergeRules` are left out of the extraction cache, so
+editing only those re-merges without re-extracting. Merge caches also include all findings and parsed voting records.
 A voting record change currently re-merges affected cached batches broadly;
 it can require model calls even when no document needs extraction.
 Changing `AI_MODEL` alone does not invalidate caches; use `--force` for that.
