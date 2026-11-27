@@ -380,7 +380,15 @@ function validateMergedEvents(topic: HistoryTopicDefinition, findings: PlacedFin
         const content = typeof value.content === "string" ? value.content.trim() : "";
         const citations = citedIndexes(content);
         if (!title || !content || !citations.length || citations.some((index) => index < 1 || index > members.length)) {
-            throw new Error("Merged event needs a title, prose, and valid citation markers");
+            // Say which event and what is wrong: the model is sent this to correct itself.
+            const problem = !title ? "has no title"
+                : !content ? "has no prose"
+                : !citations.length ? "has no [n] citation markers"
+                : `cites [${citations.filter((index) => index < 1 || index > members.length).join("], [")}] but lists ${members.length} finding(s)`;
+            throw new Error(
+                `Merged event needs a title, prose, and valid citation markers: the event with findings ` +
+                `${keys.join(", ")}${title ? ` ("${title}")` : ""} ${problem}`,
+            );
         }
         for (const key of keys) used.add(key);
 

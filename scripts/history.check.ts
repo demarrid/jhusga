@@ -152,6 +152,25 @@ assert.deepEqual(
     { date: noon("2020-09-09"), precision: "approximate" },
 );
 
+// A year-only document is stored as 1 January (config/archive-date-precision.json).
+// The model sees that stored date, and echoing it back must not make it a day.
+const yearOnly = {
+    id: "11413b45-6905-4f67-ad00-94ce050447ab",
+    datedAt: noon("1982-01-01"),
+    driveCreatedTime: null,
+    sessionNumber: null,
+};
+const yearOnlyOwn = { date: noon("1982-07-01"), precision: "year" };
+assert.deepEqual(resolveFindingDate(null, yearOnly), yearOnlyOwn);
+assert.deepEqual(resolveFindingDate("1982-01-01", yearOnly), yearOnlyOwn, "an echoed stored day stays the year");
+assert.deepEqual(resolveFindingDate("1982-01", yearOnly), yearOnlyOwn, "an echoed stored month stays the year");
+assert.deepEqual(
+    resolveFindingDate("1982-03-04", yearOnly),
+    { date: noon("1982-03-04"), precision: "day" },
+    "a different day the text states still wins",
+);
+assert.deepEqual(resolveFindingDate("1979", yearOnly), { date: noon("1979-07-01"), precision: "year" });
+
 assert.deepEqual(
     eventSpan([
         { date: noon("2019-02-01"), precision: "approximate" },

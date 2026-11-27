@@ -257,8 +257,10 @@ export const HISTORY_TOPICS: HistoryTopicDefinition[] = [
         mergeRules: [
             "Copies and editions of the same governing document from one year, and the bill, minutes, and " +
                 "reporting on the same change, are one event.",
-            "Name each body as its findings do. The Student Council (StuCo), its Student Activities " +
-                "Commission, and their offices are not the SGA: write \"SGA\" only where the findings do.",
+            "Name each body as its findings do, in titles and prose alike. The Student Council (StuCo), " +
+                "its Student Activities Commission, and their offices are not the SGA: write \"SGA\" only where " +
+                "a finding's summary does. A Student Council constitution is titled as one -- \"Student Council " +
+                "constitution adopted\", never \"Constitution defines SGA governance\".",
             "For this topic, a finding is off-topic, and is left out, when it records only that something " +
                 "was discussed, considered, or tabled with nothing proposed, adopted, created, or changed, or " +
                 "when it concerns a group formed for one campus project rather than the student government's " +

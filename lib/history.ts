@@ -216,6 +216,10 @@ export function resolveFindingDate(statedDate: string | null, document: DatableD
 
     const stated = statedDate ? parseStatedDate(statedDate) : null;
     if (!stated) return own;
+    // The model is shown the stored date, so a year-only "1967" stored as
+    // 1 January comes back as a stated "1967-01-01". That is the document's
+    // date echoed, not a finer one, and keeps the precision established for it.
+    if (echoesStoredDate(stated, document, own)) return own;
 
     const ceiling = own.date ? own.date.getTime() + FUTURE_SLACK_MS : Number.POSITIVE_INFINITY;
     if (stated.date.getUTCFullYear() < 1876 || stated.date.getTime() > ceiling) return own;
@@ -226,6 +230,19 @@ export function resolveFindingDate(statedDate: string | null, document: DatableD
     const sharper = own.date && precisionRank(own.precision) < precisionRank(stated.precision);
     if (sharper && withinPeriod(own.date!, stated)) return own;
     return stated;
+}
+
+function echoesStoredDate(
+    stated: { date: Date; precision: HistoryDatePrecision },
+    document: DatableDocument,
+    own: ResolvedDate,
+): boolean {
+    if (!document.datedAt || own.precision === "day" || precisionRank(stated.precision) >= precisionRank(own.precision)) {
+        return false;
+    }
+    if (stated.precision !== "day") return withinPeriod(document.datedAt, stated);
+    const day = (date: Date) => date.toISOString().slice(0, 10);
+    return day(stated.date) === day(document.datedAt);
 }
 
 function withinPeriod(date: Date, period: { date: Date; precision: HistoryDatePrecision }): boolean {
