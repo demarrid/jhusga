@@ -290,7 +290,11 @@ export async function listFolderChildren(
  * outcome rather than an error: the link stays unresolved, the reader still
  * has the URL the author typed, and the file appears the day it is shared.
  */
-export async function getFile(fileId: string): Promise<DriveFile | null> {
+export async function getFile(
+    fileId: string,
+    // Explicit, owner-requested manual imports read manual-only folders.
+    { includeManual = false }: { includeManual?: boolean } = {},
+): Promise<DriveFile | null> {
     const params = new URLSearchParams({
         fields: FILE_FIELDS,
         supportsAllDrives: "true",
@@ -321,7 +325,7 @@ export async function getFile(fileId: string): Promise<DriveFile | null> {
     }
 
     const raw = (await response.json()) as RawFile;
-    if (await belongsToManualArchive(raw)) return null;
+    if (!includeManual && await belongsToManualArchive(raw)) return null;
     return toDriveFile(raw);
 }
 
