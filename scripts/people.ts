@@ -225,6 +225,8 @@ async function linkShortNames(
                 const evidence = mention.evidence.slice(0, 300);
                 resolvedOnLine.set(evidence, (resolvedOnLine.get(evidence) ?? new Set()).add(person.id));
             }
+            const written = new Set<string>();
+            const cleared = new Set<string>();
             await prisma.$transaction(async (tx) => {
                 for (const { mention, person } of resolved) {
                     const evidence = mention.evidence.slice(0, 300);
@@ -242,15 +244,21 @@ async function linkShortNames(
                         !resolvedOnLine.get(evidence)?.has(row.hopkinsAffiliateId));
                     if (stale.length) {
                         await tx.documentContributor.deleteMany({ where: { id: { in: stale.map((row) => row.id) } } });
+                        for (const row of stale) cleared.add(row.id);
                         for (const row of stale) changes.push(`cleared ${row.hopkinsAffiliate.name}`);
                     }
                     if (!person) continue;
                     const manual = existing.some((row) =>
                         row.source === "manual" && row.hopkinsAffiliateId === person.id && row.role === mention.role);
                     if (manual) continue;
-                    const current = existing.find((row) =>
-                        row.hopkinsAffiliateId === person.id && row.role === mention.role && row.evidence === evidence);
-                    if (current?.source === SHORT_SOURCE) continue;
+                    // One row per person and role. A senator named on six lines
+                    // is already credited by the first: rewriting its quote
+                    // line by line churned every run, and taking over a
+                    // resolver's row made a reprocess and this linker trade it.
+                    const key = `${person.id}\n${mention.role}`;
+                    if (written.has(key)) continue;
+                    written.add(key);
+                    if (existing.some((row) => !cleared.has(row.id) && row.hopkinsAffiliateId === person.id && row.role === mention.role)) continue;
                     await tx.documentContributor.upsert({
                         where: {
                             documentId_hopkinsAffiliateId_role: {
