@@ -511,7 +511,7 @@ button.flagMeta:hover {
 .flagList .flagMore button {
   color: color-mix(in srgb, var(--ink) 80%, transparent);
   font-weight: 650;
-  cursor: zoom-in;
+  cursor: pointer;
 }
 .noLanes {
   position: absolute;
@@ -761,6 +761,82 @@ button.flagMeta:hover {
 
 .panelNav a {
   color: #377ebc;
+}
+
+.panelBack {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #002d72;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.panelBack:hover {
+  border-color: #377ebc;
+}
+
+.panelList {
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panelList li + li {
+  border-top: 1px solid #e3eaf1;
+}
+
+.panelList button {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.4rem 0.55rem 1.3rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #002d72;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Each bullet is its event's thread colour, as on the flag it came from. */
+.panelList button::before {
+  content: "";
+  position: absolute;
+  top: 0.85rem;
+  left: 0.4rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.panelList button:hover {
+  background: #eef3f8;
+}
+
+.panelListMeta {
+  display: block;
+  color: #5f7185;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panelListTitle {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 /* Overview */

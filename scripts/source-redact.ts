@@ -216,7 +216,9 @@ async function main() {
         const docs: Doc[] = ids.length
             ? await prisma.document.findMany({ where: { id: { in: ids } }, select })
             : process.argv.includes("--flagged")
-                ? (await prisma.document.findMany({ where: { discoveredVia: { notIn: ["newsletter", "gazette"] }, content: { contains: "[REDACTED: " } }, select }))
+                // A document whose copy is already approved is not rebuilt; name it with --document to redo it.
+                ? (await prisma.document.findMany({ where: { discoveredVia: { notIn: ["newsletter", "gazette"] }, content: { contains: "[REDACTED: " },
+                    OR: [{ redactedSource: null }, { redactedSource: { status: { not: "approved" } } }] }, select }))
                 : [];
         if (!docs.length && !argValues("--approve").length && !argValues("--withdraw").length) {
             throw new Error("Usage: source-redact.ts (--document ID ... | --flagged) [--upload] | --approve ID | --withdraw ID");

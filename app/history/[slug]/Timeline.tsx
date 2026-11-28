@@ -435,7 +435,7 @@ type Drag = {
     downX: number;
     downY: number;
     moved: boolean;
-    target: { eventId?: string; clusterKey?: string } | null;
+    target: { eventId?: string; clusterKey?: string; listKey?: string } | null;
     samples: { t: number; x: number }[];
     pinch: { distance: number; mid: number } | null;
 };
@@ -477,6 +477,8 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     const [hiddenThreads, setHiddenThreads] = useState<ReadonlySet<string>>(() => new Set());
     const [query, setQuery] = useState("");
     const [selectedId, setSelectedId] = useState<string | null>(initialEventId);
+    /** The events of a crowded flag, listed in the panel after its "+N more". */
+    const [listIds, setListIds] = useState<readonly string[] | null>(null);
     const [hover, setHover] = useState<Hover | null>(null);
     const [engaged, setEngaged] = useState(false);
     const [dragging, setDragging] = useState(false);
@@ -503,7 +505,13 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     );
     const selected = selectedId ? sorted.find((event) => event.id === selectedId) ?? null : null;
     const selectedIndex = selected ? visible.findIndex((event) => event.id === selected.id) : -1;
-    const panelOpen = selected !== null;
+    const listEvents = useMemo(() => {
+        if (!listIds) return null;
+        const ids = new Set(listIds);
+        return visible.filter((event) => ids.has(event.id));
+    }, [listIds, visible]);
+    const inList = selected !== null && listIds !== null && listIds.includes(selected.id);
+    const panelOpen = selected !== null || listEvents !== null;
     const cover = panelOpen && wide ? PANEL_COVER_PX : 0;
     const stageHeight = compact ? COMPACT_STAGE_HEIGHT : STAGE_HEIGHT;
     const axisY = axisTop(stageHeight);
@@ -608,11 +616,11 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     }, [selectedId]);
 
     useEffect(() => {
-        if (!selectedId || wide) return;
+        if ((!selectedId && !listIds) || wide) return;
         rootRef.current
             ?.querySelector("[data-timeline-panel]")
             ?.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : "smooth" });
-    }, [selectedId, wide, reducedMotion]);
+    }, [selectedId, listIds, wide, reducedMotion]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => setHint(null), 6000);
@@ -661,6 +669,8 @@ export default function Timeline({ events, threads, details, initialEventId }: P
     function select(event: TimelineEvent | null, options: { zoom?: boolean } = {}) {
         setSelectedId(event?.id ?? null);
         setHover(null);
+        // Leaving the listed events behind drops the list and the way back to it.
+        if (!event || !listIds?.includes(event.id)) setListIds(null);
         if (!event) return;
         cameraRef.current?.setCover(wide ? PANEL_COVER_PX : 0);
         cameraRef.current?.reveal(event.start, options.zoom ?? false);
@@ -677,6 +687,22 @@ export default function Timeline({ events, threads, details, initialEventId }: P
         const after = visible.findIndex((event) => event.start >= center);
         const index = after === -1 ? visible.length - 1 : direction === 1 ? after : Math.max(0, after - 1);
         select(visible[index]!);
+    }
+
+    /** List a crowded flag's events in the panel, to pick one from. */
+    function openList(events: TimelineEvent[]) {
+        if (events.length === 0) return;
+        setListIds(events.map((event) => event.id));
+        setSelectedId(null);
+        setHover(null);
+        cameraRef.current?.setCover(wide ? PANEL_COVER_PX : 0);
+        cameraRef.current?.reveal(events[0]!.start, false);
+    }
+
+    function closePanel() {
+        setSelectedId(null);
+        setListIds(null);
+        setHover(null);
     }
 
     function zoomCluster(events: TimelineEvent[]) {
@@ -741,9 +767,11 @@ export default function Timeline({ events, threads, details, initialEventId }: P
         };
         drag.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (drag.pointers.size === 1) {
-            const hit = (event.target as Element).closest<HTMLElement>("[data-event-id],[data-cluster]");
+            const hit = (event.target as Element).closest<HTMLElement>(
+                "[data-event-id],[data-cluster],[data-cluster-list]",
+            );
             drag.target = hit
-                ? { eventId: hit.dataset.eventId, clusterKey: hit.dataset.cluster }
+                ? { eventId: hit.dataset.eventId, clusterKey: hit.dataset.cluster, listKey: hit.dataset.clusterList }
                 : null;
             drag.samples = [{ t: event.timeStamp, x: event.clientX }];
         } else {
@@ -826,6 +854,11 @@ export default function Timeline({ events, threads, details, initialEventId }: P
             if (cluster) zoomCluster(cluster);
             return;
         }
+        if (drag.target?.listKey) {
+            const cluster = findCluster(drag.target.listKey);
+            if (cluster) openList(cluster);
+            return;
+        }
 
         const x = trackX(event.clientX);
         const tap = lastTapRef.current;
@@ -849,7 +882,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
             "-": () => zoomBy(2),
             _: () => zoomBy(2),
             "0": fit,
-            Escape: () => (selected ? select(null) : setEngaged(false)),
+            Escape: () => (panelOpen ? closePanel() : setEngaged(false)),
         };
         const handler = handlers[event.key];
         if (!handler) return;
@@ -920,6 +953,31 @@ export default function Timeline({ events, threads, details, initialEventId }: P
 
     const hovered = hover?.events.length ? hover : null;
     const flagThread = (event: TimelineEvent) => threadById.get(event.thread)?.color;
+    let panel: ReactNode = null;
+    if (selected) {
+        panel = (
+            <EventPanel
+                event={selected}
+                thread={threadById.get(selected.thread)}
+                detail={details[selected.id]}
+                hasPrevious={selectedIndex > 0}
+                hasNext={selectedIndex >= 0 && selectedIndex < visible.length - 1}
+                onStep={step}
+                onClose={closePanel}
+                backCount={inList && listEvents ? listEvents.length : null}
+                onBack={() => setSelectedId(null)}
+            />
+        );
+    } else if (listEvents) {
+        panel = (
+            <ListPanel
+                events={listEvents}
+                colorOf={flagThread}
+                onSelect={(event) => select(event)}
+                onClose={closePanel}
+            />
+        );
+    }
 
     return (
         <div ref={rootRef} className={styles.timeline} data-engaged={engaged || undefined}>
@@ -1054,6 +1112,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                             colorOf={flagThread}
                             onSelect={(event) => select(event.id === selectedId ? null : event)}
                             onZoom={zoomCluster}
+                            onList={openList}
                             onHover={hoverOver}
                             onLeave={() => setHover(null)}
                         />
@@ -1121,17 +1180,7 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                     )}
                 </div>
 
-                {selected && wide && (
-                    <EventPanel
-                        event={selected}
-                        thread={threadById.get(selected.thread)}
-                        detail={details[selected.id]}
-                        hasPrevious={selectedIndex > 0}
-                        hasNext={selectedIndex >= 0 && selectedIndex < visible.length - 1}
-                        onStep={step}
-                        onClose={() => select(null)}
-                    />
-                )}
+                {wide && panel}
             </div>
 
             <div className={styles.minimapRow}>
@@ -1180,20 +1229,14 @@ export default function Timeline({ events, threads, details, initialEventId }: P
                 </div>
             </div>
 
-            {selected && !wide && (
-                <EventPanel
-                    event={selected}
-                    thread={threadById.get(selected.thread)}
-                    detail={details[selected.id]}
-                    hasPrevious={selectedIndex > 0}
-                    hasNext={selectedIndex >= 0 && selectedIndex < visible.length - 1}
-                    onStep={step}
-                    onClose={() => select(null)}
-                />
-            )}
+            {!wide && panel}
 
             <p className={styles.srOnly} aria-live="polite">
-                {selected ? `${selected.title}, ${selected.dateLabel}` : ""}
+                {selected
+                    ? `${selected.title}, ${selected.dateLabel}`
+                    : listEvents
+                      ? `${listEvents.length} events listed`
+                      : ""}
             </p>
         </div>
     );
@@ -1258,6 +1301,7 @@ function FlagView({
     colorOf,
     onSelect,
     onZoom,
+    onList,
     onHover,
     onLeave,
 }: {
@@ -1267,6 +1311,7 @@ function FlagView({
     colorOf: (event: TimelineEvent) => string | undefined;
     onSelect: (event: TimelineEvent) => void;
     onZoom: (events: TimelineEvent[]) => void;
+    onList: (events: TimelineEvent[]) => void;
     onHover: (element: HTMLElement, events: TimelineEvent[], x?: number) => void;
     onLeave: () => void;
 }) {
@@ -1375,9 +1420,9 @@ function FlagView({
                             <button
                                 type="button"
                                 tabIndex={-1}
-                                data-cluster={flag.key}
-                                aria-label={zoomLabel}
-                                onClick={(click) => click.detail === 0 && onZoom(group.events)}
+                                data-cluster-list={flag.key}
+                                aria-label={`${group.events.length} events, ${range}. List them.`}
+                                onClick={(click) => click.detail === 0 && onList(group.events)}
                             >
                                 +{flag.more} more
                             </button>
@@ -1434,6 +1479,8 @@ function EventPanel({
     hasNext,
     onStep,
     onClose,
+    backCount,
+    onBack,
 }: {
     event: TimelineEvent;
     thread: HistoryThread | undefined;
@@ -1442,6 +1489,9 @@ function EventPanel({
     hasNext: boolean;
     onStep: (direction: 1 | -1) => void;
     onClose: () => void;
+    /** How many events the list this one was picked from holds, when it was. */
+    backCount: number | null;
+    onBack: () => void;
 }) {
     return (
         <aside
@@ -1482,6 +1532,67 @@ function EventPanel({
                     Later →
                 </button>
             </div>
+            {backCount !== null && (
+                <button type="button" className={styles.panelBack} onClick={onBack}>
+                    ← Back to {backCount} events
+                </button>
+            )}
+        </aside>
+    );
+}
+
+/** The events of a crowded flag, each opening its own panel. */
+function ListPanel({
+    events,
+    colorOf,
+    onSelect,
+    onClose,
+}: {
+    events: TimelineEvent[];
+    colorOf: (event: TimelineEvent) => string | undefined;
+    onSelect: (event: TimelineEvent) => void;
+    onClose: () => void;
+}) {
+    const first = events[0];
+    const last = events.at(-1);
+    const range =
+        !first || !last
+            ? ""
+            : first.dateLabel === last.dateLabel
+              ? first.dateLabel
+              : `${first.dateLabel} – ${last.dateLabel}`;
+    return (
+        <aside
+            data-timeline-panel
+            className={styles.panel}
+            aria-labelledby="timeline-panel-list"
+            style={{ "--c": GROUP_FLAG_COLOR } as CSSProperties}
+        >
+            <div className={styles.panelHead}>
+                <p className={styles.panelMeta}>
+                    <span>{range}</span>
+                </p>
+                <button type="button" className={styles.panelClose} onClick={onClose} aria-label="Close">
+                    ×
+                </button>
+            </div>
+            <h3 id="timeline-panel-list" className={styles.panelTitle}>
+                {events.length} events
+            </h3>
+            {events.length === 0 ? (
+                <p className={styles.panelBody}>None of these events match the current filters.</p>
+            ) : (
+                <ul className={styles.panelList}>
+                    {events.map((event) => (
+                        <li key={event.id} style={{ "--c": colorOf(event) } as CSSProperties}>
+                            <button type="button" onClick={() => onSelect(event)}>
+                                <span className={styles.panelListMeta}>{event.dateLabel}</span>
+                                <span className={styles.panelListTitle}>{event.title}</span>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </aside>
     );
 }

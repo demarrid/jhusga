@@ -23,6 +23,13 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[1] / '.archive-local'
 sys.path.insert(0, str(BASE / 'python'))
+# Optional GPU OCR: onnxruntime-gpu with its CUDA/cuDNN wheels installed in
+# .archive-local/python-gpu (pip install --target ... "onnxruntime-gpu[cuda,cudnn]").
+# It shadows the CPU onnxruntime; set SOURCE_REDACT_CPU=1 to ignore it.
+import os  # noqa: E402
+GPU = (BASE / 'python-gpu').is_dir() and not os.environ.get('SOURCE_REDACT_CPU')
+if GPU:
+    sys.path.insert(0, str(BASE / 'python-gpu'))
 import pymupdf  # noqa: E402
 
 OCR_SCALE = 2.0
@@ -66,7 +73,13 @@ def engine():
     global ENGINE
     if ENGINE is None:
         from rapidocr_onnxruntime import RapidOCR
-        ENGINE = RapidOCR(det_limit_side_len=2400, intra_op_num_threads=4, inter_op_num_threads=1)
+        cuda = {}
+        if GPU:
+            import onnxruntime
+            onnxruntime.preload_dlls()  # the pip-installed CUDA and cuDNN libraries
+            if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
+                cuda = {'det_use_cuda': True, 'cls_use_cuda': True, 'rec_use_cuda': True}
+        ENGINE = RapidOCR(det_limit_side_len=2400, intra_op_num_threads=4, inter_op_num_threads=1, **cuda)
     return ENGINE
 
 

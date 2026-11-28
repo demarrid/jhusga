@@ -54,6 +54,11 @@ assert.equal(r('Budget line 2013-14 allocated $4,500.00 to account 1234567890'),
 // A label's value is the number, not the rest of the line.
 assert.equal(r('Phone: (410) 516-8208 Cell: (240) 555-0199 Email: someone@jhu.edu'),'Phone: [REDACTED: phone number] Cell: [REDACTED: phone number] Email: someone@jhu.edu');
 assert.equal(r('Cell: 2405550199'),'Cell: [REDACTED: phone number]');
+// A shop receipt prints the store's number; a staff contact's number is still removed.
+assert.equal(r('**Party City®**\n\nNOBODY HAS MORE PARTY FOR LESS\n\n6311 YORK RD\nBALTIMORE, MD 21212\n(443) 555-0123\n\nTAX EXEMPT'),
+    '**Party City®**\n\nNOBODY HAS MORE PARTY FOR LESS\n\n6311 YORK RD\nBALTIMORE, MD 21212\n(443) 555-0123\n\nTAX EXEMPT');
+assert.equal(r('**POINT PERSON:** SGA Advisor, Jane Doe – Associate Dean of Student Engagement\n(443) 555-0123\nDinner/On Site Logistics'),
+    '**POINT PERSON:** SGA Advisor, Jane Doe – Associate Dean of Student Engagement\n[REDACTED: phone number]\nDinner/On Site Logistics');
 // A shop's address is the shop.
 assert.equal(r('Gamberdella Inc.\n30 W. Pennsylvania Ave. #1\nTowson, MD 21204'),'Gamberdella Inc.\n30 W. Pennsylvania Ave. #1\nTowson, MD 21204');
 assert.equal(r('| Billing Address: | 3400 N. Charles St.<br>Mattin Center Suite 210 |'),'| Billing Address: | 3400 N. Charles St.<br>Mattin Center Suite 210 |');
