@@ -1,6 +1,6 @@
 import {manualArchiveIds} from "@/lib/manual-archive";
 import { redactCapturedDocument, saveDocumentMedia } from "@/lib/document-media";
-import { redactPersonalData } from "@/lib/archive-redaction";
+import { isPersonalDocument, redactPersonalData } from "@/lib/archive-redaction";
 import { recordDocumentVersion } from "@/lib/document-version-history";
 import { type AdministratorResult } from "@/lib/administrator-lookup";
 import { reconcileMeetingDates } from "@/lib/meeting-dates";
@@ -1033,9 +1033,11 @@ export async function ingestFile(
 
     // Personal data (SSNs, home addresses, personal phones) is removed before
     // hashing, so a later export of the same source is recognised as unchanged.
-    const media = file.mimeType === GOOGLE_DOC_MIME ? redactCapturedDocument(await exportDocumentWithMedia(file.id)) : null;
+    // A résumé or CV is personal throughout (lib/archive-redaction.ts).
+    const redaction = { personal: isPersonalDocument(file.name) };
+    const media = file.mimeType === GOOGLE_DOC_MIME ? redactCapturedDocument(await exportDocumentWithMedia(file.id), redaction) : null;
     const exported = media ? media.content : await exportIngestible(file);
-    const content = exported === null ? null : redactPersonalData(exported);
+    const content = exported === null ? null : redactPersonalData(exported, redaction);
     // Do not attach images from a moving source to the timestamp listed earlier.
     if (media && (await getFile(file.id))?.modifiedTime !== file.modifiedTime) return false;
     // A SharePoint file we cannot flatten is not stored as an empty row.
@@ -1308,7 +1310,7 @@ const COMMENT_EXPORT = /^comments for\b/i;
  * different claim. Somebody with a seat put this file in front of the Senate,
  * so it is SGA business even if it lives in its author's Drive.
  */
-function worthFollowing(file: { name: string; mimeType: string }): boolean {
+export function worthFollowing(file: { name: string; mimeType: string }): boolean {
     if (COMMENT_EXPORT.test(file.name.trim())) return false;
     return (
         file.mimeType === GOOGLE_DOC_MIME ||

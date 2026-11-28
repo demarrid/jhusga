@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import Image from "next/image";
 
 import { reflowRuns } from "@/lib/hard-wraps";
 import { runsText, type Block, type InlineRun, type TableRow } from "@/lib/render";
@@ -34,6 +35,14 @@ export default function DocumentViewer({ blocks }: { blocks: Block[] }) {
         <article className={styles.viewer}>
             {bill.header.length > 0 && (
                 <header className={styles.billHeader}>
+                    {bill.images.map((image, index) => image.seal
+                        // The site's own copy of the seal the letterhead embeds (lib/seal.ts).
+                        ? <Image key={index} src="/logo.png" alt="Seal of the Student Government Association at Johns Hopkins"
+                            width={96} height={96} className={styles.billSeal} />
+                        // Any other seal, such as the older gold one, is kept as embedded.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        : <img key={index} src={image.src} width={image.width} height={image.height} alt={image.alt}
+                            className={styles.billSeal} loading="lazy" />)}
                     {bill.header.map((line, index) => (
                         <div key={index} id={line.sectionId} data-bill-line={line.kind}
                             className={line.sectionId ? styles.sectionAnchor : undefined}>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {findSensitiveSpans, hasRedactions, redactArchiveSecrets as r, redactedOffset} from '../lib/archive-redaction';
+import {findSensitiveSpans, hasRedactions, isPersonalDocument, redactArchiveSecrets as r, redactPersonalData, redactedOffset} from '../lib/archive-redaction';
 
 // Original behaviour: values go, labels and policy text stay, reruns are no-ops.
 assert.equal(r('Student names: Jane Doe\nPassword: example-secret'),'Student names: Jane Doe\nPassword: [REDACTED: credential]');
@@ -51,18 +51,49 @@ assert.equal(r('•  Contact the CSC office during business hours (410) 555-0123
 assert.equal(r('Personal phone: (410) 555-0123'),'Personal phone: [REDACTED: phone number]');
 assert.equal(r('Budget line 2013-14 allocated $4,500.00 to account 1234567890'),'Budget line 2013-14 allocated $4,500.00 to account 1234567890');
 
+assert.equal(r('MichelleMcLaughlin(443)555-0123'),'MichelleMcLaughlin[REDACTED: phone number]');
 // A label's value is the number, not the rest of the line.
 assert.equal(r('Phone: (410) 516-8208 Cell: (240) 555-0199 Email: someone@jhu.edu'),'Phone: [REDACTED: phone number] Cell: [REDACTED: phone number] Email: someone@jhu.edu');
 assert.equal(r('Cell: 2405550199'),'Cell: [REDACTED: phone number]');
 // A shop receipt prints the store's number; a staff contact's number is still removed.
 assert.equal(r('**Party City®**\n\nNOBODY HAS MORE PARTY FOR LESS\n\n6311 YORK RD\nBALTIMORE, MD 21212\n(443) 555-0123\n\nTAX EXEMPT'),
     '**Party City®**\n\nNOBODY HAS MORE PARTY FOR LESS\n\n6311 YORK RD\nBALTIMORE, MD 21212\n(443) 555-0123\n\nTAX EXEMPT');
+assert.equal(r('BLTIMORE.NO 21212\n410-555-0123\nTAX EXENPT'),'BLTIMORE.NO 21212\n410-555-0123\nTAX EXENPT');
 assert.equal(r('**POINT PERSON:** SGA Advisor, Jane Doe – Associate Dean of Student Engagement\n(443) 555-0123\nDinner/On Site Logistics'),
     '**POINT PERSON:** SGA Advisor, Jane Doe – Associate Dean of Student Engagement\n[REDACTED: phone number]\nDinner/On Site Logistics');
+// OCR runs "Fax" into its number.
+assert.equal(r('Phone 443-555-0123\nFax443-555-0124'),'Phone 443-555-0123\nFax443-555-0124');
+// A government office's published contact.
+assert.equal(r('please contact Forest Krueger at\nforest.krueger@census.gov or 301-555-0123, or'),'please contact Forest Krueger at\nforest.krueger@census.gov or 301-555-0123, or');
 // A shop's address is the shop.
 assert.equal(r('Gamberdella Inc.\n30 W. Pennsylvania Ave. #1\nTowson, MD 21204'),'Gamberdella Inc.\n30 W. Pennsylvania Ave. #1\nTowson, MD 21204');
 assert.equal(r('| Billing Address: | 3400 N. Charles St.<br>Mattin Center Suite 210 |'),'| Billing Address: | 3400 N. Charles St.<br>Mattin Center Suite 210 |');
 
+// A spreadsheet's phone column: bare digits under a "Phone" heading are phone numbers.
+assert.equal(r('| Name | Primary Contact Phone | Budget |\n| --- | --- | --- |\n| Jane | 4105550123 | 1234567890 |\n| Ann | 4105160000.0 | 2 |'),
+    '| Name | Primary Contact Phone | Budget |\n| --- | --- | --- |\n| Jane | [REDACTED: phone number] | 1234567890 |\n| Ann | 4105160000.0 | 2 |');
+// Formatted numbers in a person's phone column go too; a business directory's stay.
+assert.equal(r('| Timestamp | Name | What is your best contact phone number? |\n| --- | --- | --- |\n| 2019-01-02 | Jane | 443-555-0123 |'),
+    '| Timestamp | Name | What is your best contact phone number? |\n| --- | --- | --- |\n| 2019-01-02 | Jane | [REDACTED: phone number] |');
+assert.equal(r('| Business | Email / Contact | Phone |\n| --- | --- | --- |\n| THB Bagelry | marketing@example.com | 4105550123 |'),
+    '| Business | Email / Contact | Phone |\n| --- | --- | --- |\n| THB Bagelry | marketing@example.com | 4105550123 |');
+// A résumé's header is personal throughout; the same lines elsewhere are left to the usual rules.
+const resume = 'Jane Doe\n\n6 Beresford Lane, Larchmont, NY 10543 US | (914) 555-0123 | jdoe1@jhu.edu\nWolman #3689 3339 N. Charles St.\nBaltimore, MD 21218\n\nJohns Hopkins University       Baltimore, MD\nCall 1-800-555-0100';
+const personal = (t: string) => redactPersonalData(t, {personal: true});
+assert.equal(personal(resume), 'Jane Doe\n\n[REDACTED: home address], [REDACTED: home address] | [REDACTED: phone number] | jdoe1@jhu.edu\n[REDACTED: home address] [REDACTED: home address]\n[REDACTED: home address]\n\nJohns Hopkins University       Baltimore, MD\nCall 1-800-555-0100');
+assert.equal(personal(personal(resume)), personal(resume));
+// An ordinal street and a stray space in the number.
+assert.equal(personal('9 E. 33rd Street #1004D, Baltimore\n(310) 555- 1094'), '[REDACTED: home address], Baltimore\n[REDACTED: phone number]');
+// Soft hyphens inside a number.
+assert.equal(r('Call 443­555­0123 today'), 'Call [REDACTED: phone number] today');
+// The other shapes résumés use.
+assert.equal(personal('AMR II\nBaltimore MD 21218'), 'AMR II\n[REDACTED: home address]');
+assert.equal(personal('Baltimore, MD · +12025550199'), 'Baltimore, MD · [REDACTED: phone number]');
+assert.equal(personal('• (732)-555-0198 • a@jhu.edu'), '• [REDACTED: phone number] • a@jhu.edu');
+assert.equal(personal('Whitman, MA, 02382 | Baltimore, MD, 21218, Wolman Hall 415B'), '[REDACTED: home address] | [REDACTED: home address], [REDACTED: home address]');
+assert(r(resume).includes('6 Beresford Lane'));
+assert(isPersonalDocument('Resume_ Updated Feb 2018 - Jonathan Patterson') && isPersonalDocument('2018_02 Hammer-Bleich CV - Mikhael') && isPersonalDocument('Jessie G Résumé'));
+assert(!isPersonalDocument('CVS receipt') && !isPersonalDocument('Resumed session minutes'));
 // Table cells keep their pipes.
 assert.equal(r('| Home address: 99 Oak Rd, Laurel, MD 20707 | Senator |'),'| Home address: [REDACTED: home address] | Senator |');
 

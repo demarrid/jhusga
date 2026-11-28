@@ -381,6 +381,13 @@ check("1999-2002 template: byline, and a body that stops at the footer",
     turn.paragraphs.join("|") === "The Student Council voted to ask for later hours at the Eisenhower Library.",
     turn && { byline: turn.byline, paragraphs: turn.paragraphs });
 
+const commaless = parseCapture(
+    STATIC_2001.replace("March 19, 2001</b>", "Mar. 23 1998</b>"),
+    staticCapture("janmar98/mar2398/23council.html", "19980601000000"),
+);
+check("early-1998 template: a dateline without its comma is not the headline either",
+    commaless?.headline === "Student Council Backs a Later Library Closing", commaless?.headline);
+
 const older = parseCapture(STATIC_1996, staticCapture("octdec96/oct0796/teach.html", "19970518210301"));
 check("1990s template: <h3> headline", older?.headline === "Teaching Teachers To Teach", older?.headline);
 check("1990s template: the navigation links below the article are not body text",
@@ -415,6 +422,9 @@ check("Hub: headline, deck and byline",
     hub.subhead === "Course's capstone: design, build cooking-related device" &&
     hub.byline === "Greg Rienzi", hub && { headline: hub.headline, subhead: hub.subhead, byline: hub.byline });
 check("Hub: dated from the byline line when the template has no date meta tag", hub?.publishedOn === "2013-01-01", hub?.publishedOn);
+const undatedHub = parseCapture(HUB.replace("January 1, 2013", ""),
+    gazetteCapture("http://hub.jhu.edu:80/gazette/2015/may-june/no-date-printed", "20150601000000")!);
+check("Hub: a page with no printed date takes its issue's first month", undatedHub?.publishedOn === "2015-05-01", undatedHub?.publishedOn);
 check("Hub: photo galleries are not body text",
     hub?.paragraphs.join("|") === "Students in Noah Cowan's class built cooking devices.|The SGA judged the end-of-semester cook-off.",
     hub?.paragraphs);

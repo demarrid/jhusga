@@ -3,6 +3,7 @@ import { oldestAgenda } from "@/lib/meeting-agenda";
 import { amendmentReviewMessage } from "@/lib/amendment-clearance";
 import type { DocumentSection } from "@/lib/outline";
 import { loadDocumentImages } from "@/lib/document-media";
+import type { DocumentImage } from "@/lib/document-images";
 import { sanitizeExport } from "@/lib/markdown";
 import { unstable_cache } from "next/cache";
 import { ARCHIVE_CACHE_SECONDS, ARCHIVE_CACHE_TAG } from "@/lib/archive-cache";
@@ -705,9 +706,30 @@ function normaliseStatus(status: string): SectionStatus {
         : "empty";
 }
 
+/**
+ * Mark the images that are copies of the site's seal (lib/seal.ts).
+ *
+ * Only block images near the top are read: a bill's title block is the one
+ * place the seal is drawn differently, and it opens the document.
+ */
+async function markSiteSeals(images: DocumentImage[]): Promise<DocumentImage[]> {
+    const candidates = images.filter(image => !image.inline && image.offset <= SEAL_SEARCH_CHARACTERS).slice(0, 3);
+    const ids = candidates.flatMap(image => /\/api\/document-images\/([^/?#]+)$/.exec(image.src)?.[1] ?? []);
+    if (!ids.length) return images;
+    const { isSiteSeal } = await import("@/lib/seal");
+    const rows = await prisma.documentImage.findMany({ where: { id: { in: ids } }, select: { id: true, bytes: true } });
+    const seals = new Set<string>();
+    for (const row of rows) if (await isSiteSeal(row.bytes)) seals.add(`/api/document-images/${row.id}`);
+    return seals.size ? images.map(image => seals.has(image.src) ? { ...image, seal: true } : image) : images;
+}
+
+/** How far into a document a letterhead seal can sit. */
+const SEAL_SEARCH_CHARACTERS = 600;
+
 const cachedDocument = unstable_cache(
     loadDocument,
-    ["document-detail-v4"],
+    // v5: images carry `seal`.
+    ["document-detail-v5"],
     { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS },
 );
 
@@ -1014,7 +1036,7 @@ export async function loadDocument(
         // exactly as it came out of Drive -- and only the parse differs.
         // The "## Sources" footer of an archive record links the Drive file too.
         blocks: protectSourceLinks(renderDocument(document.content, document.documentAnnotations, {
-            images: await loadDocumentImages(document.id, document.content, versionId, imageVersionTime),
+            images: await markSiteSeals(await loadDocumentImages(document.id, document.content, versionId, imageVersionTime)),
             navigationTargets: agendaMatches.map(match => ({ id: `minutes-${match.startOffset}`, offset: match.startOffset })),
             sheetDelimiter: sheetDelimiter(document.mimeType),
         }), access),

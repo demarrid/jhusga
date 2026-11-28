@@ -33,12 +33,12 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { hasRedactions } from "../lib/archive-redaction";
-import { planRedactions, remainingFindings, sourceFileIds, type ManualRedactions, type SourcePage } from "../lib/source-redaction";
+import { hasRedactions, isPersonalDocument } from "../lib/archive-redaction";
+import { isPhoneSheet, planRedactions, remainingFindings, sourceFileIds, type ManualRedactions, type SourcePage } from "../lib/source-redaction";
 
 process.loadEnvFile(".env");
 
@@ -47,7 +47,9 @@ const ORIGINALS = path.join(".archive-local", "originals");
 const MANUAL = path.join("config", "source-redactions.json");
 /** Under Vercel's 4.5 MB response cap, so the route can send the copy whole. */
 const MAX_BYTES = 4 * 1024 * 1024;
-const RENDERINGS = [{ dpi: 150, quality: 75 }, { dpi: 120, quality: 65 }, { dpi: 96, quality: 55 }, { dpi: 72, quality: 50 }];
+// Colour first; greyscale only when a long scan will not fit otherwise.
+const RENDERINGS = [{ dpi: 150, quality: 75 }, { dpi: 120, quality: 65 }, { dpi: 96, quality: 55 }, { dpi: 72, quality: 50 },
+    { dpi: 96, quality: 50, gray: true }, { dpi: 72, quality: 45, gray: true }, { dpi: 60, quality: 40, gray: true }];
 const PYTHON = process.env.PYTHON ?? "python3";
 const sha = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 
@@ -55,6 +57,64 @@ function py<T>(...args: string[]): T {
     const run = spawnSync(PYTHON, ["scripts/source-redact.py", ...args], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
     if (run.status !== 0) throw new Error(`source-redact.py ${args[0]}: ${run.stderr.trim().split("\n").at(-1) ?? "failed"}`);
     return JSON.parse(run.stdout.trim().split("\n").at(-1)!) as T;
+}
+
+const OFFICE_TYPES: Record<string, string> = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/msword": "doc",
+    "application/rtf": "rtf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "text/csv": "csv",
+};
+
+/**
+ * Office file to PDF: LibreOffice when installed, else (under WSL) the Windows
+ * Office through scripts/office-to-pdf.ps1. Either way macros do not run.
+ */
+function officeToPdf(input: string, output: string): void {
+    // Old .xls workbooks are drawn by source-redact.py (xlrd): Office's File
+    // Block refuses them by default and LibreOffice may not be installed.
+    if (input.endsWith(".xls") && readFileSync(input).subarray(0, 2).toString("latin1") === "PK") {
+        // Labelled .xls on Drive but really a modern workbook: Office opens those.
+        const renamed = input.replace(/\.xls$/, ".xlsx");
+        renameSync(input, renamed);
+        input = renamed;
+    } else if (/\.(?:xls|csv)$/.test(input)) {
+        py("xls", input, output);
+        return;
+    }
+    const soffice = spawnSync("sh", ["-c", "command -v soffice || command -v libreoffice"], { encoding: "utf8" }).stdout.trim();
+    if (soffice) {
+        const outDir = path.join(path.dirname(input), "converted");
+        const run = spawnSync(soffice, ["--headless", "--norestore", "--convert-to", "pdf", "--outdir", outDir, input], { encoding: "utf8", timeout: 300_000 });
+        const pdf = path.join(outDir, path.basename(input).replace(/\.[^.]+$/, ".pdf"));
+        if (run.status !== 0 || !existsSync(pdf)) throw new Error(`LibreOffice could not convert ${path.basename(input)}`);
+        spawnSync("mv", [pdf, output]);
+        return;
+    }
+    const win = (file: string) => spawnSync("wslpath", ["-w", path.resolve(file)], { encoding: "utf8" }).stdout.trim();
+    if (!win(".")) throw new Error("No converter for Office files: install LibreOffice");
+    const run = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", win("scripts/office-to-pdf.ps1"),
+        "-In", win(input), "-Out", win(output)], { encoding: "utf8", timeout: 300_000 });
+    if (run.status !== 0 || !existsSync(output)) throw new Error(`Office could not convert ${path.basename(input)}: ${(run.stderr || run.stdout).trim().split("\n").at(-1) ?? ""}`);
+}
+
+/** A file's type from its first bytes, for sources Drive gives no metadata for. */
+function sniffType(bytes: Uint8Array): string {
+    const head = Buffer.from(bytes.subarray(0, 8));
+    if (head.subarray(0, 5).toString("latin1") === "%PDF-") return "application/pdf";
+    if (head[0] === 0xff && head[1] === 0xd8) return "image/jpeg";
+    if (head.subarray(1, 4).toString("latin1") === "PNG") return "image/png";
+    if (head.subarray(0, 2).toString("latin1") === "PK") {
+        const names = Buffer.from(bytes).toString("latin1");
+        if (names.includes("word/")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (names.includes("xl/")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (names.includes("ppt/")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    }
+    return "application/octet-stream";
 }
 
 function argValues(flag: string): string[] {
@@ -74,15 +134,33 @@ async function fetchSources(doc: Doc, dir: string): Promise<{ inputs: string[]; 
         const local = path.join(ORIGINALS, id);
         let file = local;
         let mime = "";
-        if (!existsSync(local)) {
+        // A source fetched (and converted) on an earlier run is reused: it saves
+        // Drive requests, which Google throttles. --redownload fetches it again.
+        const fetchedBefore = path.join(dir, `source-${index + 1}`);
+        if (!existsSync(local) && existsSync(fetchedBefore) && !process.argv.includes("--redownload")) {
+            file = fetchedBefore;
+            mime = sniffType(await readFile(fetchedBefore));
+        } else if (!existsSync(local)) {
+            // Some archive files download but return no metadata: fetch the
+            // bytes anyway and tell the type from the file itself.
             const meta = id === doc.driveFileId ? { mimeType: doc.mimeType } : await getFile(id);
-            if (!meta) throw new Error(`Drive will not serve source ${index + 1}`);
-            const fetched = await downloadSourceFile(id, meta.mimeType);
+            const fetched = await downloadSourceFile(id, meta?.mimeType ?? "application/octet-stream")
+                .then(got => got && (meta ? got : { ...got, mimeType: sniffType(got.bytes) }));
             if (!fetched) throw new Error(`Drive will not serve source ${index + 1}`);
-            if (!/^application\/pdf$|^image\//.test(fetched.mimeType)) throw new Error(`Unsupported source type ${fetched.mimeType}`);
             file = path.join(dir, `source-${index + 1}`);
-            await writeFile(file, fetched.bytes);
-            mime = fetched.mimeType;
+            const office = OFFICE_TYPES[fetched.mimeType];
+            if (office) {
+                // Word, Excel and PowerPoint files are converted to PDF first.
+                const original = `${file}.${office}`;
+                await writeFile(original, fetched.bytes);
+                officeToPdf(original, file);
+                mime = "application/pdf";
+            } else if (/^application\/pdf$|^image\//.test(fetched.mimeType)) {
+                await writeFile(file, fetched.bytes);
+                mime = fetched.mimeType;
+            } else {
+                throw new Error(`Unsupported source type ${fetched.mimeType}`);
+            }
         }
         hash.update(await readFile(file));
         inputs.push(mime ? `${file}:${mime}` : file);
@@ -103,7 +181,7 @@ async function build(doc: Doc, manual: ManualRedactions | undefined): Promise<Bu
         await writeFile(stamp, hash);
     }
     const pages = (JSON.parse(await readFile(path.join(dir, "lines.json"), "utf8")) as { pages: SourcePage[] }).pages;
-    const boxes = planRedactions(pages, manual);
+    const boxes = planRedactions(pages, manual, { phoneSheet: isPhoneSheet(doc.content), personal: isPersonalDocument(doc.title) });
 
     const out = path.join(dir, "redacted.pdf");
     const preview = path.join(dir, "preview");
@@ -120,7 +198,7 @@ async function build(doc: Doc, manual: ManualRedactions | undefined): Promise<Bu
 
     // Read the finished copy back exactly as a stranger would: OCR every page.
     py("lines", out, path.join(dir, "check.json"), "--ocr-all");
-    const remaining = remainingFindings((JSON.parse(await readFile(path.join(dir, "check.json"), "utf8")) as { pages: SourcePage[] }).pages);
+    const remaining = remainingFindings((JSON.parse(await readFile(path.join(dir, "check.json"), "utf8")) as { pages: SourcePage[] }).pages, pages, { phoneSheet: isPhoneSheet(doc.content), personal: isPersonalDocument(doc.title) });
 
     const count = (key: "kind" | "method") => boxes.reduce<Record<string, number>>((all, box) => ({ ...all, [box[key]]: (all[box[key]] ?? 0) + 1 }), {});
     const problems = [
@@ -153,7 +231,7 @@ const escapeHtml = (text: string) => text.replace(/[&<>"]/g, c => ({ "&": "&amp;
 async function explain(doc: Doc, manual: ManualRedactions | undefined): Promise<string> {
     const dir = path.join(WORK, doc.id);
     const pages = (JSON.parse(await readFile(path.join(dir, "lines.json"), "utf8")) as { pages: SourcePage[] }).pages;
-    const boxes = planRedactions(pages, manual);
+    const boxes = planRedactions(pages, manual, { phoneSheet: isPhoneSheet(doc.content), personal: isPersonalDocument(doc.title) });
     // Explain only the boxes actually drawn: same pages, same places.
     const built = JSON.parse(await readFile(path.join(dir, "plan.json"), "utf8")) as { boxes: { page: number; box: number[] }[] };
     const where = (list: { page: number; box: number[] }[]) => JSON.stringify(list.map(b => [b.page, b.box.map(n => Math.round(n * 10))]));

@@ -69,6 +69,7 @@ const SUITES = [
     "visit-refresh",
     "document-media",
     "document-media-sync",
+    "seal",
     "document-corrections",
     "drive",
     "drive-revisions",

@@ -187,7 +187,7 @@ export default async function HistoryTopicPage({ params, searchParams }: PagePro
                                     records that disagree are marked inconclusive.
                                 </li>
                                 <li>
-                                    News-Letter articles are secondary reporting. &ldquo;Context&rdquo; marks a
+                                    News-Letter and Gazette articles are secondary reporting. &ldquo;Context&rdquo; marks a
                                     development outside the SGA that its records tie to its work.
                                 </li>
                             </ul>

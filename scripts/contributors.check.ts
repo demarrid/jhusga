@@ -842,6 +842,37 @@ check(
     ),
     business_,
 );
+const briefing = extractContributors(
+    "President Daniels Dinner Briefing Document on SEXUAL ASSAULT\n\nSGA Presenters: Miranda Bannister (‘20 Senator) and Madelynn Wellons (‘20 Senator)\n",
+    "Briefing Sexual Assault",
+);
+check(
+    "a briefing's SGA presenters are credited as reporting",
+    ["Miranda Bannister", "Madelynn Wellons"].every((name) =>
+        briefing.some((p) => p.name === name && p.role === "reporting"),
+    ),
+    briefing,
+);
+const briefingRoster = extractContributors(
+    "SGA Presenters: AJ Tsang (Executive Vice President), Mohamed Elgendi (‘20), Sam Mollin ‘21\n",
+    "2018_19 Daniels Dinner Briefing Document",
+);
+check(
+    "initials before a parenthesised office are part of the name",
+    briefingRoster.some((p) => p.name === "AJ Tsang" && p.role === "reporting")
+        && !briefingRoster.some((p) => p.name === "Tsang"),
+    briefingRoster,
+);
+check(
+    "a class year after the name does not hide the person",
+    briefingRoster.some((p) => p.name === "Sam Mollin" && p.role === "reporting")
+        && briefingRoster.some((p) => p.name === "Mohamed Elgendi"),
+    briefingRoster,
+);
+check(
+    "a TBD presenter is nobody",
+    extractContributors("SGA Presenters: TBD\n", "Briefing_ Public Safety").length === 0,
+);
 check(
     "a vote tally is not mistaken for a candidate",
     !business_.some((p) => /Winner|votes|\d/.test(p.name)),

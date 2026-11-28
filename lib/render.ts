@@ -214,7 +214,7 @@ export function renderDocument(
         const at = image.offset === content.length ? lines.length : lines.findIndex(line => line.start === image.offset);
         if (at < from) continue;
         blocks.push(...parse(lines.slice(from, at)));
-        const asset = { src: image.src, alt: image.alt, width: image.width, height: image.height };
+        const asset = { src: image.src, alt: image.alt, width: image.width, height: image.height, ...(image.seal ? { seal: true } : {}) };
         blocks.push({ kind: "paragraph", runs: [{ text: "", image: asset,
             bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false }] });
         from = at;
@@ -1465,7 +1465,7 @@ function inlineRuns(
                 (image.offset < range.start && /^[ \t]*$/.test(content.slice(image.offset, range.start))));
             if (anchored.has(key) || !belongs || (offset < image.offset && index < text.length)) continue;
             flush();
-            runs.push({ text: "", image: { src: image.src, alt: image.alt, width: image.width, height: image.height, inline: true },
+            runs.push({ text: "", image: { src: image.src, alt: image.alt, width: image.width, height: image.height, inline: true, ...(image.seal ? { seal: true } : {}) },
                 bold: false, italic: false, strike: false, href: null, annotationId: null, anchor: false });
             anchored.add(key);
         }

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { demoModeEnabled } from "@/lib/data-mode";
 import { demoDocument } from "@/lib/demo-data";
 import { renderDocument } from "@/lib/render";
-import { redactPersonalData } from "@/lib/archive-redaction";
+import { isPersonalDocument, redactPersonalData } from "@/lib/archive-redaction";
 import { mergeUnchangedVersions, selectDocumentVersion, sortVersionOccurrences, versionCutoffDate, versionOptions } from "@/lib/document-versions";
 import { loadDocument, hydrateDocumentDetail, type DocumentDetail } from "@/server/documents";
 
@@ -76,11 +76,11 @@ export async function getDocumentVersionContent(document: DocumentDetail, versio
 const cachedVersionContent = unstable_cache(async (documentId: string, versionId: string) => {
     const version = await prisma.documentVersion.findFirst({
         where: { id: versionId, status: "published", revision: { documentId } },
-        select: { revision: { select: { content: true } } },
+        select: { revision: { select: { content: true, document: { select: { title: true } } } } },
     });
     // Compared against filtered text, so an old snapshot shows no more than it.
-    return version ? redactPersonalData(version.revision.content) : null;
-}, ["version-content-v1"], { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS });
+    return version ? redactPersonalData(version.revision.content, { personal: isPersonalDocument(version.revision.document.title) }) : null;
+}, ["version-content-v2"], { tags: [ARCHIVE_CACHE_TAG], revalidate: ARCHIVE_CACHE_SECONDS });
 
 
 /** Always fresh after source refresh; never render a whole document to read an ID. */

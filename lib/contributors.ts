@@ -120,6 +120,9 @@ const ROLE_LABELS: { pattern: RegExp; role: ContributorRole; firstNames?: boolea
     // The Senate elects a Senator of the Month, and the line that records it
     // is the only place some senators are named all meeting.
     { pattern: /^nominees?$/i, role: "nominee" },
+    // A briefing's "SGA Presenters:" are the senators who brought it to the
+    // administration: they reported it, which is not the same as writing it.
+    { pattern: /^(?:presenters?|presented\s+by)$/i, role: "reporting" },
     { pattern: /^here$/i, role: "present", firstNames: true },
 ];
 
@@ -476,8 +479,16 @@ function parsePersonToken(candidate: string): {
     if (!working) return null;
 
     const withParens = /^(.*?)\s*\(([^)]*)\)\s*$/.exec(working);
-    const parenthetical = withParens ? withParens[2].trim() : null;
+    let parenthetical = withParens ? withParens[2].trim() : null;
     working = (withParens ? withParens[1] : working).trim();
+
+    // "Sam Mollin ‘21": a class year written after the name, not in
+    // parentheses. Kept as the note, the way "(‘21)" would have been.
+    const classYear = /^(.*\S)\s+([‘’']\d{2})$/.exec(working);
+    if (classYear) {
+        working = classYear[1]!;
+        parenthetical ??= classYear[2]!;
+    }
 
     const trailingOffice = /^(.*?),\s*([^,]+)$/.exec(working);
     let commaOffice: string | null = null;
@@ -486,12 +497,15 @@ function parsePersonToken(candidate: string): {
         commaOffice = tidyOffice(trailingOffice[2]);
     }
 
-    const peeled = peelLeadingOffice(working);
+    const parenIsOffice = parenthetical ? OFFICE_WORDS.test(parenthetical) : false;
+
+    // "AJ Tsang (Executive Vice President)": with the office already in the
+    // parentheses, two capitals before a surname are initials, not "VP".
+    const initials = parenIsOffice && /^[A-Z]{2}\s+[A-Z][A-Za-z'’-]+$/.test(working);
+    const peeled = initials ? { name: working, office: null } : peelLeadingOffice(working);
     working = peeled.name;
 
     if (!isPlausibleName(working)) return null;
-
-    const parenIsOffice = parenthetical ? OFFICE_WORDS.test(parenthetical) : false;
 
     return {
         name: working,

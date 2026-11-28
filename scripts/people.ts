@@ -1,17 +1,22 @@
-/** npm run people -- [--short] [--limit 20] [--session 114] [--document <id>] */
+/** npm run people -- [--short [--dry-run]] [--limit 20] [--session 114] [--document <id>] */
 import path from "node:path";
 
 process.loadEnvFile(path.join(process.cwd(), ".env"));
 
-const USAGE = "Usage: npm run people -- [--short] [--limit 20] [--session 114] [--document <id>]";
+const USAGE = "Usage: npm run people -- [--short [--dry-run]] [--limit 20] [--session 114] [--document <id>]";
 
 function readArgs(argv: string[]) {
     const options = new Map<string, string>();
     let short = false;
+    let dryRun = false;
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index]!;
         if (arg === "--short") {
             short = true;
+            continue;
+        }
+        if (arg === "--dry-run") {
+            dryRun = true;
             continue;
         }
         const value = argv[index + 1];
@@ -27,18 +32,19 @@ function readArgs(argv: string[]) {
         if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${flag} needs a positive integer`);
         return value;
     };
-    return { short, options, limit: number("--limit") ?? Infinity, sessionNumber: number("--session") };
+    if (dryRun && !short) throw new Error("--dry-run only applies to --short");
+    return { short, dryRun, options, limit: number("--limit") ?? Infinity, sessionNumber: number("--session") };
 }
 
 async function main() {
-    const { short, options, limit, sessionNumber } = readArgs(process.argv.slice(2));
+    const { short, dryRun, options, limit, sessionNumber } = readArgs(process.argv.slice(2));
     const { prisma } = await import("../lib/prisma");
     let processed = 0;
     let failed = 0;
     let skipped = 0;
     try {
         if (short) {
-            const result = await linkShortNames(prisma, { limit, sessionNumber, documentId: options.get("--document") });
+            const result = await linkShortNames(prisma, { limit, sessionNumber, documentId: options.get("--document"), dryRun });
             processed = result.processed;
             failed = result.failed;
             skipped = result.skipped;
@@ -90,10 +96,12 @@ async function extractPeople(
 
 async function linkShortNames(
     prisma: Awaited<typeof import("../lib/prisma")>["prisma"],
-    scope: { limit: number; sessionNumber?: number; documentId?: string },
+    scope: { limit: number; sessionNumber?: number; documentId?: string; dryRun?: boolean },
 ) {
     const { nameKey } = await import("../lib/contributors");
-    const { matchShortName, SHORT_SOURCE, shortNameMentions, textHasFullName } = await import("../lib/short-names");
+    const { hasUniversityTitleNear, isLinkableFullName, matchShortName, SHORT_SOURCE, shortNameMentions, textHasFullName, textNamesPerson } = await import("../lib/short-names");
+    const { nameTokens } = await import("../lib/names");
+    const { parseExtractedPeople } = await import("../lib/people-extraction");
     const rows = await prisma.hopkinsAffiliate.findMany({
         select: {
             id: true,
@@ -103,17 +111,28 @@ async function linkShortNames(
                 select: { startedAt: true, endedAt: true },
             },
             contributions: {
-                select: { evidence: true, document: { select: { sessionNumber: true, datedAt: true } } },
+                select: { evidence: true, role: true, source: true, document: { select: { sessionNumber: true, datedAt: true } } },
             },
         },
     });
     const roster = rows.flatMap((person) => {
-        if (nameKey(person.name).split(" ").length < 2) return [];
+        if (nameKey(person.name).split(" ").length < 2 || !isLinkableFullName(person.name)) return [];
+        // This linker's own guesses do not count as evidence: a "Wilson" it
+        // once read as Woodrow Wilson must not make him look like a dean, or
+        // like somebody who attends.
+        const sourced = person.contributions.filter((item) => item.source !== SHORT_SOURCE);
+        const universityTitled = sourced.some((item) =>
+            hasUniversityTitleNear(item.evidence, person.name.trim().split(/\s+/).at(-1) ?? ""));
         return [{
             id: person.id,
             name: person.name,
             seats: person.hopkinsRelationships,
-            appearances: person.contributions.flatMap((item) => textHasFullName(item.evidence, person.name) ? [{
+            // Administrators are mostly only mentioned too; a university title
+            // in the record is what separates Dean Schlesinger from Woodrow Wilson.
+            onlyMentioned: person.hopkinsRelationships.length === 0 && !universityTitled &&
+                sourced.every((item) => item.role === "mentioned"),
+            universityTitled,
+            appearances: person.contributions.flatMap((item) => textNamesPerson(item.evidence, person.name) ? [{
                 sessionNumber: item.document.sessionNumber,
                 datedAt: item.document.datedAt,
                 evidence: item.evidence.slice(0, 500),
@@ -122,10 +141,23 @@ async function linkShortNames(
     });
     const documents = await prisma.document.findMany({
         where: { id: scope.documentId, sessionNumber: scope.sessionNumber },
-        select: { id: true, title: true, kind: true, content: true, datedAt: true, sessionNumber: true, meetingKey: true },
+        select: {
+            id: true, title: true, kind: true, content: true, datedAt: true, sessionNumber: true, meetingKey: true,
+            peopleExtraction: { select: { people: true } },
+        },
         orderBy: { id: "asc" },
     });
     if (scope.documentId && !documents.length) throw new Error("Document not found in the selected scope");
+    // The AI pass's cached people, read as stored: no model is called here.
+    // parseExtractedPeople drops any quote the current text no longer holds.
+    const discoveredPeople = (document: (typeof documents)[number]) => {
+        if (!document.peopleExtraction) return [];
+        try {
+            return parseExtractedPeople({ people: document.peopleExtraction.people }, document.content);
+        } catch {
+            return [];
+        }
+    };
     // Who each meeting's other records already credit, so a short name can
     // be settled by the meeting itself. See `meetingPeople` in lib/short-names.ts.
     const meetingKeys = [...new Set(documents.map((document) => document.meetingKey).filter(Boolean))];
@@ -142,7 +174,10 @@ async function linkShortNames(
     let failed = 0;
     let skipped = 0;
     for (const document of documents) {
-        const mentions = shortNameMentions(document.content, document.title, document.kind);
+        const mentions = shortNameMentions(document.content, document.title, document.kind, discoveredPeople(document));
+        const fromParser = scope.dryRun
+            ? new Set(shortNameMentions(document.content, document.title, document.kind).map((m) => `${m.name}\n${m.evidence}`))
+            : null;
         if (!mentions.length) continue;
         if (processed + failed >= scope.limit) break;
         try {
@@ -169,14 +204,42 @@ async function linkShortNames(
                 }),
             }));
             const changes: string[] = [];
+            if (scope.dryRun) {
+                for (const { mention, person } of resolved) {
+                    const linked = person && existing.some((row) =>
+                        row.hopkinsAffiliateId === person.id && row.role === mention.role);
+                    const ai = fromParser && !fromParser.has(`${mention.name}\n${mention.evidence}`) ? "ai " : "   ";
+                    changes.push(`${linked ? "=" : person ? "+" : " "} ${ai}${mention.name}/${mention.role} -> ${person?.name ?? "(unresolved)"}` +
+                        (person && !linked ? `  | ${mention.evidence.slice(0, 140).replace(/\s+/g, " ")}` : ""));
+                }
+                processed += 1;
+                console.log(`${document.id} ${document.title} (dry run):\n  ${changes.join("\n  ")}`);
+                continue;
+            }
+            // "Senator Mays, Senator Emeritus Fang" is one line naming two
+            // people. Each is resolved from the same evidence, so neither
+            // row is stale just because the other mention found someone else.
+            const resolvedOnLine = new Map<string, Set<string>>();
+            for (const { mention, person } of resolved) {
+                if (!person) continue;
+                const evidence = mention.evidence.slice(0, 300);
+                resolvedOnLine.set(evidence, (resolvedOnLine.get(evidence) ?? new Set()).add(person.id));
+            }
             await prisma.$transaction(async (tx) => {
                 for (const { mention, person } of resolved) {
                     const evidence = mention.evidence.slice(0, 300);
+                    // Only an earlier reading of this same short name is stale:
+                    // "IA" left unresolved on a line says nothing about the
+                    // Schatmeyer row the same line produced. And an unresolved
+                    // name only withdraws this linker's own guesses, never the
+                    // resolver's, which a reprocess would write straight back.
                     const stale = existing.filter((row) =>
-                        (row.source === "parsed" || row.source === SHORT_SOURCE) &&
+                        (row.source === SHORT_SOURCE || (person && row.source === "parsed")) &&
                         row.evidence === evidence &&
+                        nameTokens(row.hopkinsAffiliate.name).includes(nameKey(mention.name)) &&
                         !textHasFullName(row.evidence, row.hopkinsAffiliate.name) &&
-                        row.hopkinsAffiliateId !== person?.id);
+                        row.hopkinsAffiliateId !== person?.id &&
+                        !resolvedOnLine.get(evidence)?.has(row.hopkinsAffiliateId));
                     if (stale.length) {
                         await tx.documentContributor.deleteMany({ where: { id: { in: stale.map((row) => row.id) } } });
                         for (const row of stale) changes.push(`cleared ${row.hopkinsAffiliate.name}`);

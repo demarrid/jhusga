@@ -60,6 +60,8 @@ node_modules/.bin/tsc --noEmit
 
 Historical Documents (`154WPl9-3wRYzhjqep7eOEP6BUS9L30_1`) and the photograph collection are excluded from automated walks and linked imports. The original inventory IDs are recorded in `config/manual-archive-ids.json`; linked new files are checked through their parent folders. Manual imports require an explicit chat request. Trainer feedback remains excluded.
 
+Sync never follows links out of archive documents. When the owner asks in chat for an archive document's linked files, `scripts/archive-follow-links.ts <documentId|driveFileId>... [--from <file>] [--apply]` imports them the way sync imports any linked file: public Drive metadata only, manual-only folders refused, the same file types and redaction. They become `discoveredVia: link`, so later syncs keep them current. Links survive only in Word imports that `scripts/refresh-docx.ts` has re-converted; `archive-native.py` reads Word as plain paragraphs and drops every URL.
+
 Imported `discoveredVia: archive` documents expose only current corrected text, including requests carrying old version IDs. Internal revisions remain stored but are not offered by the viewer. Summaries remain source-cited; unreadable sources cannot receive invented summaries.
 
 ## Adding a new folder (2019-2022 Dump, November 21, 2026)

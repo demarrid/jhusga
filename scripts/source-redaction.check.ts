@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {fieldBoxes, linksToSource, planRedactions, protectSourceLinks, remainingFindings, sourceAccess, sourceFileIds, valueBoxes, type PageLine, type SourcePage} from '../lib/source-redaction';
+import {fieldBoxes, isPhoneSheet, linksToSource, planRedactions, protectSourceLinks, remainingFindings, sourceAccess, sourceFileIds, valueBoxes, type PageLine, type SourcePage} from '../lib/source-redaction';
 
 const words = (text: string, x = 100, y = 200, height = 10): PageLine['words'] =>
     text.split(' ').map((word, i, all) => {
@@ -50,9 +50,65 @@ assert(field[0].box[1] <= 194 - 30 && field[0].box[2] >= 600, 'reaches up and ri
 const squashed: PageLine = {source: 'ocr', words: words('2.Address (Home addressis reguired.f mailing adciress is dliferenl.please note.):', 86, 212)};
 const below = fieldBoxes(squashed, page([squashed]), 0)[1];
 assert(below.box[1] >= 214 && below.box[1] < 222 && below.box[3] >= 238 && below.box[2] >= 548);
+// An SSN label after a name on the same line: the box starts at the label's end, digits and all.
+const named: PageLine = {source: 'ocr', words: words('StruckJazz-ElizabethFixsen SSN:55', 100, 160)};
+const [beside] = fieldBoxes(named, page([named]), 0);
+assert(beside && beside.box[0] < 100 + 31 * 5 && beside.box[0] > 100 + 26 * 5, 'starts after "SSN:", before the digits');
+assert(beside.box[1] < 160 - 30, 'reaches up');
+// A password written on the line under its label.
+const pw: PageLine = {source: 'text', words: words('● Email Password:', 100, 300)};
+assert.deepEqual(fieldBoxes(pw, page([pw]), 0).map(b => b.kind), ['credential', 'credential']);
+// "Johnssn" and "Students Assn." are not SSN labels.
+for (const text of ['Johnssn Hopkins', 'Hong Kong Students Assn. (B)']) {
+    const line: PageLine = {source: 'ocr', words: words(text, 100, 160)};
+    assert.equal(fieldBoxes(line, page([line]), 0).length, 0, text);
+}
+// OCR glues letters to the label and reads dashes as "~".
+const glued: PageLine = {source: 'ocr', words: words('StruckJazz-ElizabethFixsen nsSN:123-o4~5678', 100, 160)};
+assert(fieldBoxes(glued, page([glued]), 0).length === 2, 'glued label is a field');
+assert(valueBoxes(glued, page([glued]), 0).some(b => b.kind === 'personal identifier'), 'tilde SSN is covered by shape');
+// An office number the plan left is excused when the re-read misreads a digit; an SSN never is.
+const sig = (n: string) => [{source: 'ocr' as const, words: words(n, 53, 131)}];
+assert.deepEqual(remainingFindings([page(sig('410-518-7668'))], [page(sig('410-516-7668'))]), []);
+assert.deepEqual(remainingFindings([page(sig('410-518-7668'))], [page(sig('410-516-1234'))]).length, 1);
 // The paragraphs that explain SSNs are not fields.
 const prose: PageLine = {source: 'text', words: words('For individuals, this is generally your social security number (SSN). However, for a resident alien, sole proprietor, or disregarded entity, see the instructions.')};
 assert.equal(fieldBoxes(prose, page([prose]), 0).length, 0);
+
+// A spreadsheet page: bare digits under a "Primary Contact Phone" heading are boxed; a business directory's are not.
+const sheet = [
+    {source: 'text' as const, words: words('Primary Contact Phone', 300, 100)},
+    {source: 'text' as const, words: words('Jane', 100, 112)}, {source: 'text' as const, words: words('4105550123', 300, 112)},
+    {source: 'text' as const, words: words('4105160000', 300, 124)},
+];
+assert.deepEqual(planRedactions([page(sheet)]).map(b => b.kind), ['phone number']);
+assert.deepEqual(remainingFindings([page(sheet)]).map(f => f.kind), ['phone number']);
+const directory = [...sheet, {source: 'text' as const, words: words('Company', 100, 100)}];
+assert.deepEqual(planRedactions([page(directory)]), []);
+
+// A header row run together into one line: the column's heading starts where its values start.
+const runTogether = [{source: 'text' as const, words: words('What is your name? What is your best contact phone number?What else', 100, 100)},
+    {source: 'text' as const, words: words('Jane', 100, 112)}, {source: 'text' as const, words: words('4125550174', 100 + 19 * 5, 112)},
+    {source: 'text' as const, words: words('Ann', 100, 124)}, {source: 'text' as const, words: words('7035550152', 100 + 19 * 5, 124)}];
+assert.deepEqual(planRedactions([page(runTogether)]).map(b => b.kind), ['phone number', 'phone number']);
+// Right-aligned, heading clipped: covered when the stored text shows a phone column.
+const rightAligned = [{source: 'text' as const, words: words('What is your best contact p', 100, 100)},
+    {source: 'text' as const, words: words('4125550174', 240, 112)}];
+assert.equal(planRedactions([page(rightAligned)]).length, 0);
+assert(isPhoneSheet('| Jane | [REDACTED: phone number] |') && !isPhoneSheet('Cell: [REDACTED: phone number]'));
+assert.equal(planRedactions([page(rightAligned)], undefined, {phoneSheet: true}).length, 1);
+assert.equal(remainingFindings([page(rightAligned)], [], {phoneSheet: true}).length, 1);
+// A clipped heading: three phone-shaped numbers stacked in a column are still phones; codes starting 1 are not.
+const clipped = ['4105550123', '7135550199', '9195550142'].map((n, i) => ({source: 'text' as const, words: words(n, 300, 100 + i * 12)}));
+assert.equal(planRedactions([page(clipped)]).length, 3);
+const codes = ['1105550123', '1135550199', '1195550142'].map((n, i) => ({source: 'text' as const, words: words(n, 300, 100 + i * 12)}));
+assert.equal(planRedactions([page(codes)]).length, 0);
+
+// A résumé header: its street, city line and phone are boxed in personal mode only.
+const header = [{source: 'text' as const, words: words('6 Beresford Lane, Larchmont, NY 10543 US | (914) 555-0123', 100, 100)}];
+assert.deepEqual(planRedactions([page(header)]).map(b => b.kind), ['phone number']);
+assert.deepEqual([...new Set(planRedactions([page(header)], undefined, {personal: true}).map(b => b.kind))].sort(), ['home address', 'phone number']);
+assert.equal(remainingFindings([page(header)], [], {personal: true}).length, 3);
 
 // Manual boxes: whole pages and page fractions, 1-based.
 const plan = planRedactions([page([]), page([])], {pages: [2], boxes: [{page: 1, box: [0.5, 0.1, 1, 0.2]}]});
@@ -64,6 +120,11 @@ assert.deepEqual(remainingFindings([page([{source: 'ocr', words: words('Social s
 // The re-read keeps a business's number that the plan left alone, and still reports a person's.
 assert.deepEqual(remainingFindings([page(shop)]), []);
 assert.deepEqual(remainingFindings([page(home)]).map(f => f.kind), ['phone number']);
+// A vendor's number the plan read and left is excused when the re-read loses its context; a new one is not.
+const vendorSource = [{source: 'ocr' as const, words: words('Linens: Table Toppers, 410.555.0123, info@tabletoppers.example', 100, 100)}];
+const vendorReread = [{source: 'ocr' as const, words: words('Linens:TableToppers,410.555.0123,table.toppers@comcast.net', 100, 100)}];
+assert.deepEqual(remainingFindings([page(vendorReread)], [page(vendorSource)]), []);
+assert.deepEqual(remainingFindings([page(vendorReread)], [page([])]).map(f => f.kind), ['phone number']);
 
 // Source files: listed in the footer, else the document's own.
 const id = '1NRkwj-eASJ_AG6JSIF3vGII42Kw4iXL4', other = '1ppcLSn_xI7bVLl0aGo1lCZJae-55TIMI';

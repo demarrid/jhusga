@@ -6,4 +6,6 @@ export type DocumentImage = {
     alt: string;
     width: number;
     height: number;
+    /** A copy of the site's own seal (lib/seal.ts), so a bill header can draw public/logo.png instead. */
+    seal?: boolean;
 };

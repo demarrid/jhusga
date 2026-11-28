@@ -426,6 +426,17 @@
   overflow-wrap: anywhere;
 }
 
+/* The letterhead seal, above the institution lines. The height sets the size;
+   an embedded seal on a wide white margin may run wider to match it. */
+.billSeal {
+  display: block;
+  margin: 0 auto 1rem;
+  width: auto;
+  max-width: 9rem;
+  height: auto;
+  max-height: 6rem;
+}
+
 .billHeader [data-bill-line="institution"] {
   font-size: 0.95rem;
   line-height: 1.3;

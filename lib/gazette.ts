@@ -400,8 +400,9 @@ const CHROME = [
     // and both run together when the template puts them in one cell.
     /^(?:go to\b.{0,60}?\b(?:table of contents|front page|home ?page)\.?\s*)+$/i,
     // The issue's dateline and volume, which the 1999-2002 template sets in
-    // bold above the headline: "Jan. 25, 1999", "VOL. 28, NO. 19".
-    /^[a-z]{3,9}\.? \d{1,2}, \d{4}(?: vol\.? \d+,? no\.? \d+)?$/i,
+    // bold above the headline: "Jan. 25, 1999", "VOL. 28, NO. 19"; in early
+    // 1998 without the comma, "Mar. 23 1998".
+    /^[a-z]{3,9}\.? \d{1,2},? \d{4}(?: vol\.? \d+,? no\.? \d+)?$/i,
     /^vol\.? \d+,? no\.? \d+$/i,
     /^the gazette \| the johns hopkins university \|/i,
     /^(?:about the gazette|search|back issues|contact us|gazette@jhu\.edu)$/i,
@@ -628,9 +629,21 @@ function parseHub(html: string, capture: GazetteCapture): Parsed | null {
         headline,
         subhead: textOf(/<h2 class="subheadline">([\s\S]*?)<\/h2>/i.exec(html)?.[1] ?? ""),
         byline,
-        publishedOn: published ?? capture.listedOn,
+        publishedOn: published ?? capture.listedOn ?? hubIssueMonth(capture.fileId),
         paragraphs,
     };
+}
+
+/**
+ * Some 2012 pages print no date at all; the address still names the issue
+ * ("2012/september", "2015/may-june"). Date the article to the issue's first
+ * month, on the 1st, the archive's convention for a month-only date.
+ */
+function hubIssueMonth(fileId: string): string | null {
+    const match = /^gazette:hub\/(\d{4})\/([a-z]+)/.exec(fileId);
+    if (!match) return null;
+    const month = MONTHS.indexOf(match[2]!) + 1;
+    return month ? iso(Number(match[1]), month, 1) : null;
 }
 
 /** Everything the archive keeps about one capture, or null when it is not a readable article. */

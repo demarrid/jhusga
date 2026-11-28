@@ -21,7 +21,7 @@
  * review before a copy is published, and config/source-redactions.json adds
  * the boxes that review finds missing.
  */
-import { findSensitiveSpans, hasRedactions, isBusinessContext, isOfficeAddress, type RedactionKind } from "@/lib/archive-redaction";
+import { findSensitiveSpans, hasRedactions, isBusinessColumn, type RedactOptions, isBusinessContext, isOfficeAddress, isPhoneHeading, isPrivatePhoneCell, type RedactionKind } from "@/lib/archive-redaction";
 
 export type Box = [number, number, number, number];
 export type PageWord = { text: string; box: Box };
@@ -122,11 +122,17 @@ export function protectSourceLinks<T>(value: T, access: SourceAccess): T {
  * wherever there is room, often above and to the right of its label.
  */
 const FIELD_LABELS: { pattern: RegExp; kind: RedactionKind; above: number }[] = [
+    // OCR may glue stray letters in front ("nsSN:"); then "SN" must still be
+    // capitals (case-sensitive), so "Johnssn" and "Students Assn." are not labels.
+    { pattern: /(?<=[a-z])[sS]SN\b/, kind: "financial identifier", above: 4 },
     { pattern: /social\s*security\s*(?:number|no\b)|\bSSN\b|taxpayer\s*identification\s*(?:number|no\b)|employer\s*identification\s*(?:number|no\b)|\bTIN\b|\bEIN\b/i, kind: "financial identifier", above: 4 },
     { pattern: /bank\s*account\s*(?:number|no\b)|routing\s*(?:number|no\b)/i, kind: "financial identifier", above: 1.5 },
     { pattern: /(?:home|hume|mailing|permanent|street)\s*ad+r?[ce]ss|\bad+r?[ce]ss\s*\(\s*(?:number|h\w{2}e)|ad+r?[ce]ss\s*is\s*r\w{2,4}ired|city,?\s*state,?\s*and\s*zip/i, kind: "home address", above: 1 },
     { pattern: /date\s*of\s*birth|driver['’]?s?\s*licen[cs]e/i, kind: "personal identifier", above: 1.5 },
     { pattern: /\b(?:cell|mobile|home)\s*(?:phone|number|tel)/i, kind: "phone number", above: 1 },
+    // "Email Password:" with the password on the line below it.
+    // Only a label that ends its line: "Password: x" on one line is the text rule's.
+    { pattern: /\bpass\s*words?\s*:\s*$/i, kind: "credential", above: 0.5 },
 ];
 /** Longer than this, beyond the label itself, and the line is prose about the field. */
 const LABEL_SLACK = 30;
@@ -138,7 +144,8 @@ const OPENING_LABEL_LENGTH = 120;
  * read as "218-76-cc49", a street read as "5678 PoMTIAC STRELT". Only applied
  * to OCR lines, and only to cover, never to decide what the stored text says.
  */
-const OCR_SSN = /(?<![\w-])[\dOoIlSsBZ]{3}[-–—. ]{1,2}[\dOoIlSsBZ]{2}[-–—. ]{1,2}\w{4}(?![\w-])/g;
+// Handwritten dashes come back as "~" or "_" too ("123-o4~5678").
+const OCR_SSN = /(?<![\w-])[\dOoIlSsBZ]{3}[-–—.~_ ]{1,2}[\dOoIlSsBZ]{2}[-–—.~_ ]{1,2}\w{4}(?![\w-])/g;
 // A gap before the suffix ("Breakfast" ends in "st" but is not a street), no
 // dollar sign before the number (a price), and only on a short line or one
 // that says "address": a sentence naming a building's address is prose.
@@ -210,27 +217,27 @@ export function neighbours(line: PageLine, page: SourcePage): { before: string; 
  * under a rental company's name and showroom is the company's number, not a
  * person's.
  */
-function spansInContext(line: PageLine, page: SourcePage) {
+function spansInContext(line: PageLine, page: SourcePage, options: RedactOptions = {}) {
     const { text } = lineText(line.words);
     const { before, after } = neighbours(line, page);
     const prefix = before ? before + "\n" : "";
-    return findSensitiveSpans(prefix + text + (after ? "\n" + after : ""))
+    return findSensitiveSpans(prefix + text + (after ? "\n" + after : ""), options)
         .filter(span => span.start >= prefix.length && span.end <= prefix.length + text.length)
         .map(span => ({ ...span, start: span.start - prefix.length, end: span.end - prefix.length }));
 }
 
 /** Boxes over the words of one line that a detected span touches. A partly covered word is covered whole. */
-export function valueBoxes(line: PageLine, page: SourcePage, pageNumber: number): RedactionBox[] {
+export function valueBoxes(line: PageLine, page: SourcePage, pageNumber: number, options: RedactOptions = {}): RedactionBox[] {
     const { text, ranges } = lineText(line.words);
     const { before, after } = neighbours(line, page);
-    const spans = spansInContext(line, page);
+    const spans = spansInContext(line, page, options);
     if (line.source === "ocr") {
         for (const match of text.matchAll(OCR_SSN)) {
             if ((match[0].match(/\d/g) ?? []).length >= 5) spans.push({ start: match.index, end: match.index + match[0].length, kind: "personal identifier",
                 rule: "OCR read something in Social Security shape (###-##-####), allowing for misread digits" });
         }
         const addressLine = text.length <= OCR_STREET_LINE || /ad+r?[ce]ss/i.test(text);
-        const publicPlace = officeLike(text) || isBusinessContext(spacedOcr(`${before}\n${text}\n${after}`)) || officeLike(before) || officeLike(after);
+        const publicPlace = !options.personal && (officeLike(text) || isBusinessContext(spacedOcr(`${before}\n${text}\n${after}`)) || officeLike(before) || officeLike(after));
         for (const match of addressLine && !publicPlace ? text.matchAll(OCR_STREET) : []) {
             spans.push({ start: match.index, end: match.index + match[0].length, kind: "home address",
                 rule: "OCR read a house number and street on a short line, with no campus, office or business name on it or the lines around it" });
@@ -250,17 +257,33 @@ export function valueBoxes(line: PageLine, page: SourcePage, pageNumber: number)
  * it across the page, where a form puts the answer to "Address (number,
  * street...)". Over-covering a form box costs a reader nothing they need.
  */
+/** The x position of a character of a line's text, interpolated inside its word. */
+function xAt(line: PageLine, index: number): number {
+    const { ranges } = lineText(line.words);
+    const i = ranges.findIndex(([, stop]) => index <= stop);
+    if (i < 0) return line.words.at(-1)!.box[2];
+    const [start, stop] = ranges[i], [left, , right] = line.words[i].box;
+    return left + (right - left) * Math.max(0, Math.min(1, (index - start) / Math.max(1, stop - start)));
+}
+
 export function fieldBoxes(line: PageLine, page: SourcePage, pageNumber: number): RedactionBox[] {
     const { text } = lineText(line.words);
     const label = FIELD_LABELS.find(rule => rule.pattern.test(text));
     if (!label) return [];
     const match = label.pattern.exec(text)!;
     const opening = match.index <= 12 && text.length <= OPENING_LABEL_LENGTH;
-    if (!opening && text.length > match[0].length + LABEL_SLACK) return [];
-    const [x0, y0, x1, y1] = union(line.words.map(w => w.box));
+    // "Struck Jazz - Elizabeth Fixsen   SSN: 55...": a tax number's label in the
+    // middle of a filled-in line, followed by a colon or digits, is still a
+    // field. Its box starts where the label ends, not where the line does.
+    const end = match.index + match[0].length;
+    const inline = label.kind === "financial identifier" && /^\s*[:#.]?\s*[\dOoIlSsBZ]|^\s*[:#]/.test(text.slice(end));
+    if (!opening && !inline && text.length > match[0].length + LABEL_SLACK) return [];
+    const [x0, y0, lineEnd, y1] = union(line.words.map(w => w.box));
+    const x1 = inline ? xAt(line, end) : lineEnd;
     const height = Math.max(6, y1 - y0);
     const right = page.width - 4;
-    const quoted = `the printed label “${maskedLine(text, [])}”`;
+    // Mask any value sharing the label's line ("Password: x") so the reason never quotes it.
+    const quoted = `the printed label “${maskedLine(text, findSensitiveSpans(text))}”`;
     // The lower box starts inside the label's own line: handwriting is taller
     // than print and sits on the label's baseline as often as under it.
     return [
@@ -300,7 +323,93 @@ function personalFormHeading(page: SourcePage): string | null {
 }
 
 /** Every automatic box on every page, plus the manual ones. */
-export function planRedactions(pages: SourcePage[], manual?: ManualRedactions): RedactionBox[] {
+/**
+ * A spreadsheet laid out as a page: numbers in the column under a "Phone"
+ * heading, which a spreadsheet keeps as ten bare digits ("4105550123") that
+ * the running-text rule leaves alone. The nearest heading above a number, in
+ * the same column, decides; a directory of businesses keeps its numbers.
+ */
+/**
+ * The stored text of a spreadsheet whose table has a phone column: a cell
+ * that is nothing but a blacked-out phone number.
+ */
+export const isPhoneSheet = (content: string) => /\|\s*\[REDACTED: phone number\]\s*(?=\|)/.test(content);
+
+export type PlanOptions = {
+    /** The document's text lists phone numbers in a table column (isPhoneSheet). */
+    phoneSheet?: boolean;
+    /** A résumé or CV (isPersonalDocument): every address and phone is the person's own. */
+    personal?: boolean;
+};
+
+function phoneColumnWords(page: SourcePage, options: PlanOptions = {}): { word: PageWord; header: string }[] {
+    // A PDF's text layer often runs a whole header row into one line: split it
+    // into cells wherever the gap between words is wider than a space.
+    const cells = page.lines.flatMap(line => {
+        const out: PageWord[][] = [];
+        for (const word of line.words) {
+            const last = out.at(-1)?.at(-1);
+            const height = word.box[3] - word.box[1];
+            if (last && word.box[0] - last.box[2] <= Math.max(3, height * 0.6)) out.at(-1)!.push(word);
+            else out.push([word]);
+        }
+        return out;
+    });
+    const cellText = (words: PageWord[]) => lineText(words).text;
+    const headings = cells.flatMap(words => {
+        const text = cellText(words);
+        if (!isPhoneHeading(text)) return [];
+        const box = union(words.map(w => w.box));
+        const row = cells.filter(other => { const b = union(other.map(w => w.box)); return Math.abs(b[1] - box[1]) < (box[3] - box[1]); });
+        return row.some(other => isBusinessColumn(cellText(other))) ? [] : [{ box, text }];
+    });
+    const directory = cells.some(words => isBusinessColumn(cellText(words)));
+    // Bare digits only: a formatted number on a page is judged by its context.
+    const bare = page.lines.flatMap(line => line.words.filter(word => /^\+?\d{10,11}(?:\.0)?$/.test(word.text) && isPrivatePhoneCell(word.text)));
+    // A spreadsheet often clips its heading ("What is your best contact p"):
+    // three or more phone-shaped numbers (area code and exchange 2-9) stacked
+    // in one column are a phone column too.
+    const nanp = (word: PageWord) => /^1?[2-9]\d{2}[2-9]\d{6}$/.test(word.text.replace(/\.0$/, "").replace(/^\+/, ""));
+    // Upright words only, each on its own row: sideways OCR reads one margin
+    // line several times over, which is not a column.
+    const upright = bare.filter(word => nanp(word) && word.box[2] - word.box[0] > word.box[3] - word.box[1]);
+    const stacked = new Set(upright.filter(word => {
+        const column = upright.filter(other => Math.abs(other.box[0] - word.box[0]) <= 8).sort((a, b) => a.box[1] - b.box[1]);
+        const rows = column.filter((other, i) => i === 0 || other.box[1] >= column[i - 1].box[3] - 1);
+        return rows.length >= 3;
+    }));
+    return bare.flatMap(word => {
+        const [x0, y0, x1] = word.box;
+        const above = headings.filter(h => h.box[3] <= y0 + 1 && (Math.abs(h.box[0] - x0) <= 8 || (h.box[0] < x1 && x0 < h.box[2])))
+            .sort((a, b) => b.box[3] - a.box[3]);
+        if (above.length) return [{ word, header: above[0].text }];
+        // A header row run together into one line ("...email? What is your best
+        // contact phone number?What are..."): read the few words that start
+        // where this column starts, in the nearest line above.
+        if (!directory) {
+            const header = page.lines
+                .filter(line => union(line.words.map(w => w.box))[3] <= y0 + 1)
+                .map(line => ({ line, start: line.words.findIndex(w => Math.abs(w.box[0] - x0) <= 6) }))
+                // Skip the rows of values above this one; the heading has no digits.
+                .filter(({ line, start }) => start >= 0 && !/\d/.test(line.words[start].text))
+                .sort((a, b) => b.line.words[b.start].box[3] - a.line.words[a.start].box[3])[0];
+            const text = header ? lineText(header.line.words.slice(header.start, header.start + 7)).text : "";
+            if (header && isPhoneHeading(text.slice(0, 60)) && !/\d/.test(text)) return [{ word, header: text }];
+        }
+        if (stacked.has(word) && !directory) return [{ word, header: "a column of phone-shaped numbers" }];
+        // Excel right-aligns numbers and clips headings ("What is your best
+        // contact p"), so neither may line up. When the stored text already
+        // shows a phone column, every phone-shaped bare number in the sheet is one.
+        return options.phoneSheet && !directory && upright.includes(word) ? [{ word, header: "a phone column (the stored text blacks out a whole phone cell)" }] : [];
+    });
+}
+
+function phoneColumnBoxes(page: SourcePage, pageNumber: number, options: PlanOptions): RedactionBox[] {
+    return phoneColumnWords(page, options).map(({ word, header }) => ({ page: pageNumber, box: pad(word.box, page), kind: "phone number" as const, method: "value" as const,
+        reason: `A number in the table column headed “${header.replace(/\d/g, "#")}”. Covered: a spreadsheet's phone column, which stores numbers as bare digits.` }));
+}
+
+export function planRedactions(pages: SourcePage[], manual?: ManualRedactions, options: PlanOptions = {}): RedactionBox[] {
     const boxes: RedactionBox[] = [];
     const withheld = new Set((manual?.pages ?? []).map(number => number - 1));
     pages.forEach((page, index) => {
@@ -312,7 +421,8 @@ export function planRedactions(pages: SourcePage[], manual?: ManualRedactions): 
                 reason: `Whole page withheld: it reads “${heading.replace(/\s+/g, " ")}”, a form that is one person's tax or banking details (name, address, taxpayer number, signature). Boxing its fields one by one left pieces showing.` });
             return;
         }
-        for (const line of page.lines) boxes.push(...valueBoxes(line, page, index), ...fieldBoxes(line, page, index));
+        for (const line of page.lines) boxes.push(...valueBoxes(line, page, index, { personal: options.personal }), ...fieldBoxes(line, page, index));
+        boxes.push(...phoneColumnBoxes(page, index, options));
     });
     for (const number of manual?.pages ?? []) {
         const page = pages[number - 1];
@@ -335,7 +445,32 @@ export function planRedactions(pages: SourcePage[], manual?: ManualRedactions): 
  * stored. Read with the same neighbouring lines the boxes were placed with, so
  * a business number the plan rightly left alone is not reported as missed.
  */
-export function remainingFindings(pages: SourcePage[]): { page: number; kind: RedactionKind }[] {
-    return pages.flatMap((page, index) => page.lines.flatMap(line =>
-        spansInContext(line, page).map(span => ({ page: index + 1, kind: span.kind }))));
+export function remainingFindings(pages: SourcePage[], sources: SourcePage[] = [], options: PlanOptions = {}): { page: number; kind: RedactionKind }[] {
+    // A phone number the plan read on the original page and judged public (an
+    // office signature, a fax, a vendor's line) is not a miss just because the
+    // second OCR lost the words around it or misread a digit of it. Excused only
+    // at the same place on the same page, same length, at most two digits off.
+    // Tax and ID numbers are never excused.
+    const digits = (text: string) => text.replace(/[Il|]/g, "1").replace(/[Oo]/g, "0").replace(/\D/g, "");
+    const near = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && Math.abs((a[1] + a[3]) / 2 - (b[1] + b[3]) / 2) <= Math.max(a[3] - a[1], b[3] - b[1]) * 1.5;
+    const judgedPublic = sources.map(page => page.lines.flatMap(line => {
+        const text = lineText(line.words).text;
+        const found = spansInContext(line, page, { personal: options.personal });
+        const box = union(line.words.map(w => w.box));
+        return [...text.matchAll(/\d[\dIlOo|().\s-]{6,}\d/g)].map(m => digits(m[0]))
+            .filter(number => number.length >= 7 && !found.some(span => digits(text.slice(span.start, span.end)).includes(number)))
+            .map(number => ({ number, box }));
+    }));
+    const sameNumber = (a: string, b: string) => a.length === b.length && [...a].filter((d, i) => d !== b[i]).length <= 2;
+    return pages.flatMap((page, index) => page.lines.flatMap(line => {
+        const text = lineText(line.words).text;
+        const box = union(line.words.map(w => w.box));
+        return spansInContext(line, page, { personal: options.personal })
+            .filter(span => {
+                const number = digits(text.slice(span.start, span.end));
+                return span.kind !== "phone number" || number.length < 7
+                    || !(judgedPublic[index] ?? []).some(known => near(known.box, box) && (known.number.includes(number) || sameNumber(known.number.slice(-number.length), number)));
+            })
+            .map(span => ({ page: index + 1, kind: span.kind }));
+    }).concat(phoneColumnWords(page, options).map(() => ({ page: index + 1, kind: "phone number" as const }))));
 }

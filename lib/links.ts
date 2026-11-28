@@ -45,7 +45,9 @@ const DRIVE_HOST = /^https?:\/\/(?:docs|drive)\.google\.com\//i;
 const SHAREPOINT_URL = /https?:\/\/[^\s<>)\]"'`]*sharepoint\.com\/[^\s<>)\]"'`]+/gi;
 
 /** `[label](url)`, so a reference can be labelled the way the author wrote it. */
-const MARKDOWN_LINK = /\[([^\]\n]*)\]\(([^)\n]+)\)/g;
+// Not after a backslash: Word's "[Link]" around a hyperlink exports as
+// `\[[Link](url)\]`, and the escaped bracket is text, not the link's own.
+const MARKDOWN_LINK = /(?<!\\)\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 
 export type DriveLink = {
     /** The Drive or SharePoint file ID the link points at. */

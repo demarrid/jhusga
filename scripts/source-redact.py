@@ -30,6 +30,18 @@ import os  # noqa: E402
 GPU = (BASE / 'python-gpu').is_dir() and not os.environ.get('SOURCE_REDACT_CPU')
 if GPU:
     sys.path.insert(0, str(BASE / 'python-gpu'))
+    # Under WSL, CUDA must use the Windows driver's own PTX JIT compiler. A
+    # Linux NVIDIA package (here Kali's 535 libraries) otherwise supplies an
+    # older one and the process aborts ("munmap_chunk(): invalid pointer").
+    # The loader reads these variables only at start, so set them and restart once.
+    if not os.environ.get('SOURCE_REDACT_GPU_ENV'):
+        drivers = sorted(Path('/usr/lib/wsl/drivers').glob('*/libnvidia-ptxjitcompiler.so.1'))
+        env = dict(os.environ, SOURCE_REDACT_GPU_ENV='1')
+        libs = [str(p) for p in sorted((BASE / 'python-gpu' / 'nvidia').glob('*/lib'))]
+        env['LD_LIBRARY_PATH'] = ':'.join(['/usr/lib/wsl/lib', *libs, *filter(None, [os.environ.get('LD_LIBRARY_PATH')])])
+        if drivers:
+            env['LD_PRELOAD'] = ':'.join(filter(None, [str(drivers[-1]), os.environ.get('LD_PRELOAD')]))
+        os.execve(sys.executable, [sys.executable, *sys.argv], env)
 import pymupdf  # noqa: E402
 
 OCR_SCALE = 2.0
@@ -155,9 +167,110 @@ def lines(path, out_path, ocr_all=False):
     print(json.dumps({'pages': len(pages), 'lines': sum(len(p['lines']) for p in pages)}))
 
 
+def xls_to_pdf(path, out_path):
+    """An Excel 97-2003 workbook drawn as plain tables, one sheet after another,
+    for when Office will not open it (File Block). Every cell's text is shown,
+    wrapped; a sheet too wide for the page continues in column groups that
+    repeat its first column. Formatting and charts are not reproduced."""
+    import xlrd
+    if path.endswith('.csv'):
+        import csv
+
+        class Cell:
+            ctype, value = xlrd.XL_CELL_TEXT, ''
+
+        class Sheet:  # the small part of xlrd's sheet that is used below
+            def __init__(self, rows):
+                self.name = Path(path).stem
+                self.rows = rows
+                self.nrows, self.ncols = len(rows), max((len(r) for r in rows), default=0)
+
+            def cell(self, r, c):
+                cell = Cell()
+                cell.value = self.rows[r][c] if c < len(self.rows[r]) else ''
+                return cell
+
+        with open(path, newline='', encoding='utf-8-sig', errors='replace') as handle:
+            sheets = [Sheet(list(csv.reader(handle)))]
+
+        class Book:
+            datemode = 0
+
+            def sheets(self):
+                return sheets
+        book = Book()
+    else:
+        book = xlrd.open_workbook(path)
+    out = pymupdf.open()
+    width, height, margin, size = 792, 612, 24, 6.5
+    line = size * 1.25
+    font = pymupdf.Font('helv')
+
+    def cell_text(sheet, r, c):
+        cell = sheet.cell(r, c)
+        if cell.ctype == xlrd.XL_CELL_DATE:
+            try:
+                return xlrd.xldate.xldate_as_datetime(cell.value, book.datemode).strftime('%Y-%m-%d %H:%M').removesuffix(' 00:00')
+            except Exception:
+                return str(cell.value)
+        if cell.ctype == xlrd.XL_CELL_NUMBER:
+            return str(int(cell.value)) if float(cell.value).is_integer() else str(cell.value)
+        return str(cell.value).strip()
+
+    def wrap(text, w):
+        lines = []
+        for para in text.split('\n'):
+            current = ''
+            for word in para.split(' '):
+                trial = (current + ' ' + word).strip()
+                if current and font.text_length(trial, size) > w - 4:
+                    lines.append(current)
+                    current = word
+                else:
+                    current = trial
+            lines.append(current)
+        return lines or ['']
+
+    for sheet in book.sheets():
+        if not sheet.nrows:
+            continue
+        cells = [[cell_text(sheet, r, c) for c in range(sheet.ncols)] for r in range(sheet.nrows)]
+        widths = [min(170, max(36, max((font.text_length(row[c], size) for row in cells), default=0) + 8)) for c in range(sheet.ncols)]
+        groups, current, used = [], [], widths[0]
+        for c in range(1, sheet.ncols):
+            if used + widths[c] > width - 2 * margin and current:
+                groups.append(current)
+                current, used = [], widths[0]
+            current.append(c)
+            used += widths[c]
+        groups.append(current)
+        for gi, group in enumerate(groups):
+            columns = [0, *group] if sheet.ncols > 1 else [0]
+            page, y = None, 0
+            for r, row in enumerate(cells):
+                wrapped = [wrap(row[c], widths[c]) for c in columns]
+                h = max(len(w) for w in wrapped) * line + 3
+                if page is None or y + h > height - margin:
+                    page = out.new_page(width=width, height=height)
+                    page.insert_text((margin, margin - 8), f'{sheet.name}' + (f' (columns, part {gi + 1} of {len(groups)})' if len(groups) > 1 else ''), fontsize=8, fontname='hebo')
+                    y = margin
+                x = margin
+                for c, lines in zip(columns, wrapped):
+                    page.draw_rect(pymupdf.Rect(x, y, x + widths[c], y + h), color=(0.7, 0.7, 0.7), width=0.4)
+                    for k, text in enumerate(lines):
+                        page.insert_text((x + 2, y + 2 + size + k * line), text, fontsize=size, fontname='hebo' if r == 0 else 'helv')
+                    x += widths[c]
+                y += h
+    if not out.page_count:
+        out.new_page(width=width, height=height)
+    out.save(out_path, garbage=3, deflate=True)
+    print(json.dumps({'pages': out.page_count}))
+
+
 def apply(path, plan_path, out_path, preview_dir):
     plan = json.loads(Path(plan_path).read_text())
     dpi, quality = int(plan.get('dpi', 150)), int(plan.get('quality', 75))
+    gray = bool(plan.get('gray'))  # last resort for long scans that will not fit otherwise
     doc = pymupdf.open(path)
     boxes, withheld = {}, {}
     for item in plan['boxes']:
@@ -183,7 +296,7 @@ def apply(path, plan_path, out_path, preview_dir):
     for old in preview.glob('page-*.png'):
         old.unlink()
     for number, page in enumerate(doc):
-        pix = page.get_pixmap(dpi=dpi, alpha=False, annots=False)
+        pix = page.get_pixmap(dpi=dpi, alpha=False, annots=False, colorspace=pymupdf.csGRAY if gray else pymupdf.csRGB)
         target = out.new_page(width=page.rect.width, height=page.rect.height)
         target.insert_image(target.rect, stream=pix.tobytes('jpeg', jpg_quality=quality))
         # Painted again on top of the raster, in case a renderer ever skipped a
@@ -227,6 +340,9 @@ def crops(path, plan_path, out_dir):
 
 if __name__ == '__main__':
     command, args = sys.argv[1], sys.argv[2:]
+    if command == 'xls':
+        xls_to_pdf(*args[:2])
+        raise SystemExit(0)
     if command == 'crops':
         crops(*args[:3])
         raise SystemExit(0)

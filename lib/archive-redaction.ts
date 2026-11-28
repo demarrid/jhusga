@@ -100,18 +100,20 @@ const LOOSE_IDENTIFIER = /\b(?:SSN|SS#|social security(?: number| no\.?| #)?|TIN
  * +1 410 555 1234. Ten bare digits are left alone; in these documents they are
  * more often an account or budget code than a phone.
  */
-const PHONE = /(?<![\d\w-])(?:\+?1[-.\s])?(?:\(([2-9]\d{2})\)\s?|([2-9]\d{2})[-.\s‐-—])([2-9]\d{2})[-.\s‐-—](\d{4})(?![\d-])/g;
+// A letter may touch it: OCR runs "McLaughlin(443) 555-..." together.
+// Separators include the soft hyphen (U+00AD) word processors put in numbers.
+const PHONE = /(?<![\d-])(?:\+?1[-.\s­])?(?:\(([2-9]\d{2})\)[-.\s­]?|([2-9]\d{2})[-.\s‐-—­])([2-9]\d{2})[-.\s‐-—­] ?(\d{4})(?![\d-])/g;
 
 /** Exchanges the University publishes for its offices, and toll-free lines. */
 const INSTITUTIONAL_EXCHANGES = new Set(["410-516", "443-997", "410-955", "410-614", "410-502", "410-735", "443-287", "667-208", "410-338", "410-235"]);
 const TOLL_FREE = new Set(["800", "833", "844", "855", "866", "877", "888"]);
 // A shop receipt ("Party City®", "TAX EXEMPT", "SUBTOTAL") prints the store's own number.
-const BUSINESS_CONTEXT = /\b(?:inc\.?|llc|ltd|company|co\.|restaurant|hotel|cater(?:ing|er)|stadium|arena|ballpark|yards|theat(?:re|er)|museum|church|synagogue|consulting|tickets|box office|reservations|rentals?|showroom|invoice|remit to|tax exempt|subtotal|cashier|store\s*#)\b|[®™]|www\.|https?:\/\/|\binfo@|\bfax\b|fax\s*[:#.]/i;
+const BUSINESS_CONTEXT = /\b(?:inc\.?|llc|ltd|company|co\.|restaurant|hotel|cater(?:ing|er)|stadium|arena|ballpark|yards|theat(?:re|er)|museum|church|synagogue|consulting|tickets|box office|reservations|rentals?|showroom|invoice|remit to|tax\s*ex[a-z]{3,4}t|subtotal|cashier|store\s*#)\b|[®™]|www\.|https?:\/\/|\binfo@|\bfax\b|fax\s*[:#.\d]/i;
 /** Text naming a business, venue or website, so an address or number in it is the business's. */
 export const isBusinessContext = (text: string) => BUSINESS_CONTEXT.test(text);
 // "Personal" only next to a number: "Personal Automobiles" is a heading, not a phone.
 const PERSONAL_PHONE_CONTEXT = /\b(?:cell|mobile|home phone|personal (?:phone|cell|number|line|contact)|my (?:number|phone)|text me|call me)\b/i;
-const OFFICE_PHONE_CONTEXT = /\b(?:fax|facsimile|office|department|dept|university|hopkins|cent(?:er|re)|suite|ext\.?|extension|hotline|helpline|main line|services|police|security|switchboard|reservations|box office|tickets|restaurant|hotel|cater(?:ing|er)|inc\.?|llc|company|co\.|zoom|dial|meeting id|for (?:more )?information|for details|directions|rentals?|showroom|invoice|remit to|tax exempt|subtotal|cashier|store\s*#)\b|[®™]|www\.|https?:\/\/|\binfo@|fax\s*[:#.]/i;
+const OFFICE_PHONE_CONTEXT = /\b(?:fax|facsimile|office|department|dept|university|hopkins|cent(?:er|re)|suite|ext\.?|extension|hotline|helpline|main line|services|police|security|switchboard|reservations|box office|tickets|restaurant|hotel|cater(?:ing|er)|inc\.?|llc|company|co\.|zoom|dial|meeting id|for (?:more )?information|for details|directions|rentals?|showroom|invoice|remit to|tax\s*ex[a-z]{3,4}t|subtotal|cashier|store\s*#)\b|[®™]|www\.|https?:\/\/|\binfo@|fax\s*[:#.\d]|@[\w.-]+\.gov\b/i;
 
 /** A street address carrying an apartment or unit, anywhere in the text. */
 const RESIDENTIAL_STREET = new RegExp(
@@ -152,11 +154,108 @@ function institutionalPhone(area: string, exchange: string, line: string, nearby
     return INSTITUTIONAL_EXCHANGES.has(`${area}-${exchange}`) || TOLL_FREE.has(area) || OFFICE_PHONE_CONTEXT.test(nearby);
 }
 
+const TABLE_PHONE_HEADER = /\b(?:phone|cell|mobile|tel(?:ephone)?)\b/i;
+/** A column that names businesses: "Company", "Vendor name", "Website". */
+const BUSINESS_COLUMN = /^\**(?:company|business|vendor|venue|restaurant|hotel|store|caterer|supplier|website|web\s*site|url)s?(?:\s*name)?\**$/i;
+/** A spreadsheet's phone cell: digits only, perhaps with separators or a trailing ".0". */
+const TABLE_PHONE_VALUE = /^\+?[\d\s().-]{7,20}?(?:\.0)?$/;
+
+/** For laid-out pages (lib/source-redaction.ts): a column heading that means a phone number. */
+export const isPhoneHeading = (cell: string) => TABLE_PHONE_HEADER.test(cell) && cell.length <= 60 && !/\d{3}|\[REDACTED/.test(cell);
+/** A column heading that names businesses, so the table is a directory of them. */
+export const isBusinessColumn = (cell: string) => BUSINESS_COLUMN.test(cell.trim());
+/** A cell holding only a phone-length number that is not a University or toll-free line. */
+export function isPrivatePhoneCell(cell: string): boolean {
+    const digits = cell.replace(/\.0$/, "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+    return TABLE_PHONE_VALUE.test(cell.trim()) && digits.length === 10
+        && !INSTITUTIONAL_EXCHANGES.has(`${digits.slice(0, 3)}-${digits.slice(3, 6)}`) && !TOLL_FREE.has(digits.slice(0, 3));
+}
+
+/**
+ * Numbers in a Markdown table column headed "Phone", "Cell", "Mobile" or "Tel".
+ * A spreadsheet stores them as ten bare digits, which the running-text rule
+ * leaves alone (there they are usually budget codes); under such a heading
+ * they are phone numbers. University exchanges and toll-free lines stay.
+ */
+function tablePhoneColumns(text: string, add: (start: number, end: number, kind: RedactionKind, rule: string) => void): void {
+    let columns: { index: number; header: string }[] = [];
+    let offset = 0;
+    for (const line of text.split("\n")) {
+        if (/^\s*\|/.test(line)) {
+            const cells: { start: number; end: number; text: string }[] = [];
+            const pipes = [...line.matchAll(/\|/g)].map(m => m.index);
+            for (let i = 0; i + 1 < pipes.length; i++) cells.push({ start: pipes[i] + 1, end: pipes[i + 1], text: line.slice(pipes[i] + 1, pipes[i + 1]).trim() });
+            const isValue = (cell: string) => {
+                const digits = cell.replace(/\.0$/, "").replace(/\D/g, "");
+                return TABLE_PHONE_VALUE.test(cell) && digits.length >= 10 && digits.length <= 11;
+            };
+            const headers = cells.flatMap((cell, index) => TABLE_PHONE_HEADER.test(cell.text) && cell.text.length <= 60
+                && !/\d{3}|\[REDACTED/.test(cell.text) ? [{ index, header: cell.text }] : []);
+            if (headers.length && !cells.some(cell => isValue(cell.text))) {
+                // A directory of businesses ("Company | Email | Phone | Website") lists their own lines.
+                columns = cells.some(cell => BUSINESS_COLUMN.test(cell.text)) ? [] : headers;
+            } else {
+                for (const { index, header } of columns) {
+                    const cell = cells[index];
+                    if (!cell || !isValue(cell.text)) continue;
+                    const digits = cell.text.replace(/\.0$/, "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+                    if (INSTITUTIONAL_EXCHANGES.has(`${digits.slice(0, 3)}-${digits.slice(3, 6)}`) || TOLL_FREE.has(digits.slice(0, 3))) continue;
+                    const lead = line.slice(cell.start).search(/\S/);
+                    const start = offset + cell.start + lead;
+                    add(start, start + cell.text.length, "phone number", `a number in a table column headed “${header.replace(/\d/g, "#")}”`);
+                }
+            }
+        } else {
+            columns = [];
+        }
+        offset += line.length + 1;
+    }
+}
+
 /**
  * Every range of `text` that should not be published, sorted and without
  * overlap. Ranges never include the label, so a form still says what was there.
  */
-export function findSensitiveSpans(text: string): SensitiveSpan[] {
+export type RedactOptions = {
+    /**
+     * A résumé or CV: its header is the person's own contact details, so every
+     * street address, "City, ST 12345" line and phone number in it goes, with
+     * none of the office or business exceptions. See isPersonalDocument.
+     */
+    personal?: boolean;
+};
+
+/** A résumé or CV, by its title ("Resume_ Updated Feb 2018", "2018_02 Hammer-Bleich CV"). */
+export const isPersonalDocument = (title: string) => /(?<![a-z])(?:r[eé]sum[eé]s?|cv|curriculum vitae)(?![a-z])/i.test(title);
+
+/** Any house number and street, with an optional unit and "City, ST 12345" after it. */
+const ANY_STREET = new RegExp(
+    // A letter may touch the number: exports run "Noah Smith3339 N Charles St" together.
+    String.raw`(?<![\d.,$-])\d{1,6}[ \t]+(?:[NSEW]\.?[ \t]+)?(?:(?:[A-Za-z][\w'.-]*|\d+(?:st|nd|rd|th)\^?)[ \t]+){0,4}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Way|Place|Pl|Terrace|Ter|Circle|Cir|Parkway|Pkwy|Highway|Hwy|Trail|Trl|Square|Sq)\b\.?(?:,?[ \t]*(?:Apt\.?|Apartment|Unit|Room|Rm\.?|#)[ \t]*#?[\w-]+)?`,
+    "g",
+);
+/** "Larchmont, NY 10543", "Erie, Colorado 80516". */
+const CITY_ZIP = /\b[A-Z][A-Za-z.'-]*(?:[ \t][A-Z][A-Za-z.'-]*){0,3},[ \t]*(?:[A-Z]{2}|[A-Z][a-z]+(?:[ \t][A-Z][a-z]+)?)\.?,?[ \t]+\d{5}(?:-\d{4})?(?:[ \t]+USA?\b)?|\b[A-Z][A-Za-z.'-]*(?:[ \t][A-Z][A-Za-z.'-]*){0,2}[ \t]+[A-Z]{2}[ \t]+\d{5}(?:-\d{4})?\b/g;
+/** A residence hall room: "Wolman #3689". */
+const DORM_ROOM = /\b[A-Z][A-Za-z]+(?:[ \t]Hall)?[ \t]*#[ \t]?\d{2,5}\b|\b(?:[A-Z][A-Za-z]+[ \t])?Hall[ \t]+\d{2,4}[A-Z]?\b/g;
+/** Ten bare digits with a +1 or not ("+12027316297"): in a résumé, a phone. */
+const BARE_PHONE = /(?<![\d-])(?:\+?1)?[2-9]\d{2}[2-9]\d{6}(?![\d-])/g;
+
+function personalSpans(text: string, add: (start: number, end: number, kind: RedactionKind, rule: string) => void): void {
+    for (const match of text.matchAll(ANY_STREET)) add(match.index, match.index + match[0].length, "home address", "a street address in a résumé or CV, which is the person's own");
+    for (const match of text.matchAll(CITY_ZIP)) add(match.index, match.index + match[0].length, "home address", "a city, state and ZIP code in a résumé or CV");
+    for (const match of text.matchAll(DORM_ROOM)) add(match.index, match.index + match[0].length, "home address", "a residence hall room number in a résumé or CV");
+    for (const match of text.matchAll(PHONE)) {
+        if (TOLL_FREE.has(match[1] ?? match[2])) continue;
+        add(match.index, match.index + match[0].length, "phone number", "a phone number in a résumé or CV, which is the person's own");
+    }
+    for (const match of text.matchAll(BARE_PHONE)) {
+        if (TOLL_FREE.has(match[0].replace(/^\+?1(?=\d{10}$)/, "").slice(0, 3))) continue;
+        add(match.index, match.index + match[0].length, "phone number", "ten bare digits in a résumé or CV, which is the person's phone");
+    }
+}
+
+export function findSensitiveSpans(text: string, options: RedactOptions = {}): SensitiveSpan[] {
     const spans: SensitiveSpan[] = [];
     const add = (start: number, end: number, kind: RedactionKind, rule: string, anyValue = false) => {
         if (end <= start) return;
@@ -201,6 +300,8 @@ export function findSensitiveSpans(text: string): SensitiveSpan[] {
             ? "a phone number on a line that calls it a cell, mobile or personal number"
             : "a phone number with no University exchange, office, business, fax or toll-free context around it");
     }
+    tablePhoneColumns(text, add);
+    if (options.personal) personalSpans(text, add);
 
     // Widest first at each start, then drop anything inside an earlier range.
     spans.sort((a, b) => a.start - b.start || b.end - a.end);
@@ -217,8 +318,8 @@ export function findSensitiveSpans(text: string): SensitiveSpan[] {
 }
 
 /** The text with every sensitive range replaced by a labelled placeholder. */
-export function redactPersonalData(text: string): string {
-    const spans = findSensitiveSpans(text);
+export function redactPersonalData(text: string, options: RedactOptions = {}): string {
+    const spans = findSensitiveSpans(text, options);
     if (spans.length === 0) return text;
     let out = "";
     let at = 0;
@@ -242,9 +343,9 @@ export function hasRedactions(text: string): boolean {
  * value land at the end of its placeholder. Used to keep image positions
  * pointing at the same paragraph when a Google Doc's export is redacted.
  */
-export function redactedOffset(text: string, offset: number): number {
+export function redactedOffset(text: string, offset: number, options: RedactOptions = {}): number {
     let shift = 0;
-    for (const span of findSensitiveSpans(text)) {
+    for (const span of findSensitiveSpans(text, options)) {
         if (span.start >= offset) break;
         const length = placeholder(span.kind).length;
         if (span.end > offset) return span.start + shift + length;

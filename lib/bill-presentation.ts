@@ -30,12 +30,21 @@ const BILL_PURPOSE = /^(?:A (?:Bill|Resolution)\b|An?\s+(?:SGA\s+)?(?:Funding )?
 const CREDIT_LABEL = /^(?:(?:Introduced|Composed|Authored|Written)(?:\s*(?:&|and)\s*(?:Composed|Authored|Written|Introduced))?|(?:Co-?\s*)?Sponsored)\s+by\s*:/i;
 const CREDIT_SPLIT = /(?=(?:Introduced(?:\s*(?:&|and)\s*\w+)?|(?<!Co-?\s*)Sponsored|Co-?\s*Sponsored)\s+by\s*:)/;
 
-export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks: Block[] } {
+/** An image the title block carried: the letterhead seal, as a rule. */
+export type BillHeaderImage = NonNullable<InlineRun["image"]>;
+
+/**
+ * The title block of a bill or resolution, lifted out of its body.
+ *
+ * `images` are the pictures inside that block, which the header lines (text
+ * only) would otherwise drop: the letterhead seal, in practice.
+ */
+export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; images: BillHeaderImage[]; blocks: Block[] } {
     blocks = presentPagedBill(blocks);
     const opening = blocks.slice(0, 16).flatMap(block => "runs" in block ? [runsText(block.runs)] : []).join("\n");
     if (!/Student\s+Government\s+Association/i.test(matchingText(opening)) ||
         !(BILL_NUMBER.test(matchingText(opening)) || opening.split("\n").some(line => BILL_PURPOSE.test(matchingText(line).trim())))) {
-        return { header: [], blocks };
+        return { header: [], images: [], blocks };
     }
     // Word exports can put the complete title page and first provision in one
     // paragraph. Split at section and resolution-clause lines without changing source runs or anchors.
@@ -43,12 +52,15 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
         if (block.kind !== "paragraph") return [block];
         const text = runsText(block.runs);
         const starts = [0, ...Array.from(text.matchAll(/(?<=\n)(?=SECTION\s+(?:\d+|[IVXLC]+)[.\s:]|Whereas\b|(?:Now[,]?\s+Therefore[,]?\s+)?Be\s+It\s+(?:Further\s+)?(?:Resolved|Enacted)\b)/gi), match => match.index!), text.length];
+        // Nothing to split: keep the block whole, images included (slicing keeps text only).
+        if (starts.length === 2) return [block];
         return starts.slice(0, -1).map((start, index) => ({ ...block,
             runs: sliceRuns(block.runs, start, starts[index + 1]),
             sectionId: index === 0 ? block.sectionId : undefined,
         }));
     });
     const header: BillHeaderLine[] = [];
+    const images: BillHeaderImage[] = [];
     const decorations: Block[] = [];
     let consumed = 0;
     let purposeSeen = false;
@@ -63,6 +75,8 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
             continue;
         }
         if (!(block.kind === "paragraph" || block.kind === "heading") || BODY_START.test(matchingText(runsText(block.runs)))) break;
+        // Header lines are sliced from text, and an image has none.
+        for (const run of block.runs) if (run.image) images.push(run.image);
         const text = runsText(block.runs);
         // Older resolutions export each sponsor as a separate paragraph.
         if (consumed >= 64) break;
@@ -109,7 +123,7 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
     const firstSection = blocks[consumed];
     if (!header.some(line => line.kind === "purpose" || line.kind === "number") || !firstSection ||
         !(firstSection.kind === "paragraph" || firstSection.kind === "heading") ||
-        !BODY_START.test(matchingText(runsText(firstSection.runs)))) return { header: [], blocks };
+        !BODY_START.test(matchingText(runsText(firstSection.runs)))) return { header: [], images: [], blocks };
     const normalize = (items: Block[]): Block[] => items.flatMap((block): Block[] => {
         if (block.kind === "paragraph") {
             const text = runsText(block.runs);
@@ -130,7 +144,7 @@ export function presentBill(blocks: Block[]): { header: BillHeaderLine[]; blocks
         }) }];
         return [block];
     });
-    return { header, blocks: [...decorations, ...normalize(blocks.slice(consumed))] };
+    return { header, images, blocks: [...decorations, ...normalize(blocks.slice(consumed))] };
 }
 
 /** Signature rules can start a paragraph or trail the previous signer's role. */

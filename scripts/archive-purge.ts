@@ -15,7 +15,7 @@
  */
 import {createHash} from 'node:crypto';
 import {writeFile} from 'node:fs/promises';
-import {redactPersonalData, redactedOffset} from '../lib/archive-redaction';
+import {isPersonalDocument, redactPersonalData, redactedOffset} from '../lib/archive-redaction';
 process.loadEnvFile('.env');
 
 const notNewsletter = `"documentId" IN (SELECT id FROM "Document" WHERE "discoveredVia" NOT IN ('newsletter', 'gazette'))`;
@@ -37,13 +37,17 @@ async function main() {
     const apply = process.argv.includes('--apply');
     const report: {table: string; scanned: number; changed: number}[] = [];
     try {
+        // A résumé or CV is personal throughout; its own rows follow its title.
+        const personalIds = new Set((await prisma.document.findMany({select: {id: true, title: true}}))
+            .filter(document => isPersonalDocument(document.title)).map(document => document.id));
         for (const {table, where} of derived) {
-            const rows = await prisma.$queryRawUnsafe<{id: string; content: string | null}[]>(
-                `SELECT id, content FROM "${table}"${where ? ` WHERE ${where}` : ''}`);
+            const byDocument = where !== undefined;
+            const rows = await prisma.$queryRawUnsafe<{id: string; content: string | null; documentId?: string}[]>(
+                `SELECT id, content${byDocument ? ', "documentId"' : ''} FROM "${table}"${where ? ` WHERE ${where}` : ''}`);
             let changed = 0;
             for (const row of rows) {
                 if (!row.content) continue;
-                const content = redactPersonalData(row.content);
+                const content = redactPersonalData(row.content, {personal: !!row.documentId && personalIds.has(row.documentId)});
                 if (content === row.content) continue;
                 changed++;
                 if (apply) await prisma.$executeRawUnsafe(`UPDATE "${table}" SET content=$1 WHERE id=$2 AND content=$3`, content, row.id, row.content);
@@ -52,10 +56,11 @@ async function main() {
         }
 
         const documents = await prisma.document.findMany({
-            where: {discoveredVia: {notIn: ['newsletter', 'gazette']}}, select: {id: true, content: true, contentHash: true}});
+            where: {discoveredVia: {notIn: ['newsletter', 'gazette']}}, select: {id: true, title: true, content: true, contentHash: true}});
         let changed = 0;
         for (const document of documents) {
-            const content = redactPersonalData(document.content);
+            const options = {personal: isPersonalDocument(document.title)};
+            const content = redactPersonalData(document.content, options);
             if (content === document.content) continue;
             changed++;
             if (!apply) continue;
@@ -70,7 +75,7 @@ async function main() {
                 for (const row of media) {
                     await tx.documentMedia.update({where: {versionId: row.versionId}, data: {contentHash}});
                     for (const image of row.images) await tx.documentImage.update({where: {id: image.id},
-                        data: {offset: redactedOffset(document.content, image.offset)}});
+                        data: {offset: redactedOffset(document.content, image.offset, options)}});
                 }
             });
             await reanchorDocument(document.id, content);

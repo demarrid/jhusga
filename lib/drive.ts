@@ -739,7 +739,9 @@ export async function extractPdfText(bytes: Uint8Array): Promise<string> {
     const { extractTextItems } = await import("unpdf");
     const { pdfItemsToText, repairPdfGlyphs } = await import("./pdf-text");
     const { items } = await extractTextItems(bytes);
-    return sanitizeExport(repairPdfGlyphs(pdfItemsToText(items)));
+    // An unmapped glyph can come out as U+0000, which Postgres refuses to
+    // store in any text column, so one such character would fail the import.
+    return sanitizeExport(repairPdfGlyphs(pdfItemsToText(items)).replace(/\u0000/g, ""));
 }
 
 /**

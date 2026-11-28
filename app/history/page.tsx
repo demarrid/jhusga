@@ -13,7 +13,7 @@ export const revalidate = 3600;
 
 const HISTORY_DESCRIPTION =
     "Timelines of what the SGA at Johns Hopkins has done on a subject, assembled from its " +
-    "own records and News-Letter reporting. Every point links to the documents behind it.";
+    "own records and News-Letter and Gazette reporting. Every point links to the documents behind it.";
 
 export const metadata: Metadata = pageMetadata({
     title: "History",

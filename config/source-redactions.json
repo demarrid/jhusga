@@ -11,5 +11,11 @@
     "boxes": [
       { "page": 3, "box": [0.19, 0.38, 0.51, 0.67], "note": "a yellow sticky note with a first name and a handwritten cell number to call after 5, which OCR does not read" }
     ]
+  },
+  "59edbe2b-3b3f-43ec-adb4-71f8dcafe7c0": {
+    "note": "Soph Class Council.",
+    "boxes": [
+      { "page": 12, "box": [0.41, 0.28, 0.575, 0.312], "note": "the Table Toppers linens vendor's number on the event sheet: a business number, boxed because OCR missed this line on the original, so the final check could not confirm it was the one left public" }
+    ]
   }
 }

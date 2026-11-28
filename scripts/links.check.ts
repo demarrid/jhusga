@@ -58,6 +58,10 @@ check(
 check("a bare pasted URL counts too", links.some((link) => link.fileId === SHEET), links);
 check("a non-Drive link is ignored", links.length === 2, links);
 
+// Word's bracketed "[Link]" exports with its outer brackets escaped.
+const bracketed = extractDriveLinks(`SGA Culture Discussion \\[[Link](https://docs.google.com/presentation/d/${BILL}/edit?usp=sharing)\\] (30 min)`);
+check("an escaped bracket before a link is not part of its label", bracketed.length === 1 && bracketed[0]?.text === "Link", bracketed);
+
 // The reason this module exists: the export escapes underscores inside URLs,
 // and the unescaped and escaped forms of one URL are the same document.
 const escaped = `See [the bylaws](https://docs.google.com/document/d/1\\_X1PhkHiaV0CukRs1sfmKzqcOYUM\\_AHsmDAcE6qoW5I/edit?usp=sharing).`;
