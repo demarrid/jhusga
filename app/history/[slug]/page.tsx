@@ -7,29 +7,117 @@ import CitedProse from "@/app/(components)/CitedProse";
 import {
     HISTORY_EVENT_KIND_LABELS,
     HISTORY_OUTCOME_LABELS,
-    historyTopic,
 } from "@/config/history";
 import { sessionOrdinal } from "@/config/session";
 import { truncateAtWord } from "@/lib/cite";
 import { formatDate } from "@/lib/dates";
 import { academicYearKey, academicYearLabel, eventLabel, eventSummary, historySpanLabel } from "@/lib/history";
-import { pageMetadata } from "@/lib/seo";
-import { getHistoryTimeline, type HistoryEventRecord } from "@/server/history";
+import JsonLd from "@/app/(components)/JsonLd";
+import { SITE_NAME, absoluteUrl, breadcrumbJsonLd, organizationJsonLd, pageMetadata } from "@/lib/seo";
+import { getHistoryTimeline, type HistoryEventRecord, type HistoryTimeline } from "@/server/history";
 
 import styles from "../history.module.css";
 import Timeline, { type TimelineEvent } from "./Timeline";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: PageProps<"/history/[slug]">): Promise<Metadata> {
+/**
+ * A topic's metadata, or one event's when the link carries `?event=`.
+ *
+ * The timeline writes the open event into the URL, so that is the link people
+ * copy and paste into chat; its preview should name the event they are
+ * pointing at. Search engines still get one page per topic: the canonical
+ * link drops the query either way.
+ */
+export async function generateMetadata({ params, searchParams }: PageProps<"/history/[slug]">): Promise<Metadata> {
     const { slug } = await params;
-    const topic = historyTopic(slug);
-    if (!topic) return {};
+    const { event } = await searchParams;
+    const timeline = await getHistoryTimeline(slug);
+    if (!timeline) return {};
+    const { topic, events } = timeline;
+    const path = `/history/${topic.slug}`;
+
+    const shared = typeof event === "string" ? events.find((record) => record.id === event) : undefined;
+    if (shared) {
+        const metadata = pageMetadata({
+            title: `${shared.title} · ${topic.title}`,
+            description: eventSummary(shared.content) || topic.description,
+            path,
+        });
+        return { ...metadata, openGraph: { ...metadata.openGraph, url: `${path}?event=${shared.id}` } };
+    }
+
+    const span = yearSpan(events);
+    const extent = events.length > 0
+        ? ` ${events.length} event${events.length === 1 ? "" : "s"}${span ? `, ${span}` : ""}, each linked to the documents it was read from.`
+        : "";
     return pageMetadata({
         title: `${topic.title} · History`,
-        description: topic.description,
-        path: `/history/${topic.slug}`,
+        description: `${topic.description}${extent}`,
+        path,
     });
+}
+
+/** "2004–2026" for the dated events on a timeline, or null if none are dated. */
+function yearSpan(events: HistoryEventRecord[]): string | null {
+    const years = events.flatMap((record) => (record.occurredAt ? [record.occurredAt.getUTCFullYear()] : []));
+    if (years.length === 0) return null;
+    const first = Math.min(...years);
+    const last = Math.max(...years);
+    return first === last ? String(first) : `${first}–${last}`;
+}
+
+/**
+ * The timeline as Schema.org data: a collection page in the site's history
+ * section, about one subject, whose list is the events in date order.
+ *
+ * Events are ListItems rather than schema.org/Event, which describes things a
+ * reader could attend; a Senate vote in 2009 would read to a search engine as
+ * an upcoming event with no venue.
+ */
+function timelineJsonLd(timeline: HistoryTimeline) {
+    const { topic, events, generatedAt } = timeline;
+    const path = `/history/${topic.slug}`;
+    return {
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": absoluteUrl(path),
+                url: absoluteUrl(path),
+                name: `${topic.title}: a history of the SGA at Johns Hopkins`,
+                description: topic.description,
+                inLanguage: "en-US",
+                about: { "@type": "Thing", name: topic.title },
+                ...(generatedAt ? { dateModified: generatedAt.toISOString() } : {}),
+                isPartOf: { "@type": "WebSite", name: SITE_NAME, url: absoluteUrl("/") },
+                publisher: organizationJsonLd(),
+                breadcrumb: breadcrumbJsonLd([
+                    { name: "History", path: "/history" },
+                    { name: topic.title, path },
+                ]),
+                ...(events.length > 0
+                    ? {
+                        mainEntity: {
+                            "@type": "ItemList",
+                            itemListOrder: "https://schema.org/ItemListOrderAscending",
+                            numberOfItems: events.length,
+                            itemListElement: events.map((record, index) => ({
+                                "@type": "ListItem",
+                                position: index + 1,
+                                name: record.title,
+                                // The anchor in the record list rather than `?event=`:
+                                // each query is a fresh render of the same page.
+                                url: absoluteUrl(`${path}#event-${record.id}`),
+                                ...(record.occurredAt
+                                    ? { description: `${historySpanLabel(record.occurredAt, record.endedAt, record.datePrecision)}: ${truncateAtWord(eventSummary(record.content), 200)}` }
+                                    : {}),
+                            })),
+                        },
+                    }
+                    : {}),
+            },
+        ],
+    };
 }
 
 export default async function HistoryTopicPage({ params, searchParams }: PageProps<"/history/[slug]">) {
@@ -76,6 +164,7 @@ export default async function HistoryTopicPage({ params, searchParams }: PagePro
 
     return (
         <main className={styles.page}>
+            <JsonLd data={timelineJsonLd(timeline)} />
             <header className={styles.pageHeader}>
                 <Link href="/history">← History</Link>
                 <div>

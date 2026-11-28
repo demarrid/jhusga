@@ -122,3 +122,47 @@ export function pageMetadata({
 export function tidyDescription(text: string, max: number = DESCRIPTION_MAX): string {
     return truncateAtWord(text, max);
 }
+
+// ---------------------------------------------------------------------------
+// Structured data
+// ---------------------------------------------------------------------------
+
+/** Schema.org data is read by machines that need absolute URLs, as embeds do. */
+export function absoluteUrl(path: string): string {
+    return new URL(path, siteUrl()).toString();
+}
+
+/** The site's publisher, as a node other structured data can point at. */
+export function organizationJsonLd() {
+    return {
+        "@type": "Organization",
+        "@id": absoluteUrl("/#organization"),
+        name: SITE_TITLE,
+        alternateName: SITE_NAME,
+        url: absoluteUrl("/"),
+        logo: absoluteUrl(OG_IMAGE.url),
+    };
+}
+
+/** The trail search results show in place of a URL: Home › History › Topic. */
+export function breadcrumbJsonLd(trail: { name: string; path: string }[]) {
+    return {
+        "@type": "BreadcrumbList",
+        itemListElement: [{ name: "Home", path: "/" }, ...trail].map((crumb, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            name: crumb.name,
+            item: absoluteUrl(crumb.path),
+        })),
+    };
+}
+
+/**
+ * JSON-LD as the text of a <script> tag.
+ *
+ * `<` is escaped so a title containing "</script>" cannot end the tag early;
+ * JSON parsers read `<` as the same character.
+ */
+export function serializeJsonLd(data: object): string {
+    return JSON.stringify({ "@context": "https://schema.org", ...data }).replace(/</g, "\u003c");
+}

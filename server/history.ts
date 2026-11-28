@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import {
     HISTORY_TOPICS,
     historyTopic,
@@ -106,7 +108,11 @@ export async function getHistoryTopics(): Promise<HistoryTopicSummary[]> {
     });
 }
 
-export async function getHistoryTimeline(slug: string): Promise<HistoryTimeline | null> {
+/**
+ * One read per request: generateMetadata and the page both need the timeline,
+ * and the page renders on every request, so the query should run once.
+ */
+export const getHistoryTimeline = cache(async (slug: string): Promise<HistoryTimeline | null> => {
     const topic = historyTopic(slug);
     if (!topic) return null;
     if (demoModeEnabled()) return demoHistoryTimeline(topic);
@@ -187,4 +193,4 @@ export async function getHistoryTimeline(slug: string): Promise<HistoryTimeline 
         events,
         documentCount: documents.size,
     };
-}
+});

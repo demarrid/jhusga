@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { formatDate } from "@/lib/dates";
-import { pageMetadata } from "@/lib/seo";
+import JsonLd from "@/app/(components)/JsonLd";
+import { SITE_NAME, absoluteUrl, breadcrumbJsonLd, organizationJsonLd, pageMetadata } from "@/lib/seo";
 import { getHistoryTopics, type HistoryTopicSummary } from "@/server/history";
 
 import styles from "./history.module.css";
@@ -26,6 +27,7 @@ export default async function History() {
 
     return (
         <main className={styles.page}>
+            <JsonLd data={historyIndexJsonLd(topics)} />
             <header className={styles.pageHeader}>
                 <p>From the archive</p>
                 <div>
@@ -53,6 +55,40 @@ export default async function History() {
             </section>
         </main>
     );
+}
+
+/** The index as Schema.org data: a collection page listing each subject's timeline. */
+function historyIndexJsonLd(topics: HistoryTopicSummary[]) {
+    const modified = topics
+        .map((summary) => summary.generatedAt?.getTime() ?? 0)
+        .reduce((latest, time) => Math.max(latest, time), 0);
+    return {
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": absoluteUrl("/history"),
+                url: absoluteUrl("/history"),
+                name: "History of the SGA at Johns Hopkins",
+                description: HISTORY_DESCRIPTION,
+                inLanguage: "en-US",
+                ...(modified > 0 ? { dateModified: new Date(modified).toISOString() } : {}),
+                isPartOf: { "@type": "WebSite", name: SITE_NAME, url: absoluteUrl("/") },
+                publisher: organizationJsonLd(),
+                breadcrumb: breadcrumbJsonLd([{ name: "History", path: "/history" }]),
+                mainEntity: {
+                    "@type": "ItemList",
+                    numberOfItems: topics.length,
+                    itemListElement: topics.map((summary, index) => ({
+                        "@type": "ListItem",
+                        position: index + 1,
+                        name: summary.topic.title,
+                        description: summary.topic.description,
+                        url: absoluteUrl(`/history/${summary.topic.slug}`),
+                    })),
+                },
+            },
+        ],
+    };
 }
 
 function TopicCard({ summary, index }: { summary: HistoryTopicSummary; index: number }) {

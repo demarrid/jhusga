@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
-import { HISTORY_TOPICS } from "@/config/history";
 import { getDocuments } from "@/server/documents";
+import { getHistoryTopics } from "@/server/history";
 import { getPosts } from "@/server/forum";
 import { prisma } from "@/lib/prisma";
 import { demoModeEnabled } from "@/lib/data-mode";
@@ -17,7 +17,7 @@ import { siteUrl } from "@/lib/seo";
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-    const [documents, posts] = await Promise.all([
+    const [documents, posts, historyTopics] = await Promise.all([
         demoModeEnabled()
             ? getDocuments({ session: "all" })
             : prisma.document.findMany({ select: { id: true, driveModifiedTime: true } }),
@@ -29,15 +29,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
                 take: 100,
                 select: { id: true, createdAt: true },
             }),
+        getHistoryTopics(),
     ]);
+    // A timeline changes when it is recomputed, so that is its modification date.
+    const historyUpdated = historyTopics
+        .map((summary) => summary.generatedAt?.getTime() ?? 0)
+        .reduce((latest, time) => Math.max(latest, time), 0);
 
     const fixed: MetadataRoute.Sitemap = [
         { url: "/", changeFrequency: "weekly", priority: 1 },
         { url: "/about", changeFrequency: "monthly", priority: 0.8 },
         { url: "/documents", changeFrequency: "daily", priority: 0.9 },
-        { url: "/history", changeFrequency: "monthly", priority: 0.7 },
-        ...HISTORY_TOPICS.map((topic) => ({
+        {
+            url: "/history",
+            lastModified: historyUpdated > 0 ? new Date(historyUpdated) : undefined,
+            changeFrequency: "monthly",
+            priority: 0.7,
+        },
+        ...historyTopics.map(({ topic, generatedAt }) => ({
             url: `/history/${topic.slug}`,
+            lastModified: generatedAt ?? undefined,
             changeFrequency: "monthly" as const,
             priority: 0.6,
         })),
